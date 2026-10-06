@@ -1,0 +1,26 @@
+# Environment variables & secrets
+.env
+*.secret
+.jwt_secret*
+.jwt_refresh_secret*
+
+# Data & database
+data/
+benchmark_data/
+*.db
+*.db-wal
+*.db-shm
+
+# Scratch & temporary
+scratch/
+bin/
+tmp/
+
+# Frontend dependencies & build output
+frontend/node_modules/
+frontend/dist/
+cmd/server/dist/
+
+# OS metadata
+.DS_Store
+Thumbs.db

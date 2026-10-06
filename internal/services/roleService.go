@@ -1,0 +1,322 @@
+package services
+
+import (
+	"context"
+	"strings"
+
+	"github.com/google/uuid"
+
+	"tluagent-web/internal/dtos/request"
+	"tluagent-web/internal/dtos/response"
+	"tluagent-web/internal/gen/sqlc"
+	"tluagent-web/internal/models"
+	"tluagent-web/internal/repositories"
+	"tluagent-web/pkg/apperrors"
+	"tluagent-web/pkg/constants"
+	"tluagent-web/pkg/convert"
+	"tluagent-web/pkg/database"
+	"tluagent-web/pkg/jsonx"
+)
+
+type RoleService interface {
+	GetRoleByID(ctx context.Context, id string) (*response.RoleResponse, error)
+	GetAllRole(ctx context.Context) ([]*response.RoleResponse, error)
+	GetPermissions(ctx context.Context) ([]*response.PermissionResponse, error)
+	CreateRole(ctx context.Context, dto *request.CreateRoleDto) (*response.RoleResponse, error)
+	UpdateRole(ctx context.Context, id string, dto *request.UpdateRoleDto) (*response.RoleResponse, error)
+	UpdateRolePermissions(ctx context.Context, id string, dto *request.UpdateRolePermissionsDto) (*response.RoleResponse, error)
+	DeleteRole(ctx context.Context, id string) error
+	ReorderRoles(ctx context.Context, dto *request.ReorderRolesDto) error
+}
+
+type roleService struct {
+	roleRepo        repositories.RoleRepository
+	permissionCache PermissionCache
+	txManager       database.TxManager
+}
+
+func NewRoleService(roleRepo repositories.RoleRepository, permissionCache PermissionCache, txManager database.TxManager) RoleService {
+	return &roleService{roleRepo: roleRepo, permissionCache: permissionCache, txManager: txManager}
+}
+
+func (r *roleService) GetAllRole(ctx context.Context) ([]*response.RoleResponse, error) {
+	roles, err := r.roleRepo.All(ctx)
+	if err != nil {
+		return nil, apperrors.New(apperrors.ErrInternalError, "Failed to get roles")
+	}
+	if err := r.attachPermissions(ctx, roles...); err != nil {
+		return nil, apperrors.New(apperrors.ErrInternalError, "Failed to get role permissions")
+	}
+	return models.RolesEntityToResponse(roles), nil
+}
+
+func (r *roleService) GetRoleByID(ctx context.Context, id string) (*response.RoleResponse, error) {
+	role, err := r.roleRepo.GetByID(ctx, id)
+	if err != nil && !apperrors.IsNotFound(err) {
+		return nil, apperrors.New(apperrors.ErrInternalError, "Internal Server Error")
+	}
+	if role == nil {
+		return nil, apperrors.New(apperrors.ErrNotFound, "Role not found")
+	}
+	if err := r.attachPermissions(ctx, role); err != nil {
+		return nil, apperrors.New(apperrors.ErrInternalError, "Failed to get role permissions")
+	}
+	return role.ToResponse(), nil
+}
+
+func (r *roleService) GetPermissions(ctx context.Context) ([]*response.PermissionResponse, error) {
+	permissions, err := r.roleRepo.ListPermissions(ctx)
+	if err != nil {
+		return nil, apperrors.New(apperrors.ErrInternalError, "Failed to get permissions")
+	}
+	return models.PermissionsToResponse(permissions), nil
+}
+
+func (r *roleService) CreateRole(ctx context.Context, dto *request.CreateRoleDto) (*response.RoleResponse, error) {
+	name := strings.ToUpper(strings.TrimSpace(dto.Name))
+	if name == "" {
+		return nil, apperrors.New(apperrors.ErrBadRequest, "Role name is required")
+	}
+	if name == constants.RoleTypeAdmin.String() || name == constants.RoleTypeBanned.String() || name == constants.RoleTypeGuest.String() || name == constants.RoleTypeStudent.String() || name == constants.RoleTypeAdvisor.String() {
+		return nil, apperrors.New(apperrors.ErrBadRequest, "Cannot use reserved system role name")
+	}
+
+	tx, err := r.txManager.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, apperrors.New(apperrors.ErrInternalError, "Failed to start transaction")
+	}
+	defer func() { _ = tx.Rollback() }()
+	txRepo := r.roleRepo.WithTx(tx)
+
+	role, err := txRepo.Create(ctx, sqlc.CreateRoleParams{
+		ID:          uuid.NewString(),
+		Name:        name,
+		Description: strings.TrimSpace(dto.Description),
+		IsSystem:    0,
+		IsAdmin:     0,
+		AutoAssign:  convert.BoolToInt64(dto.AutoAssign),
+		Position:    10,
+	})
+	if err != nil {
+		return nil, apperrors.New(apperrors.ErrBadRequest, "Failed to create role")
+	}
+	if err := r.replacePermissions(ctx, txRepo, role, dto.Permissions); err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, apperrors.New(apperrors.ErrInternalError, "Failed to commit role creation")
+	}
+
+	if err := r.reloadPermissionCache(ctx); err != nil {
+		return nil, err
+	}
+	if err := r.attachPermissions(ctx, role); err != nil {
+		return nil, apperrors.New(apperrors.ErrInternalError, "Failed to get role permissions")
+	}
+	return role.ToResponse(), nil
+}
+
+func (r *roleService) UpdateRole(ctx context.Context, id string, dto *request.UpdateRoleDto) (*response.RoleResponse, error) {
+	existing, err := r.roleRepo.GetByID(ctx, id)
+	if err != nil || existing == nil {
+		return nil, apperrors.New(apperrors.ErrNotFound, "Role not found")
+	}
+
+	if existing.IsAdmin || existing.IsBanned {
+		return nil, apperrors.New(apperrors.ErrForbidden, "Admin or Banned roles cannot be modified")
+	}
+
+	tx, err := r.txManager.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, apperrors.New(apperrors.ErrInternalError, "Failed to start transaction")
+	}
+	defer func() { _ = tx.Rollback() }()
+	txRepo := r.roleRepo.WithTx(tx)
+
+	newName := strings.ToUpper(strings.TrimSpace(dto.Name))
+	if !existing.IsSystem && (newName == constants.RoleTypeAdmin.String() || newName == constants.RoleTypeBanned.String() || newName == constants.RoleTypeGuest.String()) {
+		return nil, apperrors.New(apperrors.ErrBadRequest, "Cannot use reserved system role name")
+	}
+
+	autoAssign := dto.AutoAssign
+	if existing.IsBanned || strings.EqualFold(existing.Name, string(constants.RoleTypeGuest)) {
+		autoAssign = false
+	}
+
+	var role *models.RoleEntity
+	if existing.IsSystem {
+		role, err = txRepo.UpdateSystemRoleDescription(ctx, sqlc.UpdateSystemRoleDescriptionParams{
+			ID:          id,
+			Description: strings.TrimSpace(dto.Description),
+			AutoAssign:  convert.BoolToInt64(autoAssign),
+		})
+	} else {
+		role, err = txRepo.Update(ctx, sqlc.UpdateRoleParams{
+			ID:          id,
+			Name:        newName,
+			Description: strings.TrimSpace(dto.Description),
+			AutoAssign:  convert.BoolToInt64(autoAssign),
+		})
+	}
+	if err != nil {
+		return nil, apperrors.New(apperrors.ErrBadRequest, "Failed to update role")
+	}
+	if !existing.IsSystem {
+		if err := r.replacePermissions(ctx, txRepo, role, dto.Permissions); err != nil {
+			return nil, err
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, apperrors.New(apperrors.ErrInternalError, "Failed to commit role update")
+	}
+
+	if err := r.reloadPermissionCache(ctx); err != nil {
+		return nil, err
+	}
+	if err := r.attachPermissions(ctx, role); err != nil {
+		return nil, apperrors.New(apperrors.ErrInternalError, "Failed to get role permissions")
+	}
+	return role.ToResponse(), nil
+}
+
+func (r *roleService) UpdateRolePermissions(ctx context.Context, id string, dto *request.UpdateRolePermissionsDto) (*response.RoleResponse, error) {
+	role, err := r.roleRepo.GetByID(ctx, id)
+	if err != nil || role == nil {
+		return nil, apperrors.New(apperrors.ErrNotFound, "Role not found")
+	}
+
+	if role.IsAdmin || role.IsBanned {
+		return nil, apperrors.New(apperrors.ErrForbidden, "Permissions of admin or banned roles cannot be modified directly")
+	}
+
+	tx, err := r.txManager.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, apperrors.New(apperrors.ErrInternalError, "Failed to start transaction")
+	}
+	defer func() { _ = tx.Rollback() }()
+	txRepo := r.roleRepo.WithTx(tx)
+
+	if err := r.replacePermissions(ctx, txRepo, role, dto.Permissions); err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, apperrors.New(apperrors.ErrInternalError, "Failed to commit permission update")
+	}
+
+	if err := r.reloadPermissionCache(ctx); err != nil {
+		return nil, err
+	}
+	if err := r.attachPermissions(ctx, role); err != nil {
+		return nil, apperrors.New(apperrors.ErrInternalError, "Failed to get role permissions")
+	}
+	return role.ToResponse(), nil
+}
+
+func (r *roleService) DeleteRole(ctx context.Context, id string) error {
+	role, err := r.roleRepo.GetByID(ctx, id)
+	if err != nil || role == nil {
+		return apperrors.New(apperrors.ErrNotFound, "Role not found")
+	}
+
+	if role.IsSystem || role.IsAdmin || role.IsBanned {
+		return apperrors.New(apperrors.ErrForbidden, "System roles cannot be deleted")
+	}
+
+	if err := r.roleRepo.Delete(ctx, id); err != nil {
+		return apperrors.New(apperrors.ErrInternalError, "Failed to delete role")
+	}
+
+	return r.reloadPermissionCache(ctx)
+}
+
+func (r *roleService) ReorderRoles(ctx context.Context, dto *request.ReorderRolesDto) error {
+	if dto == nil || len(dto.RoleIDs) == 0 {
+		return apperrors.New(apperrors.ErrBadRequest, "Invalid role order payload")
+	}
+	tx, err := r.txManager.BeginTx(ctx, nil)
+	if err != nil {
+		return apperrors.New(apperrors.ErrInternalError, "Failed to start transaction")
+	}
+	defer func() { _ = tx.Rollback() }()
+	txRepo := r.roleRepo.WithTx(tx)
+	if err := txRepo.UpdateRolePositions(ctx, dto.RoleIDs); err != nil {
+		return apperrors.New(apperrors.ErrInternalError, "Failed to reorder roles")
+	}
+	if err := tx.Commit(); err != nil {
+		return apperrors.New(apperrors.ErrInternalError, "Failed to commit role reorder")
+	}
+	r.roleRepo.InvalidateRoleCache(ctx, dto.RoleIDs)
+	return r.reloadPermissionCache(ctx)
+}
+
+func (r *roleService) attachPermissions(ctx context.Context, roles ...*models.RoleEntity) error {
+	for _, role := range roles {
+		if role == nil || role.Permissions != nil {
+			continue
+		}
+		permissions, err := r.roleRepo.GetRolePermissions(ctx, role.ID)
+		if err != nil {
+			return err
+		}
+		role.Permissions = permissions
+	}
+	return nil
+}
+
+func (r *roleService) replacePermissions(ctx context.Context, txRepo repositories.RoleRepository, role *models.RoleEntity, dto []request.RolePermissionDto) error {
+	catalog, err := txRepo.ListPermissions(ctx)
+	if err != nil {
+		return apperrors.New(apperrors.ErrInternalError, "Failed to load permission catalog")
+	}
+	validKeys := make(map[string]struct{}, len(catalog))
+	for _, permission := range catalog {
+		validKeys[permission.Key] = struct{}{}
+	}
+
+	permissions := make([]*models.RolePermissionEntity, 0, len(dto))
+	for _, item := range dto {
+		key := strings.TrimSpace(item.PermissionKey)
+		if _, ok := validKeys[key]; !ok {
+			return apperrors.New(apperrors.ErrBadRequest, "Invalid permission key: "+key)
+		}
+		effect := item.Effect
+		if effect == "" {
+			effect = "allow"
+		}
+		if effect != "allow" && effect != "deny" {
+			return apperrors.New(apperrors.ErrBadRequest, "Invalid permission effect")
+		}
+		conditions := item.Conditions
+		if conditions == nil {
+			conditions = map[string]any{}
+		}
+		data, err := jsonx.Marshal(conditions)
+		if err != nil {
+			return apperrors.New(apperrors.ErrBadRequest, "Invalid permission conditions")
+		}
+		permissions = append(permissions, &models.RolePermissionEntity{
+			RoleID:         role.ID,
+			PermissionKey:  key,
+			Effect:         effect,
+			Conditions:     conditions,
+			ConditionsJSON: string(data),
+		})
+	}
+	if err := txRepo.ReplaceRolePermissions(ctx, role.ID, permissions); err != nil {
+		return apperrors.New(apperrors.ErrBadRequest, "Failed to update role permissions")
+	}
+	return nil
+}
+
+func (r *roleService) reloadPermissionCache(ctx context.Context) error {
+	if r.permissionCache == nil {
+		return nil
+	}
+	if err := r.permissionCache.Reload(ctx); err != nil {
+		return apperrors.New(apperrors.ErrInternalError, "Failed to reload permission cache")
+	}
+	return nil
+}

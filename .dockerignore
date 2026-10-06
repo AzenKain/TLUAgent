@@ -1,0 +1,27 @@
+# Version control
+.git
+.gitignore
+.dockerignore
+
+# Documentation & metadata
+README.md
+docs/
+
+# Local binaries & scratch files
+bin/
+scratch/
+tmp/
+*.log
+
+# Frontend local dependencies and host builds
+frontend/node_modules/
+frontend/dist/
+cmd/server/dist/
+
+# Host persistent data & secrets (mount via volume instead)
+data/
+*.db
+*.db-wal
+*.db-shm
+.env
+*.secret

@@ -1,0 +1,23 @@
+services:
+  tluagent:
+    image: azenkain/tlu-agent:latest
+    container_name: tluagent
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      HOST: 0.0.0.0
+      PORT: 3434
+      DATA_DIR: /app/data
+      SQLITE_DB_PATH: /app/data/tluagent.db
+      APP_ENV: ${APP_ENV:-production}
+    ports:
+      - "${PORT:-3014}:3434"
+    volumes:
+      - ./data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3434/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

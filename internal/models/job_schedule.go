@@ -1,0 +1,68 @@
+package models
+
+import (
+	"time"
+
+	"tluagent-web/internal/dtos/response"
+	"tluagent-web/internal/gen/sqlc"
+	"tluagent-web/pkg/convert"
+)
+
+type JobScheduleEntity struct {
+	ID              string     `json:"id"`
+	Name            string     `json:"name"`
+	TaskType        string     `json:"task_type"`
+	PayloadJSON     *string    `json:"payload_json"`
+	IntervalMinutes int64      `json:"interval_minutes"`
+	Enabled         bool       `json:"enabled"`
+	NextRunAt       time.Time  `json:"next_run_at"`
+	LastRunAt       *time.Time `json:"last_run_at"`
+	LastJobID       *string    `json:"last_job_id"`
+	CreatedAt       time.Time  `json:"created_at"`
+	UpdatedAt       time.Time  `json:"updated_at"`
+}
+
+func (e *JobScheduleEntity) FromSqlc(res sqlc.JobSchedule) *JobScheduleEntity {
+	e.ID = res.ID
+	e.Name = res.Name
+	e.TaskType = res.TaskType
+	e.PayloadJSON = convert.NullStringToStrPtr(res.PayloadJson)
+	e.IntervalMinutes = res.IntervalMinutes
+	e.Enabled = res.Enabled == 1
+	e.NextRunAt = res.NextRunAt
+	e.LastRunAt = convert.NullTimeToTimePtr(res.LastRunAt)
+	e.LastJobID = convert.NullStringToStrPtr(res.LastJobID)
+	e.CreatedAt = res.CreatedAt
+	e.UpdatedAt = res.UpdatedAt
+	return e
+}
+
+func (e *JobScheduleEntity) ToResponse() *response.JobScheduleResponse {
+	if e == nil {
+		return nil
+	}
+	return &response.JobScheduleResponse{
+		ID:              e.ID,
+		Name:            e.Name,
+		TaskType:        e.TaskType,
+		JobType:         e.TaskType,
+		PayloadJSON:     e.PayloadJSON,
+		IntervalMinutes: e.IntervalMinutes,
+		IntervalSec:     e.IntervalMinutes * 60,
+		Enabled:         e.Enabled,
+		IsActive:        e.Enabled,
+		NextRunAt:       e.NextRunAt,
+		LastRunAt:       e.LastRunAt,
+		LastJobID:       e.LastJobID,
+		CreatedAt:       e.CreatedAt,
+		UpdatedAt:       e.UpdatedAt,
+	}
+}
+
+func JobSchedulesToResponse(entities []*JobScheduleEntity) []*response.JobScheduleResponse {
+	out := make([]*response.JobScheduleResponse, len(entities))
+	for i, e := range entities {
+		out[i] = e.ToResponse()
+	}
+	return out
+}
