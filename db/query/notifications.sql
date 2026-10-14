@@ -31,3 +31,13 @@ WHERE id = ? AND user_id = ?;
 UPDATE user_notifications
 SET is_read = 1
 WHERE user_id = ?;
+
+-- name: DeleteNotificationByID :exec
+DELETE FROM user_notifications
+WHERE id = ?;
+
+-- name: ListRecentNotificationIDs :many
+SELECT id FROM user_notifications
+ORDER BY created_at DESC
+LIMIT ? OFFSET ?;
+

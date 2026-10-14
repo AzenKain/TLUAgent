@@ -18,9 +18,15 @@ import (
 	"tluagent-web/internal/gen/sqlc"
 	"tluagent-web/internal/repositories"
 	"tluagent-web/pkg/crypto"
+	"tluagent-web/pkg/guardrail"
 	"tluagent-web/pkg/jsonx"
 	"tluagent-web/pkg/llm"
 	"tluagent-web/pkg/netx"
+)
+
+const (
+	SettingKeyVisionStrategy      = "LLM_VISION_STRATEGY"
+	SettingKeyVisionFallbackModel = "VISION_FALLBACK_MODEL"
 )
 
 var defaultRerankTestDocs = []string{
@@ -58,7 +64,9 @@ type LLMConfigService interface {
 	TestModel(ctx context.Context, req request.TestLLMModelRequest) (*response.TestLLMModelResponse, error)
 	SeedDefaultProvidersIfEmpty(ctx context.Context) error
 	SyncLLMManager(ctx context.Context) error
-	SetSettingsRepository(settings repositories.SettingsRepository)
+
+	GetVisionSettings(ctx context.Context) (response.VisionSettingsResponse, error)
+	UpdateVisionSettings(ctx context.Context, req request.UpdateVisionSettingsRequest) (response.VisionSettingsResponse, error)
 }
 
 type llmConfigService struct {
@@ -68,15 +76,16 @@ type llmConfigService struct {
 }
 
 // NewLLMConfigService creates a new LLM configuration service.
-func NewLLMConfigService(repo repositories.LLMRepository, manager *llm.Manager) LLMConfigService {
+func NewLLMConfigService(
+	repo repositories.LLMRepository,
+	manager *llm.Manager,
+	settings repositories.SettingsRepository,
+) LLMConfigService {
 	return &llmConfigService{
-		repo:    repo,
-		manager: manager,
+		repo:     repo,
+		manager:  manager,
+		settings: settings,
 	}
-}
-
-func (s *llmConfigService) SetSettingsRepository(settings repositories.SettingsRepository) {
-	s.settings = settings
 }
 
 func (s *llmConfigService) ListProviders(ctx context.Context) ([]response.LLMProviderResponse, error) {
@@ -119,6 +128,12 @@ func (s *llmConfigService) CreateProvider(ctx context.Context, req request.Creat
 	headersJSON := strings.TrimSpace(req.CustomHeadersJSON)
 	if headersJSON == "" {
 		headersJSON = "{}"
+	} else {
+		encHeaders, err := encryptCustomHeaders(headersJSON, cipherKey)
+		if err != nil {
+			return response.LLMProviderResponse{}, err
+		}
+		headersJSON = encHeaders
 	}
 
 	timeoutSec := int64(60)
@@ -176,8 +191,8 @@ func (s *llmConfigService) UpdateProvider(ctx context.Context, id string, req re
 	}
 
 	ciphertext := existing.ApiKeyCiphertext
+	cipherKey := crypto.GetLLMEncryptionKey()
 	if strings.TrimSpace(req.APIKey) != "" {
-		cipherKey := crypto.GetLLMEncryptionKey()
 		newCipher, err := crypto.EncryptAESGCM(strings.TrimSpace(req.APIKey), cipherKey)
 		if err != nil {
 			return response.LLMProviderResponse{}, fmt.Errorf("encrypt api key: %w", err)
@@ -205,7 +220,11 @@ func (s *llmConfigService) UpdateProvider(ctx context.Context, id string, req re
 
 	headersJSON := existing.CustomHeadersJson
 	if req.CustomHeadersJSON != "" {
-		headersJSON = req.CustomHeadersJSON
+		encHeaders, err := encryptCustomHeaders(req.CustomHeadersJSON, cipherKey)
+		if err != nil {
+			return response.LLMProviderResponse{}, err
+		}
+		headersJSON = encHeaders
 	}
 
 	timeoutSec := existing.TimeoutSeconds
@@ -525,53 +544,59 @@ func (s *llmConfigService) ProbeModelVisionCapability(ctx context.Context, provi
 		}, nil
 	}
 
-	if strings.Contains(strings.ToLower(prov.BaseUrl), "openrouter") || prov.ProviderType == "openrouter" {
+	if prov.BaseUrl != "" {
 		endpoint := strings.TrimRight(prov.BaseUrl, "/") + "/models"
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-		if err != nil {
-			return response.ProbeVisionResponse{}, err
-		}
-		req.Header.Set("Authorization", "Bearer "+apiKey)
-		probeClient := netx.NewSafeHTTPClientWithConfig(15*time.Second, prov.AllowPrivateNetworks == 1)
-		resp, err := probeClient.Do(req)
-		if err != nil {
-			return response.ProbeVisionResponse{}, err
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode == http.StatusOK {
-			body, _ := io.ReadAll(resp.Body)
-			var data struct {
-				Data []struct {
-					ID           string `json:"id"`
-					Architecture struct {
-						Modality        string   `json:"modality"`
-						InputModalities []string `json:"input_modalities"`
-					} `json:"architecture"`
-				} `json:"data"`
+		if err == nil {
+			if apiKey != "" {
+				req.Header.Set("Authorization", "Bearer "+apiKey)
 			}
-			if err := json.Unmarshal(body, &data); err == nil {
-				for _, item := range data.Data {
-					if strings.EqualFold(item.ID, modelKey) {
-						hasImage := false
-						for _, m := range item.Architecture.InputModalities {
-							if strings.EqualFold(m, "image") {
-								hasImage = true
-								break
+			probeClient := netx.NewSafeHTTPClientWithConfig(15*time.Second, prov.AllowPrivateNetworks == 1)
+			resp, err := probeClient.Do(req)
+			if err == nil {
+				defer resp.Body.Close()
+				if resp.StatusCode == http.StatusOK {
+					body, _ := io.ReadAll(resp.Body)
+					var data struct {
+						Data []struct {
+							ID           string `json:"id"`
+							Architecture struct {
+								Modality        string   `json:"modality"`
+								InputModalities []string `json:"input_modalities"`
+							} `json:"architecture"`
+							Modalities []string `json:"modalities"`
+						} `json:"data"`
+					}
+					if err := json.Unmarshal(body, &data); err == nil {
+						for _, item := range data.Data {
+							if strings.EqualFold(item.ID, modelKey) {
+								hasImage := false
+								for _, m := range item.Architecture.InputModalities {
+									if strings.EqualFold(m, "image") {
+										hasImage = true
+										break
+									}
+								}
+								for _, m := range item.Modalities {
+									if strings.EqualFold(m, "image") {
+										hasImage = true
+										break
+									}
+								}
+								if !hasImage && strings.Contains(strings.ToLower(item.Architecture.Modality), "image") {
+									hasImage = true
+								}
+								suggImages := 0
+								if hasImage {
+									suggImages = 5
+								}
+								return response.ProbeVisionResponse{
+									ModelKey:           modelKey,
+									SupportsVision:     hasImage,
+									SuggestedMaxImages: suggImages,
+								}, nil
 							}
 						}
-						if !hasImage && strings.Contains(item.Architecture.Modality, "image") {
-							hasImage = true
-						}
-						suggImages := 0
-						if hasImage {
-							suggImages = 5
-						}
-						return response.ProbeVisionResponse{
-							ModelKey:           modelKey,
-							SupportsVision:     hasImage,
-							SuggestedMaxImages: suggImages,
-						}, nil
 					}
 				}
 			}
@@ -629,10 +654,10 @@ func (s *llmConfigService) SeedDefaultProvidersIfEmpty(ctx context.Context) erro
 	if openRouterKey != "" {
 		encKey, err := crypto.EncryptAESGCM(openRouterKey, cipherKey)
 		if err == nil {
-			prov, err := s.repo.CreateProvider(ctx, sqlc.CreateLLMProviderParams{
+			s.repo.CreateProvider(ctx, sqlc.CreateLLMProviderParams{
 				ID:                   "openrouter",
 				Name:                 "OpenRouter",
-				ProviderType:         "openrouter",
+				ProviderType:         "openai",
 				BaseUrl:              "https://openrouter.ai/api/v1",
 				ApiKeyCiphertext:     encKey,
 				IsActive:             1,
@@ -644,71 +669,72 @@ func (s *llmConfigService) SeedDefaultProvidersIfEmpty(ctx context.Context) erro
 				RetryMaxWaitMs:       5000,
 				AllowPrivateNetworks: 0,
 			})
-			if err == nil {
-				_, _ = s.repo.CreateModel(ctx, sqlc.CreateLLMModelParams{
-					ID:             "ling-flash",
-					ProviderID:     prov.ID,
-					Name:           "Ling 3.1 Flash (Text-Only)",
-					ModelKey:       "inclusionai/ling-3.1-flash",
-					ModelType:      "chat",
-					IsActive:       1,
-					IsDefault:      1,
-					OrderIndex:     1,
-					ContextLength:  32768,
-					VisionMode:     "manual",
-					SupportsVision: 0,
-					MaxImages:      0,
-					EffortLevel:    "medium",
-				})
+		}
+	}
 
-				_, _ = s.repo.CreateModel(ctx, sqlc.CreateLLMModelParams{
-					ID:             "gemini-flash-openrouter",
-					ProviderID:     prov.ID,
-					Name:           "Gemini 2.5 Flash (Vision)",
-					ModelKey:       "google/gemini-2.5-flash",
-					ModelType:      "chat",
-					IsActive:       1,
-					IsDefault:      0,
-					OrderIndex:     2,
-					ContextLength:  1048576,
-					VisionMode:     "auto",
-					SupportsVision: 1,
-					MaxImages:      5,
-					EffortLevel:    "medium",
-				})
+	openAIKey := os.Getenv("OPENAI_API_KEY")
+	if openAIKey != "" {
+		encKey, err := crypto.EncryptAESGCM(openAIKey, cipherKey)
+		if err == nil {
+			s.repo.CreateProvider(ctx, sqlc.CreateLLMProviderParams{
+				ID:                   "openai",
+				Name:                 "OpenAI",
+				ProviderType:         "openai",
+				BaseUrl:              "https://api.openai.com/v1",
+				ApiKeyCiphertext:     encKey,
+				IsActive:             1,
+				IsDefault:            0,
+				CustomHeadersJson:    "{}",
+				TimeoutSeconds:       120,
+				MaxRetries:           3,
+				RetryInitialWaitMs:   500,
+				RetryMaxWaitMs:       5000,
+				AllowPrivateNetworks: 0,
+			})
+		}
+	}
 
-				_, _ = s.repo.CreateModel(ctx, sqlc.CreateLLMModelParams{
-					ID:             "qwen-embedding-8b",
-					ProviderID:     prov.ID,
-					Name:           "Qwen 3 Embedding 8B",
-					ModelKey:       "qwen/qwen3-embedding-8b",
-					ModelType:      "embedding",
-					IsActive:       1,
-					IsDefault:      0,
-					OrderIndex:     10,
-					ContextLength:  8192,
-					VisionMode:     "manual",
-					SupportsVision: 0,
-					MaxImages:      0,
-					EffortLevel:    "medium",
-				})
+	deepSeekKey := os.Getenv("DEEPSEEK_API_KEY")
+	if deepSeekKey != "" {
+		encKey, err := crypto.EncryptAESGCM(deepSeekKey, cipherKey)
+		if err == nil {
+			s.repo.CreateProvider(ctx, sqlc.CreateLLMProviderParams{
+				ID:                   "deepseek",
+				Name:                 "DeepSeek",
+				ProviderType:         "openai",
+				BaseUrl:              "https://api.deepseek.com",
+				ApiKeyCiphertext:     encKey,
+				IsActive:             1,
+				IsDefault:            0,
+				CustomHeadersJson:    "{}",
+				TimeoutSeconds:       120,
+				MaxRetries:           3,
+				RetryInitialWaitMs:   500,
+				RetryMaxWaitMs:       5000,
+				AllowPrivateNetworks: 0,
+			})
+		}
+	}
 
-				_, _ = s.repo.CreateModel(ctx, sqlc.CreateLLMModelParams{
-					ID:             "cohere-rerank-4-pro",
-					ProviderID:     prov.ID,
-					Name:           "Cohere Rerank 4 Pro",
-					ModelKey:       "cohere/rerank-4-pro",
-					ModelType:      "rerank",
-					IsActive:       1,
-					IsDefault:      1,
-					OrderIndex:     20,
-					ContextLength:  4096,
-					VisionMode:     "manual",
-					SupportsVision: 0,
-					MaxImages:      0,
-					EffortLevel:    "medium",
-				})
-			}
+	groqKey := os.Getenv("GROQ_API_KEY")
+	if groqKey != "" {
+		encKey, err := crypto.EncryptAESGCM(groqKey, cipherKey)
+		if err == nil {
+			s.repo.CreateProvider(ctx, sqlc.CreateLLMProviderParams{
+				ID:                   "groq",
+				Name:                 "Groq",
+				ProviderType:         "openai",
+				BaseUrl:              "https://api.groq.com/openai/v1",
+				ApiKeyCiphertext:     encKey,
+				IsActive:             1,
+				IsDefault:            0,
+				CustomHeadersJson:    "{}",
+				TimeoutSeconds:       60,
+				MaxRetries:           3,
+				RetryInitialWaitMs:   500,
+				RetryMaxWaitMs:       5000,
+				AllowPrivateNetworks: 0,
+			})
 		}
 	}
 
@@ -719,7 +745,7 @@ func (s *llmConfigService) SeedDefaultProvidersIfEmpty(ctx context.Context) erro
 	if geminiKey != "" {
 		encKey, err := crypto.EncryptAESGCM(geminiKey, cipherKey)
 		if err == nil {
-			prov, err := s.repo.CreateProvider(ctx, sqlc.CreateLLMProviderParams{
+			s.repo.CreateProvider(ctx, sqlc.CreateLLMProviderParams{
 				ID:                   "gemini",
 				Name:                 "Google Gemini",
 				ProviderType:         "gemini",
@@ -734,37 +760,15 @@ func (s *llmConfigService) SeedDefaultProvidersIfEmpty(ctx context.Context) erro
 				RetryMaxWaitMs:       5000,
 				AllowPrivateNetworks: 0,
 			})
-			if err == nil {
-				_, _ = s.repo.CreateModel(ctx, sqlc.CreateLLMModelParams{
-					ID:             "gemini-2.5-flash-native",
-					ProviderID:     prov.ID,
-					Name:           "Google Gemini 2.5 Flash",
-					ModelKey:       "gemini-2.5-flash",
-					ModelType:      "chat",
-					IsActive:       1,
-					IsDefault:      0,
-					OrderIndex:     3,
-					ContextLength:  1048576,
-					VisionMode:     "auto",
-					SupportsVision: 1,
-					MaxImages:      10,
-					EffortLevel:    "medium",
-				})
-			}
 		}
 	}
 
-	vilaoToken := os.Getenv("TOKEN")
-	vilaoAPI := os.Getenv("API")
-	vilaoModel := os.Getenv("MODEL")
+	vilaoToken := os.Getenv("VILAO_TOKEN")
 	if vilaoToken != "" {
 		encKey, err := crypto.EncryptAESGCM(vilaoToken, cipherKey)
 		if err == nil {
-			base := vilaoAPI
-			if base == "" {
-				base = "https://api.vilao.ai"
-			}
-			prov, err := s.repo.CreateProvider(ctx, sqlc.CreateLLMProviderParams{
+			base := "https://api.vilao.ai"
+			s.repo.CreateProvider(ctx, sqlc.CreateLLMProviderParams{
 				ID:                   "vilao",
 				Name:                 "Vilao AI",
 				ProviderType:         "openai",
@@ -779,27 +783,6 @@ func (s *llmConfigService) SeedDefaultProvidersIfEmpty(ctx context.Context) erro
 				RetryMaxWaitMs:       5000,
 				AllowPrivateNetworks: 0,
 			})
-			if err == nil {
-				mKey := vilaoModel
-				if mKey == "" {
-					mKey = "chib/deepseek-v4.1-flash"
-				}
-				_, _ = s.repo.CreateModel(ctx, sqlc.CreateLLMModelParams{
-					ID:             "vilao-default",
-					ProviderID:     prov.ID,
-					Name:           "Vilao " + mKey,
-					ModelKey:       mKey,
-					ModelType:      "chat",
-					IsActive:       1,
-					IsDefault:      0,
-					OrderIndex:     4,
-					ContextLength:  65536,
-					VisionMode:     "manual",
-					SupportsVision: 0,
-					MaxImages:      0,
-					EffortLevel:    "medium",
-				})
-			}
 		}
 	}
 
@@ -896,6 +879,11 @@ func (s *llmConfigService) SyncLLMManager(ctx context.Context) error {
 		return err
 	}
 
+	models, err := s.repo.ListModels(ctx)
+	if err != nil {
+		return err
+	}
+
 	cipherKey := crypto.GetLLMEncryptionKey()
 
 	for _, p := range provs {
@@ -916,12 +904,34 @@ func (s *llmConfigService) SyncLLMManager(ctx context.Context) error {
 		allowPriv := p.AllowPrivateNetworks == 1
 
 		provClient := llm.NewCustomRetryClient(timeout, int(p.MaxRetries), initWait, maxWait, allowPriv)
+		decryptedHeaders, _ := decryptCustomHeaders(p.CustomHeadersJson, cipherKey)
+
+		defaultModel := ""
+		for _, m := range models {
+			if m.ProviderID == p.ID && m.IsActive == 1 {
+				if m.IsDefault == 1 && m.ModelType == "chat" {
+					defaultModel = m.ModelKey
+					break
+				}
+				if defaultModel == "" && m.ModelType == "chat" {
+					defaultModel = m.ModelKey
+				}
+			}
+		}
+		if defaultModel == "" {
+			for _, m := range models {
+				if m.ProviderID == p.ID && m.IsActive == 1 {
+					defaultModel = m.ModelKey
+					break
+				}
+			}
+		}
 
 		if p.ProviderType == "gemini" {
 			gProv := llm.NewGeminiProvider(llm.GeminiConfig{
 				BaseURL:              p.BaseUrl,
 				APIKey:               rawKey,
-				DefaultModel:         "gemini-2.5-flash",
+				DefaultModel:         defaultModel,
 				HTTPClient:           provClient,
 				AllowPrivateNetworks: allowPriv,
 			})
@@ -930,7 +940,8 @@ func (s *llmConfigService) SyncLLMManager(ctx context.Context) error {
 			oProv := llm.NewOpenAIProvider(llm.OpenAIConfig{
 				BaseURL:              p.BaseUrl,
 				APIKey:               rawKey,
-				DefaultModel:         "gpt-4o-mini",
+				DefaultModel:         defaultModel,
+				CustomHeaders:        decryptedHeaders,
 				HTTPClient:           provClient,
 				AllowPrivateNetworks: allowPriv,
 			})
@@ -942,14 +953,9 @@ func (s *llmConfigService) SyncLLMManager(ctx context.Context) error {
 		}
 	}
 
-	models, err := s.repo.ListModels(ctx)
-	if err != nil {
-		return err
-	}
-
 	reg := s.manager.Registry()
 	if reg == nil {
-		reg = llm.NewCapabilityRegistry("")
+		reg = llm.NewCapabilityRegistry()
 		s.manager.SetRegistry(reg)
 	}
 
@@ -985,7 +991,11 @@ func (s *llmConfigService) SyncLLMManager(ctx context.Context) error {
 			if !skipAPIEmbedder {
 				if prov, err := s.repo.GetProviderByID(ctx, m.ProviderID); err == nil {
 					if rawKey, err := crypto.DecryptAESGCM(prov.ApiKeyCiphertext, cipherKey); err == nil {
-						s.manager.SetEmbedder(llm.NewOpenAIEmbedder(prov.BaseUrl, rawKey, m.ModelKey, prov.AllowPrivateNetworks == 1))
+						emb := llm.NewOpenAIEmbedder(prov.BaseUrl, rawKey, m.ModelKey, prov.AllowPrivateNetworks == 1)
+						s.manager.SetEmbedder(emb)
+						if guardrail.GetGlobalClassifier() == nil {
+							guardrail.SetGlobalClassifier(guardrail.NewBGEM3Classifier(emb))
+						}
 					}
 				}
 			}
@@ -1062,12 +1072,42 @@ func (s *llmConfigService) SyncLLMManager(ctx context.Context) error {
 		}
 	}
 
+	var visionStrat = llm.VisionStrategyFallback
+	var visionFallbackModel string
+
+	if s.settings != nil {
+		if raw, err := s.settings.GetAppSetting(ctx, SettingKeyVisionStrategy); err == nil && raw != "" {
+			var stratStr string
+			if err := jsonx.UnmarshalString(raw, &stratStr); err == nil && stratStr != "" {
+				visionStrat = llm.VisionHandlingStrategy(stratStr)
+			}
+		}
+		if raw, err := s.settings.GetAppSetting(ctx, SettingKeyVisionFallbackModel); err == nil && raw != "" {
+			var fbStr string
+			if err := jsonx.UnmarshalString(raw, &fbStr); err == nil {
+				visionFallbackModel = fbStr
+			}
+		}
+	}
+
+	if visionFallbackModel == "" {
+		for _, m := range models {
+			if m.IsActive == 1 && m.SupportsVision == 1 && m.ModelType == "chat" {
+				if m.IsDefault == 1 || visionFallbackModel == "" {
+					visionFallbackModel = m.ModelKey
+				}
+			}
+		}
+	}
+
+	s.manager.SetVisionStrategy(visionStrat, visionFallbackModel)
 	return nil
 }
 
 func mapProviderResponse(p sqlc.LlmProvider) response.LLMProviderResponse {
 	masked := "******"
-	if cipherKey := crypto.GetLLMEncryptionKey(); cipherKey != nil {
+	cipherKey := crypto.GetLLMEncryptionKey()
+	if cipherKey != nil {
 		if decrypted, err := crypto.DecryptAESGCM(p.ApiKeyCiphertext, cipherKey); err == nil {
 			masked = maskAPIKey(decrypted)
 		}
@@ -1081,7 +1121,7 @@ func mapProviderResponse(p sqlc.LlmProvider) response.LLMProviderResponse {
 		MaskedAPIKey:         masked,
 		IsActive:             p.IsActive == 1,
 		IsDefault:            p.IsDefault == 1,
-		CustomHeadersJSON:    p.CustomHeadersJson,
+		CustomHeadersJSON:    maskCustomHeaders(p.CustomHeadersJson, cipherKey),
 		TimeoutSeconds:       int(p.TimeoutSeconds),
 		MaxRetries:           int(p.MaxRetries),
 		RetryInitialWaitMs:   int(p.RetryInitialWaitMs),
@@ -1090,6 +1130,67 @@ func mapProviderResponse(p sqlc.LlmProvider) response.LLMProviderResponse {
 		CreatedAt:            p.CreatedAt,
 		UpdatedAt:            p.UpdatedAt,
 	}
+}
+
+func encryptCustomHeaders(rawJSON string, cipherKey []byte) (string, error) {
+	trimmed := strings.TrimSpace(rawJSON)
+	if trimmed == "" || trimmed == "{}" {
+		return "{}", nil
+	}
+	var headers map[string]string
+	if err := json.Unmarshal([]byte(trimmed), &headers); err != nil {
+		return "", errors.New("invalid custom_headers_json format")
+	}
+	if len(headers) == 0 {
+		return "{}", nil
+	}
+	canonical, err := json.Marshal(headers)
+	if err != nil {
+		return "", err
+	}
+	if cipherKey == nil {
+		return string(canonical), nil
+	}
+	return crypto.EncryptAESGCM(string(canonical), cipherKey)
+}
+
+func decryptCustomHeaders(stored string, cipherKey []byte) (map[string]string, error) {
+	trimmed := strings.TrimSpace(stored)
+	if trimmed == "" || trimmed == "{}" {
+		return make(map[string]string), nil
+	}
+	jsonText := trimmed
+	if cipherKey != nil {
+		if dec, err := crypto.DecryptAESGCM(trimmed, cipherKey); err == nil {
+			jsonText = dec
+		}
+	}
+	var headers map[string]string
+	if err := json.Unmarshal([]byte(jsonText), &headers); err != nil {
+		return make(map[string]string), err
+	}
+	return headers, nil
+}
+
+func maskCustomHeaders(rawJSON string, cipherKey []byte) string {
+	headers, err := decryptCustomHeaders(rawJSON, cipherKey)
+	if err != nil || len(headers) == 0 {
+		return "{}"
+	}
+	masked := make(map[string]string, len(headers))
+	for k, v := range headers {
+		lower := strings.ToLower(k)
+		if strings.Contains(lower, "key") || strings.Contains(lower, "token") || strings.Contains(lower, "auth") || strings.Contains(lower, "secret") {
+			masked[k] = maskAPIKey(v)
+		} else {
+			masked[k] = v
+		}
+	}
+	data, err := json.Marshal(masked)
+	if err != nil {
+		return "{}"
+	}
+	return string(data)
 }
 
 func mapModelResponse(m sqlc.LlmModel) response.LLMModelResponse {
@@ -1492,11 +1593,12 @@ func (s *llmConfigService) TestModel(ctx context.Context, req request.TestLLMMod
 				}, nil
 			}
 
-			rawMap := make(map[string]any)
-			rawMap["content"] = resp.Message.Content
-			rawMap["finish_reason"] = resp.FinishReason
-			rawMap["usage"] = resp.Usage
-			rawMap["node"] = node.Name
+			rawResp := &response.LLMTestRawResponse{
+				Content:      resp.Message.Content,
+				FinishReason: resp.FinishReason,
+				Usage:        resp.Usage,
+				Node:         node.Name,
+			}
 
 			return &response.TestLLMModelResponse{
 				Success:          true,
@@ -1513,7 +1615,7 @@ func (s *llmConfigService) TestModel(ctx context.Context, req request.TestLLMMod
 				ReasoningTokens:  resp.Usage.ReasoningTokens,
 				TotalTokens:      resp.Usage.TotalTokens,
 				FinishReason:     resp.FinishReason,
-				RawResponse:      rawMap,
+				RawResponse:      rawResp,
 			}, nil
 		}
 
@@ -1533,9 +1635,9 @@ func (s *llmConfigService) TestModel(ctx context.Context, req request.TestLLMMod
 			if len(vecs) > 0 {
 				dims = len(vecs[0])
 			}
-			rawMap := map[string]any{
-				"vector_count": len(vecs),
-				"dimensions":   dims,
+			rawResp := &response.LLMTestRawResponse{
+				VectorCount: len(vecs),
+				Dimensions:  dims,
 			}
 
 			return &response.TestLLMModelResponse{
@@ -1547,7 +1649,7 @@ func (s *llmConfigService) TestModel(ctx context.Context, req request.TestLLMMod
 				ProviderName: node.ProviderName,
 				Content:      fmt.Sprintf("Embedding generated successfully with %d dimensions.", dims),
 				LatencyMs:    duration,
-				RawResponse:  rawMap,
+				RawResponse:  rawResp,
 			}, nil
 		}
 
@@ -1563,8 +1665,8 @@ func (s *llmConfigService) TestModel(ctx context.Context, req request.TestLLMMod
 				}, nil
 			}
 
-			rawMap := map[string]any{
-				"results": res,
+			rawResp := &response.LLMTestRawResponse{
+				Usage: res,
 			}
 			var sb strings.Builder
 			for i, r := range res {
@@ -1580,7 +1682,7 @@ func (s *llmConfigService) TestModel(ctx context.Context, req request.TestLLMMod
 				ProviderName: node.ProviderName,
 				Content:      sb.String(),
 				LatencyMs:    duration,
-				RawResponse:  rawMap,
+				RawResponse:  rawResp,
 			}, nil
 		}
 	}
@@ -1610,10 +1712,7 @@ func (s *llmConfigService) TestModel(ctx context.Context, req request.TestLLMMod
 		return nil, fmt.Errorf("decrypt provider api key: %w", err)
 	}
 
-	headers := make(map[string]string)
-	if prov.CustomHeadersJson != "" {
-		_ = json.Unmarshal([]byte(prov.CustomHeadersJson), &headers)
-	}
+	headers, _ := decryptCustomHeaders(prov.CustomHeadersJson, cipherKey)
 
 	if model.ModelType == "chat" {
 		var provider llm.Provider
@@ -1661,10 +1760,11 @@ func (s *llmConfigService) TestModel(ctx context.Context, req request.TestLLMMod
 			}, nil
 		}
 
-		rawMap := make(map[string]any)
-		rawMap["content"] = resp.Message.Content
-		rawMap["finish_reason"] = resp.FinishReason
-		rawMap["usage"] = resp.Usage
+		rawResp := &response.LLMTestRawResponse{
+			Content:      resp.Message.Content,
+			FinishReason: resp.FinishReason,
+			Usage:        resp.Usage,
+		}
 
 		return &response.TestLLMModelResponse{
 			Success:          true,
@@ -1680,7 +1780,7 @@ func (s *llmConfigService) TestModel(ctx context.Context, req request.TestLLMMod
 			ReasoningTokens:  resp.Usage.ReasoningTokens,
 			TotalTokens:      resp.Usage.TotalTokens,
 			FinishReason:     resp.FinishReason,
-			RawResponse:      rawMap,
+			RawResponse:      rawResp,
 		}, nil
 	}
 
@@ -1704,9 +1804,9 @@ func (s *llmConfigService) TestModel(ctx context.Context, req request.TestLLMMod
 		if len(vecs) > 0 {
 			dims = len(vecs[0])
 		}
-		rawMap := map[string]any{
-			"vector_count": len(vecs),
-			"dimensions":   dims,
+		rawResp := &response.LLMTestRawResponse{
+			VectorCount: len(vecs),
+			Dimensions:  dims,
 		}
 
 		return &response.TestLLMModelResponse{
@@ -1717,7 +1817,7 @@ func (s *llmConfigService) TestModel(ctx context.Context, req request.TestLLMMod
 			ProviderName: prov.Name,
 			Content:      fmt.Sprintf("Embedding generated successfully with %d dimensions.", dims),
 			LatencyMs:    duration,
-			RawResponse:  rawMap,
+			RawResponse:  rawResp,
 		}, nil
 	}
 
@@ -1737,8 +1837,8 @@ func (s *llmConfigService) TestModel(ctx context.Context, req request.TestLLMMod
 			}, nil
 		}
 
-		rawMap := map[string]any{
-			"results": res,
+		rawResp := &response.LLMTestRawResponse{
+			Usage: res,
 		}
 		var sb strings.Builder
 		for i, r := range res {
@@ -1753,9 +1853,68 @@ func (s *llmConfigService) TestModel(ctx context.Context, req request.TestLLMMod
 			ProviderName: prov.Name,
 			Content:      sb.String(),
 			LatencyMs:    duration,
-			RawResponse:  rawMap,
+			RawResponse:  rawResp,
 		}, nil
 	}
 
 	return nil, fmt.Errorf("unsupported model type: %s", model.ModelType)
 }
+
+// GetVisionSettings retrieves configured vision strategy and fallback model.
+func (s *llmConfigService) GetVisionSettings(ctx context.Context) (response.VisionSettingsResponse, error) {
+	strat := string(s.manager.VisionStrategy())
+	if strat == "" {
+		strat = string(llm.VisionStrategyFallback)
+	}
+	fbModel := s.manager.VisionFallbackModel()
+
+	models, err := s.repo.ListModels(ctx)
+	if err != nil {
+		return response.VisionSettingsResponse{}, err
+	}
+
+	availModels := make([]string, 0)
+	for _, m := range models {
+		if m.IsActive == 1 && m.SupportsVision == 1 {
+			availModels = append(availModels, m.ModelKey)
+		}
+	}
+
+	return response.VisionSettingsResponse{
+		VisionStrategy:        strat,
+		VisionFallbackModel:   fbModel,
+		AvailableVisionModels: availModels,
+	}, nil
+}
+
+// UpdateVisionSettings updates vision strategy and fallback model in settings and manager.
+func (s *llmConfigService) UpdateVisionSettings(ctx context.Context, req request.UpdateVisionSettingsRequest) (response.VisionSettingsResponse, error) {
+	strat := llm.VisionHandlingStrategy(req.VisionStrategy)
+	if strat == "" {
+		strat = llm.VisionStrategyFallback
+	}
+
+	fbModel := strings.TrimSpace(req.VisionFallbackModel)
+	if s.settings != nil {
+		stratJSON, err := json.Marshal(string(strat))
+		if err != nil {
+			return response.VisionSettingsResponse{}, fmt.Errorf("marshal vision strategy: %w", err)
+		}
+		if err := s.settings.UpsertAppSetting(ctx, SettingKeyVisionStrategy, string(stratJSON)); err != nil {
+			return response.VisionSettingsResponse{}, fmt.Errorf("save vision strategy: %w", err)
+		}
+
+		fbJSON, err := json.Marshal(fbModel)
+		if err != nil {
+			return response.VisionSettingsResponse{}, fmt.Errorf("marshal vision fallback model: %w", err)
+		}
+		if err := s.settings.UpsertAppSetting(ctx, SettingKeyVisionFallbackModel, string(fbJSON)); err != nil {
+			return response.VisionSettingsResponse{}, fmt.Errorf("save vision fallback model: %w", err)
+		}
+	}
+
+	s.manager.SetVisionStrategy(strat, fbModel)
+
+	return s.GetVisionSettings(ctx)
+}
+

@@ -53,7 +53,7 @@ func (c *AdminChatController) HandleGetConversationDetail(w http.ResponseWriter,
 
 	sessionID := r.PathValue("id")
 	if sessionID == "" {
-		apperrors.HandleError(w, apperrors.New(apperrors.ErrBadRequest, "Missing session ID"))
+		apperrors.HandleError(w, apperrors.New(apperrors.ErrBadRequest, "missing conversation session id"))
 		return
 	}
 
@@ -76,7 +76,7 @@ func (c *AdminChatController) HandleDeleteConversation(w http.ResponseWriter, r 
 
 	sessionID := r.PathValue("id")
 	if sessionID == "" {
-		apperrors.HandleError(w, apperrors.New(apperrors.ErrBadRequest, "Missing session ID"))
+		apperrors.HandleError(w, apperrors.New(apperrors.ErrBadRequest, "missing conversation session id"))
 		return
 	}
 
@@ -87,7 +87,7 @@ func (c *AdminChatController) HandleDeleteConversation(w http.ResponseWriter, r 
 
 	writeJSONResponse(w, http.StatusOK, response.CommonResponse{
 		Status:  true,
-		Message: "Conversation deleted successfully",
+		Message: "conversation deleted successfully",
 	})
 }
 

@@ -33,6 +33,7 @@ func RegisterRAGRoutes(
 
 	mux.Handle("POST /api/rag/search", guardrailGuard(protectRead(ragCtrl.HandleSearch)))
 	mux.Handle("GET /api/rag/documents", protectRead(ragCtrl.HandleGetDocuments))
+	mux.Handle("GET /api/rag/documents/{id}", protectRead(ragCtrl.HandleGetDocumentDetail))
 	mux.Handle("GET /api/rag/stats", protectRead(ragCtrl.HandleGetStats))
 
 	mux.Handle("GET /api/admin/documents", protectManage(ragCtrl.HandleGetDocuments))

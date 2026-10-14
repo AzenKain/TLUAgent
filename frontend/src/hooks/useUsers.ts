@@ -73,6 +73,7 @@ export const useUsers = (params: SearchUserParams = {}) => {
     users: usersQuery.data?.data || [],
     pagination: usersQuery.data?.pagination,
     isLoading: usersQuery.isLoading,
+    isFetching: usersQuery.isFetching,
     isError: usersQuery.isError,
     error: usersQuery.error,
     refetch: usersQuery.refetch,

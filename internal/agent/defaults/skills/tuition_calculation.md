@@ -1,3 +1,11 @@
+---
+id: tuition_calculation
+name: Tính toán Học phí & Hạn nộp
+description: Tính toán học phí theo tín chỉ, tra cứu trực tiếp tại cổng https://hocphi.thanglong.edu.vn/pay/thanglong và hướng dẫn xử lý nợ học phí.
+priority: 60
+tool_definition: |
+  {"name":"lookup_tuition_fee","description":"Tra cứu học phí thực tế, nợ học phí và tình trạng thanh toán của sinh viên TLU từ cổng hocphi.thanglong.edu.vn theo Mã sinh viên","parameters":{"type":"object","properties":{"student_id":{"type":"string","description":"Mã sinh viên TLU (ví dụ: A44519)"}},"required":["student_id"]}}
+---
 # Kỹ Năng: Tính Toán Học Phí, Tra Cứu Cổng Thanh Toán & Hướng Dẫn Xử Lý Nợ Học Phí (tuition_calculation)
 
 ## Mục Đích

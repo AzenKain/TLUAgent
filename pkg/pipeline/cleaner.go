@@ -10,11 +10,15 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode"
 
-	"github.com/ledongthuc/pdf"
 	"golang.org/x/net/html"
+
+	"tluagent-web/pkg/constants"
+	"tluagent-web/pkg/pdf"
 )
 
+// CleanDocument represents a sanitized markdown document ready for embedding.
 type CleanDocument struct {
 	ID          string   `json:"id"`
 	Title       string   `json:"title"`
@@ -27,30 +31,44 @@ type CleanDocument struct {
 	PDFPaths    []string `json:"pdf_paths,omitempty"`
 }
 
+// PriorityResolver determines a numerical ranking priority for a given category and title.
+type PriorityResolver func(category, title string) int
+
+// CleanerConfig specifies storage paths and ranking callbacks for document cleaning.
 type CleanerConfig struct {
-	DataRawDir   string
-	DataCleanDir string
+	DataRawDir       string
+	DataCleanDir     string
+	PriorityResolver PriorityResolver
 }
 
+// Cleaner coordinates HTML denoising, PDF text extraction, and Markdown normalization.
 type Cleaner struct {
 	cfg CleanerConfig
 }
 
+// NewCleaner initializes a document cleaner with resolved target directories.
 func NewCleaner(cfg CleanerConfig) *Cleaner {
 	if cfg.DataRawDir == "" {
-		cfg.DataRawDir = "data/raw"
+		cfg.DataRawDir = constants.DefaultRawDir
 	}
 	if cfg.DataCleanDir == "" {
-		cfg.DataCleanDir = "data/clean"
+		cfg.DataCleanDir = constants.DefaultCleanDir
 	}
 	_ = os.MkdirAll(cfg.DataCleanDir, 0755)
 	return &Cleaner{cfg: cfg}
 }
 
+// ProcessAll reads all entries from raw_index.jsonl and generates sanitized markdown documents.
 func (c *Cleaner) ProcessAll(ctx context.Context, onProgress func(cur, total int64)) error {
-	indexFile := filepath.Join(c.cfg.DataRawDir, "raw_index.jsonl")
+	indexFile := filepath.Join(c.cfg.DataRawDir, filepath.Base(constants.DefaultRawIndex))
 	f, err := os.Open(indexFile)
 	if err != nil {
+		if os.IsNotExist(err) {
+			if onProgress != nil {
+				onProgress(0, 0)
+			}
+			return nil
+		}
 		return err
 	}
 	defer f.Close()
@@ -63,6 +81,9 @@ func (c *Cleaner) ProcessAll(ctx context.Context, onProgress func(cur, total int
 			lines = append(lines, text)
 		}
 	}
+	if err := scanner.Err(); err != nil {
+		return err
+	}
 
 	total := int64(len(lines))
 	for i, line := range lines {
@@ -74,7 +95,7 @@ func (c *Cleaner) ProcessAll(ctx context.Context, onProgress func(cur, total int
 
 		var rec map[string]any
 		if err := json.Unmarshal([]byte(line), &rec); err == nil {
-			_ = c.ProcessRecord(rec)
+			_ = c.ProcessRecord(ctx, rec)
 		}
 
 		if onProgress != nil {
@@ -85,7 +106,8 @@ func (c *Cleaner) ProcessAll(ctx context.Context, onProgress func(cur, total int
 	return nil
 }
 
-func (c *Cleaner) ProcessRecord(rec map[string]any) error {
+// ProcessRecord transforms a single raw crawler record into clean markdown.
+func (c *Cleaner) ProcessRecord(ctx context.Context, rec map[string]any) error {
 	nodeID, _ := rec["node_id"].(string)
 	if nodeID == "" {
 		return nil
@@ -99,12 +121,8 @@ func (c *Cleaner) ProcessRecord(rec map[string]any) error {
 	publishDate := normalizeDate(publishDateRaw)
 
 	priority := 50
-	if strings.Contains(strings.ToLower(title), "học phí") {
-		priority = 90
-	} else if strings.Contains(strings.ToLower(title), "quy chế") || strings.Contains(strings.ToLower(title), "chuẩn đầu ra") {
-		priority = 85
-	} else if strings.Contains(strings.ToLower(title), "nghỉ học") || strings.Contains(strings.ToLower(title), "lịch thi") {
-		priority = 75
+	if c.cfg.PriorityResolver != nil {
+		priority = c.cfg.PriorityResolver(recType, title)
 	}
 
 	var contentBuilder strings.Builder
@@ -123,7 +141,7 @@ func (c *Cleaner) ProcessRecord(rec map[string]any) error {
 	if localPDFs, ok := rec["local_pdf_paths"].([]any); ok {
 		for _, p := range localPDFs {
 			if pdfPath, ok := p.(string); ok && pdfPath != "" {
-				pdfText, err := ExtractPDFTextPure(pdfPath)
+				pdfText, err := ExtractPDFTextPure(ctx, pdfPath)
 				if err == nil && strings.TrimSpace(pdfText) != "" {
 					contentBuilder.WriteString("### Nội dung tài liệu đính kèm (PDF):\n\n")
 					contentBuilder.WriteString(pdfText)
@@ -171,31 +189,78 @@ func (c *Cleaner) saveCleanDocument(doc CleanDocument) error {
 	return os.WriteFile(outPath, []byte(sb.String()), 0644)
 }
 
-func ExtractPDFTextPure(pdfPath string) (string, error) {
-	f, r, err := pdf.Open(pdfPath)
-	if err != nil {
-		return "", err
+// ExtractPDFTextPure extracts text from PDF documents using structural table detection or Poppler/pure Go fallback.
+func ExtractPDFTextPure(ctx context.Context, pdfPath string) (extracted string, err error) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			err = fmt.Errorf("pdf text extractor recovered from panic: %v", rec)
+			extracted = ""
+		}
+	}()
+
+	data, errRead := os.ReadFile(pdfPath)
+	if errRead == nil && len(data) > 0 {
+		return ExtractPDFBytesPure(data)
+	}
+
+	f, r, errPdf := pdf.Open(pdfPath)
+	if errPdf != nil {
+		return "", errPdf
 	}
 	defer f.Close()
 
-	plainReader, err := r.GetPlainText()
-	if err != nil {
-		return "", err
+	text, errClean := r.ExtractCleanText()
+	if errClean != nil || strings.TrimSpace(text) == "" {
+		if plainReader, errPlain := r.GetPlainText(); errPlain == nil {
+			var buf bytes.Buffer
+			_, _ = buf.ReadFrom(plainReader)
+			text = buf.String()
+		}
 	}
 
-	var buf bytes.Buffer
-	_, err = buf.ReadFrom(plainReader)
-	if err != nil {
-		return "", err
-	}
-
-	return cleanExtractedText(buf.String()), nil
+	return cleanExtractedText(text), nil
 }
 
+// ExtractPDFBytesPure extracts text directly from in-memory PDF bytes using pure Go reader.
+func ExtractPDFBytesPure(data []byte) (extracted string, err error) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			err = fmt.Errorf("pdf bytes extractor recovered from panic: %v", rec)
+			extracted = ""
+		}
+	}()
+
+	if structText, errStruct := ExtractPDFWithStructure(context.Background(), data); errStruct == nil && strings.TrimSpace(structText) != "" {
+		return cleanExtractedText(structText), nil
+	}
+
+	r, errReader := pdf.NewReader(bytes.NewReader(data), int64(len(data)))
+	if errReader != nil {
+		return "", errReader
+	}
+
+	text, errClean := r.ExtractCleanText()
+	if errClean != nil || strings.TrimSpace(text) == "" {
+		if plainReader, errPlain := r.GetPlainText(); errPlain == nil {
+			var buf bytes.Buffer
+			_, _ = buf.ReadFrom(plainReader)
+			text = buf.String()
+		}
+	}
+
+	return cleanExtractedText(text), nil
+}
+
+// HTMLToMarkdown strips presentation noise and converts core article elements to Markdown.
 func HTMLToMarkdown(htmlStr string) string {
 	doc, err := html.Parse(strings.NewReader(htmlStr))
 	if err != nil {
 		return ""
+	}
+
+	targetNode := findContentContainer(doc)
+	if targetNode == nil {
+		targetNode = doc
 	}
 
 	var sb strings.Builder
@@ -203,8 +268,27 @@ func HTMLToMarkdown(htmlStr string) string {
 	walk = func(n *html.Node) {
 		if n.Type == html.ElementNode {
 			switch n.Data {
-			case "script", "style", "nav", "footer", "header", "aside":
+			case "script", "style", "nav", "footer", "header", "aside", "svg", "noscript", "iframe", "form", "button":
 				return
+			}
+
+			for _, a := range n.Attr {
+				if a.Key == "class" {
+					lower := strings.ToLower(a.Val)
+					if strings.Contains(lower, "searchbox") ||
+						strings.Contains(lower, "menu-mobile") ||
+						strings.Contains(lower, "breadcrumb-social") ||
+						strings.Contains(lower, "new-detail__social") ||
+						strings.Contains(lower, "breadcrumb-nav") ||
+						strings.Contains(lower, "breadcrumb") ||
+						strings.Contains(lower, "hidden") ||
+						strings.Contains(lower, "visually-hidden") {
+						return
+					}
+				}
+			}
+
+			switch n.Data {
 			case "h1":
 				sb.WriteString("\n# ")
 				sb.WriteString(cleanNodeText(n))
@@ -215,7 +299,7 @@ func HTMLToMarkdown(htmlStr string) string {
 				sb.WriteString(cleanNodeText(n))
 				sb.WriteString("\n\n")
 				return
-			case "h3":
+			case "h3", "h4":
 				sb.WriteString("\n### ")
 				sb.WriteString(cleanNodeText(n))
 				sb.WriteString("\n\n")
@@ -228,9 +312,12 @@ func HTMLToMarkdown(htmlStr string) string {
 				}
 				return
 			case "li":
-				sb.WriteString("- ")
-				sb.WriteString(cleanNodeText(n))
-				sb.WriteString("\n")
+				liText := cleanNodeText(n)
+				if liText != "" {
+					sb.WriteString("- ")
+					sb.WriteString(liText)
+					sb.WriteString("\n")
+				}
 				return
 			case "table":
 				sb.WriteString(convertHTMLTableToMarkdown(n))
@@ -242,9 +329,50 @@ func HTMLToMarkdown(htmlStr string) string {
 			walk(c)
 		}
 	}
-	walk(doc)
+	walk(targetNode)
 
 	return cleanExtractedText(sb.String())
+}
+
+func findContentContainer(root *html.Node) *html.Node {
+	var specificNode *html.Node
+	var pageContentNode *html.Node
+
+	var visit func(*html.Node)
+	visit = func(n *html.Node) {
+		if n.Type == html.ElementNode {
+			for _, a := range n.Attr {
+				if a.Key == "class" {
+					val := a.Val
+					if strings.Contains(val, "new-detail__entry") ||
+						strings.Contains(val, "field--name-field-article-content") ||
+						strings.Contains(val, "field--name-body") ||
+						strings.Contains(val, "content-detail") {
+						if specificNode == nil {
+							specificNode = n
+						}
+					}
+					if strings.Contains(val, "page-content") || strings.Contains(val, "layout__content") {
+						if pageContentNode == nil {
+							pageContentNode = n
+						}
+					}
+				}
+			}
+		}
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			visit(c)
+		}
+	}
+	visit(root)
+
+	if specificNode != nil {
+		return specificNode
+	}
+	if pageContentNode != nil {
+		return pageContentNode
+	}
+	return nil
 }
 
 func convertHTMLTableToMarkdown(tableNode *html.Node) string {
@@ -328,8 +456,192 @@ func cleanNodeText(n *html.Node) string {
 	return strings.Join(strings.Fields(sb.String()), " ")
 }
 
+var vietnameseSyllableCodas = map[string]bool{
+	"ng": true, "c": true, "p": true, "t": true, "m": true, "n": true,
+	"nh": true, "ch": true, "i": true, "y": true, "u": true, "o": true,
+	"a": true, "e": true,
+	"NG": true, "C": true, "P": true, "T": true, "M": true, "N": true,
+	"NH": true, "CH": true, "I": true, "Y": true, "U": true, "O": true,
+	"A": true, "E": true,
+}
+
+// StitchBrokenVietnameseLines repairs fragmented text where vowels or syllables were split across newlines.
+func StitchBrokenVietnameseLines(text string) string {
+	paragraphs := strings.Split(text, "\n\n")
+	var stitchedParagraphs []string
+
+	for _, para := range paragraphs {
+		rawLines := strings.Split(para, "\n")
+		var lines []string
+		for _, l := range rawLines {
+			trimmed := strings.TrimSpace(l)
+			if trimmed != "" {
+				lines = append(lines, trimmed)
+			}
+		}
+		if len(lines) == 0 {
+			continue
+		}
+
+		var rebuilt []string
+		for _, line := range lines {
+			if len(rebuilt) == 0 {
+				rebuilt = append(rebuilt, line)
+				continue
+			}
+
+			prev := rebuilt[len(rebuilt)-1]
+			prevRunes := []rune(prev)
+			lineRunes := []rune(line)
+			if len(prevRunes) == 0 || len(lineRunes) == 0 {
+				rebuilt = append(rebuilt, line)
+				continue
+			}
+
+			prevLast := prevRunes[len(prevRunes)-1]
+			lineFirst := lineRunes[0]
+
+			if strings.HasPrefix(line, "|") || strings.HasPrefix(prev, "|") || strings.HasPrefix(line, "#") || strings.HasPrefix(prev, "#") {
+				rebuilt = append(rebuilt, line)
+				continue
+			}
+
+			if len(lineRunes) == 1 && strings.ContainsRune(",.:;)%]}", lineFirst) {
+				rebuilt[len(rebuilt)-1] = prev + line
+				continue
+			}
+
+			if lineFirst == '/' && !strings.ContainsRune(".!?:", prevLast) {
+				rebuilt[len(rebuilt)-1] = prev + " " + line
+				continue
+			}
+
+			if lineFirst == '@' || prevLast == '@' || (strings.HasSuffix(prev, ".") && strings.Contains(line, "edu.vn")) {
+				rebuilt[len(rebuilt)-1] = prev + line
+				continue
+			}
+
+			if len(lineRunes) == 1 {
+				if unicode.IsLetter(lineFirst) {
+					if unicode.IsLetter(prevLast) {
+						rebuilt[len(rebuilt)-1] = prev + line
+						continue
+					}
+					if strings.ContainsRune("-–:(", prevLast) {
+						rebuilt[len(rebuilt)-1] = prev + " " + line
+						continue
+					}
+				} else if unicode.IsDigit(lineFirst) {
+					if strings.ContainsRune("/-–", prevLast) {
+						rebuilt[len(rebuilt)-1] = prev + line
+						continue
+					}
+				}
+				if (line == "h" || line == "H" || line == "g" || line == "p") && unicode.IsDigit(prevLast) {
+					rebuilt[len(rebuilt)-1] = prev + line
+					continue
+				}
+			}
+
+			if strings.ContainsRune("-–/", prevLast) {
+				rebuilt[len(rebuilt)-1] = prev + " " + line
+				continue
+			}
+
+			if (unicode.IsDigit(prevLast) && lineFirst == '/') ||
+				(prevLast == '/' && unicode.IsDigit(lineFirst)) {
+				rebuilt[len(rebuilt)-1] = prev + line
+				continue
+			}
+
+			tokens := strings.SplitN(line, " ", 2)
+			firstTok := tokens[0]
+			cleanTok := strings.TrimRight(firstTok, ".,:;!?)%]}")
+			rest := ""
+			if len(tokens) > 1 {
+				rest = " " + tokens[1]
+			}
+
+			isLowerCoda := unicode.IsLower(prevLast) && unicode.IsLower(lineFirst) && vietnameseSyllableCodas[cleanTok]
+			isUpperCoda := unicode.IsUpper(prevLast) && unicode.IsUpper(lineFirst) && vietnameseSyllableCodas[cleanTok]
+			if (isLowerCoda || isUpperCoda) && !strings.ContainsRune(".!?:;,()[]", prevLast) {
+				rebuilt[len(rebuilt)-1] = prev + firstTok + rest
+				continue
+			}
+
+			if unicode.IsLetter(prevLast) && unicode.IsLower(lineFirst) && !strings.ContainsRune(".!?:", prevLast) {
+				rebuilt[len(rebuilt)-1] = prev + " " + line
+				continue
+			}
+
+			rebuilt = append(rebuilt, line)
+		}
+
+		stitchedParagraphs = append(stitchedParagraphs, strings.Join(rebuilt, "\n"))
+	}
+
+	return collapseDanglingParagraphs(strings.Join(stitchedParagraphs, "\n\n"))
+}
+
+func collapseDanglingParagraphs(text string) string {
+	paras := strings.Split(text, "\n\n")
+	var result []string
+	for _, p := range paras {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		if len(result) == 0 {
+			result = append(result, p)
+			continue
+		}
+		prev := result[len(result)-1]
+		prevRunes := []rune(prev)
+		pRunes := []rune(p)
+
+		if len(pRunes) > 0 && unicode.IsLower(pRunes[0]) && !strings.ContainsRune(".!?:", prevRunes[len(prevRunes)-1]) {
+			result[len(result)-1] = prev + " " + p
+			continue
+		}
+
+		if len(prevRunes) > 0 && strings.ContainsRune("-–", prevRunes[len(prevRunes)-1]) {
+			result[len(result)-1] = prev + " " + p
+			continue
+		}
+
+		if len(prevRunes) <= 4 && len(pRunes) <= 6 && unicode.IsUpper(prevRunes[0]) && unicode.IsUpper(pRunes[0]) {
+			result[len(result)-1] = prev + " " + p
+			continue
+		}
+
+		result = append(result, p)
+	}
+	return strings.Join(result, "\n\n")
+}
+
 func cleanExtractedText(s string) string {
-	lines := strings.Split(s, "\n")
+	blocks := strings.Split(s, "\n\n")
+	var cleanedBlocks []string
+	for _, block := range blocks {
+		trimmed := strings.TrimSpace(block)
+		if trimmed == "" {
+			continue
+		}
+		if strings.HasPrefix(trimmed, "|") || strings.HasPrefix(trimmed, "###") {
+			cleanedBlocks = append(cleanedBlocks, trimmed)
+		} else {
+			cleanedBlocks = append(cleanedBlocks, StitchBrokenVietnameseLines(trimmed))
+		}
+	}
+	s = strings.Join(cleanedBlocks, "\n\n")
+	s = strings.ReplaceAll(s, "\x00", "")
+	var b strings.Builder
+	for _, r := range s {
+		if r == '\n' || r == '\r' || r == '\t' || unicode.IsPrint(r) {
+			b.WriteRune(r)
+		}
+	}
+	lines := strings.Split(b.String(), "\n")
 	var cleaned []string
 	emptyCount := 0
 	for _, l := range lines {

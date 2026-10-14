@@ -5,7 +5,6 @@ import (
 
 	"tluagent-web/internal/dtos/request"
 	"tluagent-web/internal/dtos/response"
-	"tluagent-web/internal/models"
 	"tluagent-web/internal/services"
 	"tluagent-web/pkg/apperrors"
 	"tluagent-web/pkg/validator"
@@ -31,14 +30,9 @@ func (c *AgentController) ListPrompts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res := make([]*response.AgentPromptResponse, 0, len(prompts))
-	for _, p := range prompts {
-		res = append(res, p.ToResponse())
-	}
-
 	writeJSONResponse(w, http.StatusOK, response.CommonResponse{
 		Status: true,
-		Data:   res,
+		Data:   prompts,
 	})
 }
 
@@ -60,7 +54,7 @@ func (c *AgentController) GetPrompt(w http.ResponseWriter, r *http.Request) {
 
 	writeJSONResponse(w, http.StatusOK, response.CommonResponse{
 		Status: true,
-		Data:   prompt.ToResponse(),
+		Data:   prompt,
 	})
 }
 
@@ -97,7 +91,7 @@ func (c *AgentController) UpdatePrompt(w http.ResponseWriter, r *http.Request) {
 	writeJSONResponse(w, http.StatusOK, response.CommonResponse{
 		Status:  true,
 		Message: "Prompt updated successfully",
-		Data:    prompt.ToResponse(),
+		Data:    prompt,
 	})
 }
 
@@ -125,7 +119,7 @@ func (c *AgentController) ResetPrompt(w http.ResponseWriter, r *http.Request) {
 	writeJSONResponse(w, http.StatusOK, response.CommonResponse{
 		Status:  true,
 		Message: "Prompt reset to default successfully",
-		Data:    prompt.ToResponse(),
+		Data:    prompt,
 	})
 }
 
@@ -139,14 +133,9 @@ func (c *AgentController) ListSkills(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res := make([]*response.AgentSkillResponse, 0, len(skills))
-	for _, s := range skills {
-		res = append(res, s.ToResponse())
-	}
-
 	writeJSONResponse(w, http.StatusOK, response.CommonResponse{
 		Status: true,
-		Data:   res,
+		Data:   skills,
 	})
 }
 
@@ -168,7 +157,7 @@ func (c *AgentController) GetSkill(w http.ResponseWriter, r *http.Request) {
 
 	writeJSONResponse(w, http.StatusOK, response.CommonResponse{
 		Status: true,
-		Data:   skill.ToResponse(),
+		Data:   skill,
 	})
 }
 
@@ -190,27 +179,7 @@ func (c *AgentController) CreateSkill(w http.ResponseWriter, r *http.Request) {
 		updatedBy = claims.UId
 	}
 
-	isEnabled := true
-	if req.IsEnabled != nil {
-		isEnabled = *req.IsEnabled
-	}
-	priority := 0
-	if req.Priority != nil {
-		priority = *req.Priority
-	}
-
-	skill := &models.AgentSkill{
-		ID:             req.ID,
-		Name:           req.Name,
-		Description:    req.Description,
-		Content:        req.Content,
-		ToolDefinition: req.ToolDefinition,
-		IsEnabled:      isEnabled,
-		Priority:       priority,
-		UpdatedBy:      updatedBy,
-	}
-
-	created, err := c.svc.CreateSkill(ctx, skill)
+	created, err := c.svc.CreateSkill(ctx, &req, updatedBy)
 	if err != nil {
 		apperrors.HandleError(w, err)
 		return
@@ -219,7 +188,7 @@ func (c *AgentController) CreateSkill(w http.ResponseWriter, r *http.Request) {
 	writeJSONResponse(w, http.StatusCreated, response.CommonResponse{
 		Status:  true,
 		Message: "Skill created successfully",
-		Data:    created.ToResponse(),
+		Data:    created,
 	})
 }
 
@@ -247,12 +216,7 @@ func (c *AgentController) UpdateSkill(w http.ResponseWriter, r *http.Request) {
 		updatedBy = claims.UId
 	}
 
-	priority := 0
-	if req.Priority != nil {
-		priority = *req.Priority
-	}
-
-	skill, err := c.svc.UpdateSkill(ctx, id, req.Name, req.Description, req.Content, req.ToolDefinition, priority, updatedBy)
+	skill, err := c.svc.UpdateSkill(ctx, id, &req, updatedBy)
 	if err != nil {
 		apperrors.HandleError(w, err)
 		return
@@ -261,7 +225,7 @@ func (c *AgentController) UpdateSkill(w http.ResponseWriter, r *http.Request) {
 	writeJSONResponse(w, http.StatusOK, response.CommonResponse{
 		Status:  true,
 		Message: "Skill updated successfully",
-		Data:    skill.ToResponse(),
+		Data:    skill,
 	})
 }
 
@@ -345,7 +309,7 @@ func (c *AgentController) ResetSkill(w http.ResponseWriter, r *http.Request) {
 	writeJSONResponse(w, http.StatusOK, response.CommonResponse{
 		Status:  true,
 		Message: "Skill reset to default successfully",
-		Data:    skill.ToResponse(),
+		Data:    skill,
 	})
 }
 

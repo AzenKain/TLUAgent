@@ -28,6 +28,34 @@ RETURNING *;
 -- name: GetDocumentByID :one
 SELECT * FROM documents WHERE id = ? LIMIT 1;
 
+-- name: GetDocumentByURL :one
+SELECT * FROM documents 
+WHERE file_path = sqlc.arg('file_path') 
+   OR (sqlc.arg('url_hash') != '' AND id LIKE ('%' || sqlc.arg('url_hash')))
+LIMIT 1;
+
+-- name: DocumentExistsByURL :one
+SELECT EXISTS(
+    SELECT 1 FROM documents 
+    WHERE file_path = sqlc.arg('file_path') 
+       OR (sqlc.arg('url_hash') != '' AND id LIKE ('%' || sqlc.arg('url_hash')))
+);
+
+-- name: FindDocumentByIdentifier :one
+SELECT * FROM documents 
+WHERE id = ?1 
+   OR doc_code = ?1 
+   OR title = ?1
+   OR title LIKE ('%' || ?1 || '%')
+ORDER BY 
+   CASE 
+     WHEN id = ?1 THEN 1 
+     WHEN doc_code = ?1 THEN 2 
+     WHEN title = ?1 THEN 3 
+     ELSE 4 
+   END ASC
+LIMIT 1;
+
 -- name: GetDocumentsByIDs :many
 SELECT * FROM documents WHERE id IN (sqlc.slice('ids'));
 
@@ -179,6 +207,12 @@ SELECT COUNT(*) FROM documents WHERE status = 'ACTIVE';
 -- name: CountSupersededDocuments :one
 SELECT COUNT(*) FROM documents WHERE status = 'SUPERSEDED';
 
+-- name: CountPartiallyAmendedDocuments :one
+SELECT COUNT(*) FROM documents WHERE status = 'PARTIALLY_AMENDED';
+
+-- name: CountArchivedDocuments :one
+SELECT COUNT(*) FROM documents WHERE status = 'ARCHIVED';
+
 -- name: CountChunksTotal :one
 SELECT COUNT(*) FROM document_chunks;
 
@@ -192,3 +226,110 @@ SELECT COUNT(*) FROM kg_edges;
 UPDATE document_chunks
 SET status = ?
 WHERE id = ?;
+
+-- name: SearchActiveChunkIDsFTS :many
+SELECT chunk_id
+FROM document_chunks_fts
+WHERE content MATCH sqlc.arg('query')
+  AND status = 'ACTIVE'
+  AND (sqlc.narg('domain') IS NULL OR sqlc.narg('domain') = '' OR domain = sqlc.narg('domain'))
+  AND (sqlc.narg('cohort') IS NULL OR sqlc.narg('cohort') = '' OR applicable_cohort = 'ALL' OR (',' || REPLACE(applicable_cohort, ' ', '') || ',') LIKE ('%,' || sqlc.narg('cohort') || ',%'))
+ORDER BY rank
+LIMIT sqlc.arg('limit');
+
+-- name: UpsertDocumentRule :one
+INSERT INTO document_rules (
+    id, document_id, rule_index, chapter, article_number, title, content, status, superseded_by_id, created_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(id) DO UPDATE SET
+    rule_index = excluded.rule_index,
+    chapter = excluded.chapter,
+    article_number = excluded.article_number,
+    title = excluded.title,
+    content = excluded.content,
+    status = excluded.status,
+    superseded_by_id = excluded.superseded_by_id
+RETURNING *;
+
+-- name: GetDocumentRuleByID :one
+SELECT * FROM document_rules WHERE id = ? LIMIT 1;
+
+-- name: ListRulesByDocumentID :many
+SELECT * FROM document_rules
+WHERE document_id = ?
+ORDER BY rule_index ASC;
+
+-- name: ListActiveRulesByDocumentID :many
+SELECT * FROM document_rules
+WHERE document_id = ? AND status = 'ACTIVE'
+ORDER BY rule_index ASC;
+
+-- name: UpdateRuleStatus :exec
+UPDATE document_rules
+SET status = ?, superseded_by_id = ?
+WHERE id = ?;
+
+-- name: UpdateDocumentChunksByRuleIDStatus :exec
+UPDATE document_chunks
+SET status = ?
+WHERE rule_id = ?;
+
+-- name: UpdateDocumentChunksByDocIDStatus :exec
+UPDATE document_chunks
+SET status = ?
+WHERE document_id = ?;
+
+-- name: DeleteChunksByDocumentID :exec
+DELETE FROM document_chunks
+WHERE document_id = ?;
+
+-- name: DeleteRulesByDocumentID :exec
+DELETE FROM document_rules
+WHERE document_id = ?;
+
+-- name: ClearAllDocumentChunks :exec
+DELETE FROM document_chunks;
+
+-- name: ClearAllDocumentRules :exec
+DELETE FROM document_rules;
+
+-- name: ClearAllSupersessionAuditLogs :exec
+DELETE FROM supersession_audit_log;
+
+-- name: ResetAllDocumentSupersessions :exec
+UPDATE documents
+SET status = 'ACTIVE', superseded_by_id = '', updated_at = CURRENT_TIMESTAMP
+WHERE status != 'ACTIVE' OR (superseded_by_id IS NOT NULL AND superseded_by_id != '');
+
+-- name: ResetAllRuleSupersessions :exec
+UPDATE document_rules
+SET status = 'ACTIVE'
+WHERE status != 'ACTIVE';
+
+-- name: ResetAllChunkSupersessions :exec
+UPDATE document_chunks
+SET status = 'ACTIVE'
+WHERE status != 'ACTIVE';
+
+-- name: ClearAllSupersessionEdges :exec
+DELETE FROM kg_edges
+WHERE relation_type IN ('SUPERSEDES', 'PARTIALLY_AMENDS');
+
+-- name: ClearAllKGEdges :exec
+DELETE FROM kg_edges;
+
+-- name: ClearAllKGNodes :exec
+DELETE FROM kg_nodes;
+
+-- name: ClearAllDocuments :exec
+DELETE FROM documents;
+
+-- name: ListAllRegulationIDsChronological :many
+SELECT id FROM documents
+WHERE type IN ('QUY_CHE', 'QUY_DINH', 'QUYET_DINH', 'DE_AN', 'KE_HOACH', 'CTDT', 'SO_TAY')
+ORDER BY 
+    CASE WHEN publish_date IS NOT NULL AND publish_date != '' THEN publish_date ELSE created_at END ASC,
+    created_at ASC;
+
+-- name: ListAllDocumentIdentifiers :many
+SELECT id, title, file_path FROM documents;

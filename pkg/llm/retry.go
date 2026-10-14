@@ -1,14 +1,15 @@
 package llm
 
 import (
+	"errors"
 	"math/rand"
 	"net/http"
+	"strings"
 	"time"
 
 	"tluagent-web/pkg/netx"
 )
 
-// RetryableRoundTripper wraps an http.RoundTripper with exponential backoff retry.
 type RetryableRoundTripper struct {
 	Transport   http.RoundTripper
 	MaxRetries  int
@@ -46,6 +47,21 @@ func NewCustomRetryClient(timeout time.Duration, maxRetries int, initialWait, ma
 			InitialWait: initialWait,
 			MaxWait:     maxWait,
 		},
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 10 {
+				return errors.New("stopped after 10 redirects")
+			}
+			if len(via) > 0 {
+				initialReq := via[0]
+				if initialReq.URL.Scheme == "https" && req.URL.Scheme != "https" {
+					return errors.New("cannot redirect from HTTPS to HTTP")
+				}
+				if !strings.EqualFold(initialReq.URL.Host, req.URL.Host) {
+					return errors.New("cross-origin redirects not allowed for credentialed client")
+				}
+			}
+			return nil
+		},
 	}
 }
 
@@ -55,6 +71,12 @@ func (rt *RetryableRoundTripper) RoundTrip(req *http.Request) (*http.Response, e
 
 	wait := rt.InitialWait
 	for attempt := 0; attempt <= rt.MaxRetries; attempt++ {
+		if attempt > 0 && req.GetBody != nil {
+			newBody, errBody := req.GetBody()
+			if errBody == nil {
+				req.Body = newBody
+			}
+		}
 		resp, err = rt.Transport.RoundTrip(req)
 		if err == nil && !isRetryableStatus(resp.StatusCode) {
 			return resp, nil

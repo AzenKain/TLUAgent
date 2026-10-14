@@ -4,14 +4,15 @@ import (
 	"context"
 
 	"tluagent-web/internal/dtos/request"
+	"tluagent-web/internal/dtos/response"
 	"tluagent-web/internal/models"
 	"tluagent-web/internal/repositories"
 )
 
 // NotificationService provides student notification queries and read tracking.
 type NotificationService interface {
-	CreateNotification(ctx context.Context, notif *models.UserNotification) (*models.UserNotification, error)
-	ListUserNotifications(ctx context.Context, userID string, dto *request.ListNotificationsDto) ([]*models.UserNotification, int, error)
+	CreateNotification(ctx context.Context, notif *models.UserNotification) (*response.NotificationResponse, error)
+	ListUserNotifications(ctx context.Context, userID string, dto *request.ListNotificationsDto) ([]*response.NotificationResponse, int, error)
 	MarkAsRead(ctx context.Context, id, userID string) error
 	MarkAllAsRead(ctx context.Context, userID string) error
 	GetUnreadCount(ctx context.Context, userID string) (int, error)
@@ -26,11 +27,15 @@ func NewNotificationService(repo repositories.NotificationRepository) Notificati
 	return &notificationService{repo: repo}
 }
 
-func (s *notificationService) CreateNotification(ctx context.Context, notif *models.UserNotification) (*models.UserNotification, error) {
-	return s.repo.CreateNotification(ctx, notif)
+func (s *notificationService) CreateNotification(ctx context.Context, notif *models.UserNotification) (*response.NotificationResponse, error) {
+	created, err := s.repo.CreateNotification(ctx, notif)
+	if err != nil {
+		return nil, err
+	}
+	return created.ToResponse(), nil
 }
 
-func (s *notificationService) ListUserNotifications(ctx context.Context, userID string, dto *request.ListNotificationsDto) ([]*models.UserNotification, int, error) {
+func (s *notificationService) ListUserNotifications(ctx context.Context, userID string, dto *request.ListNotificationsDto) ([]*response.NotificationResponse, int, error) {
 	limit := 20
 	offset := 0
 	if dto != nil {
@@ -43,7 +48,7 @@ func (s *notificationService) ListUserNotifications(ctx context.Context, userID 
 		return nil, 0, err
 	}
 	unread, _ := s.repo.CountUnreadNotifications(ctx, userID)
-	return items, unread, nil
+	return models.NotificationsToResponse(items), unread, nil
 }
 
 func (s *notificationService) MarkAsRead(ctx context.Context, id, userID string) error {

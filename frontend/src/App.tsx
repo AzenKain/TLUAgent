@@ -19,6 +19,9 @@ const KnowledgeGraphPage = lazy(() => import('@/pages/admin/knowledge-graph/Know
 const AgentManagePage = lazy(() => import('@/pages/admin/agent/AgentManagePage').then((m) => ({ default: m.AgentManagePage })));
 const JobManagePage = lazy(() => import('@/pages/admin/jobs/JobManagePage').then((m) => ({ default: m.JobManagePage })));
 const InquiryManagePage = lazy(() => import('@/pages/admin/inquiries/InquiryManagePage').then((m) => ({ default: m.InquiryManagePage })));
+const CurriculumManagePage = lazy(() => import('@/pages/admin/curriculum/CurriculumManagePage').then((m) => ({ default: m.CurriculumManagePage })));
+const AdminTLUClawPage = lazy(() => import('@/pages/admin/tluclaw/AdminTLUClawPage').then((m) => ({ default: m.AdminTLUClawPage })));
+const StudentRoadmapPage = lazy(() => import('@/pages/student/StudentRoadmapPage').then((m) => ({ default: m.StudentRoadmapPage })));
 const ProfilePage = lazy(() => import('@/pages/profile/ProfilePage').then((m) => ({ default: m.ProfilePage })));
 const ChatAdvisoryPage = lazy(() => import('@/pages/chat/ChatAdvisoryPage').then((m) => ({ default: m.ChatAdvisoryPage })));
 const NotFoundPage = lazy(() => import('@/pages/NotFoundPage').then((m) => ({ default: m.NotFoundPage })));
@@ -47,6 +50,7 @@ export function App() {
           <Route element={<ProtectedRoute />}>
             <Route element={<AdminLayout />}>
               <Route path="/profile" element={<ProfilePage />} />
+              <Route path="/my-roadmap" element={<StudentRoadmapPage />} />
 
               <Route
                 element={
@@ -142,6 +146,27 @@ export function App() {
                 }
               >
                 <Route path="/admin/inquiries" element={<InquiryManagePage />} />
+              </Route>
+
+              <Route
+                element={
+                  <ProtectedRoute
+                    requiredAnyPermissions={['curriculum.manage', 'curriculum.read', 'admin.access']}
+                  />
+                }
+              >
+                <Route path="/admin/curriculums" element={<CurriculumManagePage />} />
+                <Route path="/curriculums" element={<Navigate to="/admin/curriculums" replace />} />
+              </Route>
+
+              <Route
+                element={
+                  <ProtectedRoute
+                    requiredAnyPermissions={['tluclaw.manage', 'tluclaw.read', 'admin.access']}
+                  />
+                }
+              >
+                <Route path="/admin/tluclaw" element={<AdminTLUClawPage />} />
               </Route>
             </Route>
           </Route>

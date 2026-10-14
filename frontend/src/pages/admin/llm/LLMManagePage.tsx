@@ -51,10 +51,13 @@ import {
   type CreateLLMChainDTO,
   type UpdateLLMChainDTO,
   type TestModelRequestDTO,
+  type UpdateVisionSettingsDTO,
 } from '@/services/llmService';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { Badge } from '@/components/common/Badge';
 import { Modal } from '@/components/common/Modal';
+import { ConfirmModal } from '@/components/common/ConfirmModal';
+import { PageHeader } from '@/components/common/PageHeader';
 import { usePermissions } from '@/hooks/usePermissions';
 import { embeddingService } from '@/services/embeddingService';
 import type {
@@ -87,6 +90,67 @@ const extractErrorMessage = (err: unknown, fallback: string): string =>
   (err as { response?: { data?: { message?: string } } })?.response?.data?.message || fallback;
 
 const formatDateTime = (iso: string): string => new Date(iso).toLocaleString();
+
+interface ProviderPreset {
+  id: string;
+  name: string;
+  provider_type: CreateLLMProviderDTO['provider_type'];
+  base_url: string;
+  allow_private_networks?: boolean;
+}
+
+const PROVIDER_PRESETS: ProviderPreset[] = [
+  {
+    id: 'openai',
+    name: 'OpenAI',
+    provider_type: 'openai',
+    base_url: 'https://api.openai.com/v1',
+  },
+  {
+    id: 'gemini',
+    name: 'Google Gemini',
+    provider_type: 'gemini',
+    base_url: 'https://generativelanguage.googleapis.com/v1beta',
+  },
+  {
+    id: 'deepseek',
+    name: 'DeepSeek',
+    provider_type: 'openai',
+    base_url: 'https://api.deepseek.com',
+  },
+  {
+    id: 'groq',
+    name: 'Groq',
+    provider_type: 'openai',
+    base_url: 'https://api.groq.com/openai/v1',
+  },
+  {
+    id: 'openrouter',
+    name: 'OpenRouter',
+    provider_type: 'openai',
+    base_url: 'https://openrouter.ai/api/v1',
+  },
+  {
+    id: 'ollama',
+    name: 'Ollama (Local)',
+    provider_type: 'openai',
+    base_url: 'http://localhost:11434/v1',
+    allow_private_networks: true,
+  },
+  {
+    id: 'vllm',
+    name: 'vLLM (Self-hosted)',
+    provider_type: 'openai',
+    base_url: 'http://localhost:8000/v1',
+    allow_private_networks: true,
+  },
+  {
+    id: 'custom',
+    name: 'Custom',
+    provider_type: 'openai',
+    base_url: '',
+  },
+];
 
 export const LLMManagePage: React.FC = () => {
   const { t } = useTranslation();
@@ -261,6 +325,18 @@ export const LLMManagePage: React.FC = () => {
   );
   const testFileInputRef = useRef<HTMLInputElement>(null);
   const [showProviderKey, setShowProviderKey] = useState(false);
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    isLoading?: boolean;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  });
 
   const { data: providers = [], isLoading: isLoadingProviders } = useQuery({
     queryKey: ['llm-providers'],
@@ -276,6 +352,30 @@ export const LLMManagePage: React.FC = () => {
     queryKey: ['llm-chains'],
     queryFn: llmService.listChains,
     refetchInterval: 5000,
+  });
+
+  const { data: visionSettings } = useQuery({
+    queryKey: ['llm-vision-settings'],
+    queryFn: llmService.getVisionSettings,
+  });
+
+  const [visionStrategyOverride, setVisionStrategyOverride] = useState<'fallback' | 'degrade' | 'reject' | null>(null);
+  const [fallbackModelOverride, setFallbackModelOverride] = useState<string | null>(null);
+
+  const selectedVisionStrategy = visionStrategyOverride ?? visionSettings?.vision_strategy ?? 'fallback';
+  const selectedFallbackModel = fallbackModelOverride ?? visionSettings?.vision_fallback_model ?? '';
+
+  const updateVisionSettingsMutation = useMutation({
+    mutationFn: (data: UpdateVisionSettingsDTO) => llmService.updateVisionSettings(data),
+    onSuccess: (data) => {
+      queryClient.setQueryData(['llm-vision-settings'], data);
+      setVisionStrategyOverride(null);
+      setFallbackModelOverride(null);
+      setToast(t('llm.toast_vision_settings_saved'), 'success');
+    },
+    onError: (err) => {
+      setToast(extractErrorMessage(err, t('llm.toast_vision_settings_failed')), 'error');
+    },
   });
 
   const {
@@ -828,66 +928,55 @@ export const LLMManagePage: React.FC = () => {
   };
 
   return (
-    <div className="space-y-8 max-w-7xl mx-auto">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="min-w-0">
-          <div className="flex items-center gap-3">
-            <div className="shrink-0 p-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-900/50">
-              <Cpu className="w-6 h-6" />
+    <div className="space-y-6 max-w-7xl mx-auto pb-10">
+      <PageHeader
+        icon={<Cpu className="h-6 w-6" />}
+        title={t('llm.title')}
+        subtitle={t('llm.subtitle')}
+        actions={
+          canManageLLM && !isEmbeddingTabOpen ? (
+            <div className="flex flex-wrap items-center gap-2">
+              {activeTab === 'providers' && (
+                <button
+                  onClick={handleOpenAddProvider}
+                  className="inline-flex min-h-10 items-center justify-center gap-2 px-4 py-2 rounded-xl bg-tlu-navy hover:bg-tlu-navy-light dark:bg-tlu-blue dark:hover:bg-blue-600 text-white font-semibold text-xs sm:text-sm shadow-xs transition cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>{t('llm.add_provider')}</span>
+                </button>
+              )}
+              {activeTab === 'models' && (
+                <button
+                  onClick={handleOpenAddModel}
+                  className="inline-flex min-h-10 items-center justify-center gap-2 px-4 py-2 rounded-xl bg-tlu-navy hover:bg-tlu-navy-light dark:bg-tlu-blue dark:hover:bg-blue-600 text-white font-semibold text-xs sm:text-sm shadow-xs transition cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>{t('llm.add_model')}</span>
+                </button>
+              )}
+              {activeTab === 'chains' && (
+                <button
+                  onClick={handleOpenAddChain}
+                  className="inline-flex min-h-10 items-center justify-center gap-2 px-4 py-2 rounded-xl bg-tlu-navy hover:bg-tlu-navy-light dark:bg-tlu-blue dark:hover:bg-blue-600 text-white font-semibold text-xs sm:text-sm shadow-xs transition cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>{t('llm.add_chain')}</span>
+                </button>
+              )}
             </div>
-            <div className="min-w-0">
-              <h2 className="truncate text-xl font-bold tracking-tight text-slate-900 dark:text-slate-100 sm:text-2xl">
-                {t('llm.title')}
-              </h2>
-              <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-                {t('llm.subtitle')}
-              </p>
-            </div>
-          </div>
-        </div>
+          ) : undefined
+        }
+      />
 
-        {canManageLLM && !isEmbeddingTabOpen && (
-          <div className="flex flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
-            {activeTab === 'providers' && (
-              <button
-                onClick={handleOpenAddProvider}
-                className="inline-flex min-h-[44px] w-full items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm shadow-md shadow-indigo-600/20 transition sm:w-auto"
-              >
-                <Plus className="w-4 h-4" />
-                <span>{t('llm.add_provider')}</span>
-              </button>
-            )}
-            {activeTab === 'models' && (
-              <button
-                onClick={handleOpenAddModel}
-                className="inline-flex min-h-[44px] w-full items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm shadow-md shadow-indigo-600/20 transition sm:w-auto"
-              >
-                <Plus className="w-4 h-4" />
-                <span>{t('llm.add_model')}</span>
-              </button>
-            )}
-            {activeTab === 'chains' && (
-              <button
-                onClick={handleOpenAddChain}
-                className="inline-flex min-h-[44px] w-full items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm shadow-md shadow-indigo-600/20 transition sm:w-auto"
-              >
-                <Plus className="w-4 h-4" />
-                <span>{t('llm.add_chain')}</span>
-              </button>
-            )}
-          </div>
-        )}
-      </div>
-
-      <div className="flex gap-4 overflow-x-auto border-b border-slate-200 dark:border-slate-800 sm:gap-6">
+      <div className="flex gap-4 overflow-x-auto border-b border-slate-200 dark:border-blue-900/40 sm:gap-6">
         <button
           onClick={() => {
             setActiveTab('providers');
             setIsEmbeddingTabOpen(false);
           }}
-          className={`min-h-[44px] shrink-0 whitespace-nowrap pb-3 font-semibold text-sm flex items-center gap-2 transition border-b-2 ${
+          className={`min-h-11 shrink-0 whitespace-nowrap pb-3 font-semibold text-sm flex items-center gap-2 transition border-b-2 ${
             activeTab === 'providers' && !isEmbeddingTabOpen
-              ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
+              ? 'border-tlu-navy text-tlu-navy dark:border-tlu-blue dark:text-blue-400'
               : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
           }`}
         >
@@ -903,9 +992,9 @@ export const LLMManagePage: React.FC = () => {
             setActiveTab('models');
             setIsEmbeddingTabOpen(false);
           }}
-          className={`min-h-[44px] shrink-0 whitespace-nowrap pb-3 font-semibold text-sm flex items-center gap-2 transition border-b-2 ${
+          className={`min-h-11 shrink-0 whitespace-nowrap pb-3 font-semibold text-sm flex items-center gap-2 transition border-b-2 ${
             activeTab === 'models' && !isEmbeddingTabOpen
-              ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
+              ? 'border-tlu-navy text-tlu-navy dark:border-tlu-blue dark:text-blue-400'
               : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
           }`}
         >
@@ -921,9 +1010,9 @@ export const LLMManagePage: React.FC = () => {
             setActiveTab('chains');
             setIsEmbeddingTabOpen(false);
           }}
-          className={`min-h-[44px] shrink-0 whitespace-nowrap pb-3 font-semibold text-sm flex items-center gap-2 transition border-b-2 ${
+          className={`min-h-11 shrink-0 whitespace-nowrap pb-3 font-semibold text-sm flex items-center gap-2 transition border-b-2 ${
             activeTab === 'chains' && !isEmbeddingTabOpen
-              ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
+              ? 'border-tlu-navy text-tlu-navy dark:border-tlu-blue dark:text-blue-400'
               : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
           }`}
         >
@@ -939,24 +1028,24 @@ export const LLMManagePage: React.FC = () => {
             setActiveTab('playground');
             setIsEmbeddingTabOpen(false);
           }}
-          className={`min-h-[44px] shrink-0 whitespace-nowrap pb-3 font-semibold text-sm flex items-center gap-2 transition border-b-2 ${
+          className={`min-h-11 shrink-0 whitespace-nowrap pb-3 font-semibold text-sm flex items-center gap-2 transition border-b-2 ${
             activeTab === 'playground' && !isEmbeddingTabOpen
-              ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
+              ? 'border-tlu-navy text-tlu-navy dark:border-tlu-blue dark:text-blue-400'
               : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
           }`}
         >
           <Sparkles className="w-4 h-4" />
           <span>{t('llm.tab_playground')}</span>
-          <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400">
+          <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 dark:bg-blue-950 text-tlu-navy dark:text-blue-400">
             {t('llm.badge_playground')}
           </span>
         </button>
 
         <button
           onClick={() => setIsEmbeddingTabOpen(true)}
-          className={`min-h-[44px] shrink-0 whitespace-nowrap pb-3 font-semibold text-sm flex items-center gap-2 transition border-b-2 ${
+          className={`min-h-11 shrink-0 whitespace-nowrap pb-3 font-semibold text-sm flex items-center gap-2 transition border-b-2 ${
             isEmbeddingTabOpen
-              ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
+              ? 'border-tlu-navy text-tlu-navy dark:border-tlu-blue dark:text-blue-400'
               : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
           }`}
         >
@@ -989,7 +1078,7 @@ export const LLMManagePage: React.FC = () => {
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className="min-w-0 break-words font-bold text-base text-slate-900 dark:text-slate-100">
+                          <span className="min-w-0 wrap-break-word font-bold text-base text-slate-900 dark:text-slate-100">
                             {p.name}
                           </span>
                           {p.is_default && (
@@ -1050,7 +1139,7 @@ export const LLMManagePage: React.FC = () => {
                         <button
                           onClick={() => setDefaultProviderMutation.mutate(p.id)}
                           disabled={setDefaultProviderMutation.isPending}
-                          className="flex min-h-[44px] items-center gap-1 text-xs font-semibold text-slate-600 transition hover:text-indigo-600 dark:text-slate-300 dark:hover:text-indigo-400 sm:min-h-0"
+                          className="flex min-h-11 items-center gap-1 text-xs font-semibold text-slate-600 transition hover:text-tlu-blue dark:text-slate-300 dark:hover:text-blue-400 sm:min-h-0"
                         >
                           <Star className="w-3.5 h-3.5" />
                           <span>{t('llm.set_default')}</span>
@@ -1062,15 +1151,23 @@ export const LLMManagePage: React.FC = () => {
                       <div className="flex items-center gap-1">
                         <button
                           onClick={() => handleOpenEditProvider(p)}
-                          className="flex h-11 w-11 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-indigo-600 dark:hover:bg-slate-800 sm:h-9 sm:w-9"
+                          className="flex h-11 w-11 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-tlu-blue dark:hover:bg-slate-800 sm:h-9 sm:w-9"
                         >
                           <Edit2 className="w-4 h-4" />
                         </button>
                         <button
                           onClick={() => {
-                            if (window.confirm(t('llm.confirm_delete_provider'))) {
-                              deleteProviderMutation.mutate(p.id);
-                            }
+                            setConfirmDialog({
+                              isOpen: true,
+                              title: t('common.delete'),
+                              message: t('llm.confirm_delete_provider'),
+                              onConfirm: () => {
+                                deleteProviderMutation.mutate(p.id, {
+                                  onSettled: () => setConfirmDialog((prev) => ({ ...prev, isOpen: false })),
+                                });
+                              },
+                              isLoading: deleteProviderMutation.isPending,
+                            });
                           }}
                           disabled={deleteProviderMutation.isPending}
                           className="flex h-11 w-11 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-rose-600 dark:hover:bg-slate-800 sm:h-9 sm:w-9"
@@ -1089,13 +1186,98 @@ export const LLMManagePage: React.FC = () => {
 
       {activeTab === 'models' && !isEmbeddingTabOpen && (
         <div className="space-y-4">
+          <div className="p-5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-lg bg-blue-50 dark:bg-blue-950/50 text-tlu-navy dark:text-blue-400">
+                  <ImageIcon className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-slate-900 dark:text-slate-100 text-base">
+                    {t('llm.vision_routing_title')}
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    {t('llm.vision_routing_desc')}
+                  </p>
+                </div>
+              </div>
+              {canManageLLM && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    updateVisionSettingsMutation.mutate({
+                      vision_strategy: selectedVisionStrategy,
+                      vision_fallback_model: selectedFallbackModel,
+                    });
+                  }}
+                  disabled={updateVisionSettingsMutation.isPending}
+                  className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg bg-tlu-navy hover:bg-tlu-navy-light dark:bg-tlu-blue dark:hover:bg-blue-600 text-white disabled:opacity-50 transition-colors shadow-xs shrink-0"
+                >
+                  {updateVisionSettingsMutation.isPending && (
+                    <LoadingSpinner size="sm" />
+                  )}
+                  {t('llm.btn_save_vision_settings')}
+                </button>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4">
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1.5">
+                  {t('llm.vision_strategy_label')}
+                </label>
+                <select
+                  value={selectedVisionStrategy}
+                  disabled={!canManageLLM}
+                  onChange={(e) => setVisionStrategyOverride(e.target.value as 'fallback' | 'degrade' | 'reject')}
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-tlu-blue"
+                >
+                  <option value="fallback">{t('llm.vision_strategy_fallback')}</option>
+                  <option value="degrade">{t('llm.vision_strategy_degrade')}</option>
+                  <option value="reject">{t('llm.vision_strategy_reject')}</option>
+                </select>
+                <p className="text-xs text-slate-400 mt-1">
+                  {selectedVisionStrategy === 'fallback' && t('llm.vision_strategy_fallback_desc')}
+                  {selectedVisionStrategy === 'degrade' && t('llm.vision_strategy_degrade_desc')}
+                  {selectedVisionStrategy === 'reject' && t('llm.vision_strategy_reject_desc')}
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1.5">
+                  {t('llm.vision_fallback_model_label')}
+                </label>
+                <select
+                  value={selectedFallbackModel}
+                  disabled={!canManageLLM || selectedVisionStrategy !== 'fallback'}
+                  onChange={(e) => setFallbackModelOverride(e.target.value)}
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-tlu-blue disabled:opacity-60"
+                >
+                  <option value="">{t('llm.vision_fallback_auto_select')}</option>
+                  {visionSettings?.available_vision_models?.map((mKey) => (
+                    <option key={mKey} value={mKey}>
+                      {mKey}
+                    </option>
+                  ))}
+                  {models.filter((m) => m.supports_vision && !visionSettings?.available_vision_models?.includes(m.model_key)).map((m) => (
+                    <option key={m.model_key} value={m.model_key}>
+                      {m.name} ({m.model_key})
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-slate-400 mt-1">
+                  {t('llm.vision_fallback_model_desc')}
+                </p>
+              </div>
+            </div>
+          </div>
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
             <div className="flex items-center gap-3 w-full sm:w-auto">
               <Search className="w-4 h-4 text-slate-400 shrink-0" />
               <select
                 value={providerFilter}
                 onChange={(e) => setProviderFilter(e.target.value)}
-                className="w-full px-3 py-2.5 text-base rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 sm:w-64 sm:py-1.5 sm:text-sm"
+                className="w-full px-3 py-2.5 text-base rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-tlu-blue sm:w-64 sm:py-1.5 sm:text-sm"
               >
                 <option value="">{t('llm.all_providers')}</option>
                 {providers.map((p) => (
@@ -1118,7 +1300,7 @@ export const LLMManagePage: React.FC = () => {
           ) : (
             <>
             <div className="hidden overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xs md:block">
-              <table className="w-full min-w-[720px] text-left text-sm text-slate-600 dark:text-slate-400">
+              <table className="w-full min-w-180 text-left text-sm text-slate-600 dark:text-slate-400">
                 <thead className="bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 text-xs uppercase font-semibold text-slate-500 dark:text-slate-400">
                   <tr>
                     <th className="px-5 py-3.5">{t('llm.model_name')}</th>
@@ -1186,7 +1368,7 @@ export const LLMManagePage: React.FC = () => {
                       </td>
                       <td className="px-5 py-4">
                         {m.thinking_enabled ? (
-                          <div className="flex items-center gap-1.5 text-purple-600 dark:text-purple-400 text-xs font-semibold">
+                          <div className="flex items-center gap-1.5 text-tlu-blue dark:text-blue-400 text-xs font-semibold">
                             <Brain className="w-3.5 h-3.5" />
                             <span>{m.effort_level ? m.effort_level.toUpperCase() : t('llm.thinking_active')}</span>
                           </div>
@@ -1204,15 +1386,23 @@ export const LLMManagePage: React.FC = () => {
                           <div className="flex items-center justify-end gap-1">
                             <button
                               onClick={() => handleOpenEditModel(m)}
-                              className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-tlu-blue hover:bg-slate-100 dark:hover:bg-slate-800 transition"
                             >
                               <Edit2 className="w-4 h-4" />
                             </button>
                             <button
                               onClick={() => {
-                                if (window.confirm(t('llm.confirm_delete_model'))) {
-                                  deleteModelMutation.mutate(m.id);
-                                }
+                                setConfirmDialog({
+                                  isOpen: true,
+                                  title: t('common.delete'),
+                                  message: t('llm.confirm_delete_model'),
+                                  onConfirm: () => {
+                                    deleteModelMutation.mutate(m.id, {
+                                      onSettled: () => setConfirmDialog((prev) => ({ ...prev, isOpen: false })),
+                                    });
+                                  },
+                                  isLoading: deleteModelMutation.isPending,
+                                });
                               }}
                               disabled={deleteModelMutation.isPending}
                               className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
@@ -1239,7 +1429,7 @@ export const LLMManagePage: React.FC = () => {
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="min-w-0 break-words font-semibold text-slate-900 dark:text-slate-100">
+                        <span className="min-w-0 wrap-break-word font-semibold text-slate-900 dark:text-slate-100">
                           {m.name}
                         </span>
                         {m.is_default && (
@@ -1290,7 +1480,7 @@ export const LLMManagePage: React.FC = () => {
                     <div className="flex items-center justify-between gap-2">
                       <span className="shrink-0 font-medium text-slate-500">{t('llm.thinking_header')}</span>
                       {m.thinking_enabled ? (
-                        <span className="flex items-center gap-1.5 font-semibold text-purple-600 dark:text-purple-400">
+                        <span className="flex items-center gap-1.5 font-semibold text-tlu-blue dark:text-blue-400">
                           <Brain className="w-3.5 h-3.5" />
                           <span>{m.effort_level ? m.effort_level.toUpperCase() : t('llm.thinking_active')}</span>
                         </span>
@@ -1310,15 +1500,23 @@ export const LLMManagePage: React.FC = () => {
                     <div className="mt-3 flex items-center justify-end gap-1 border-t border-slate-100 dark:border-slate-800 pt-3">
                       <button
                         onClick={() => handleOpenEditModel(m)}
-                        className="flex h-11 w-11 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-indigo-600 dark:hover:bg-slate-800"
+                        className="flex h-11 w-11 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-tlu-blue dark:hover:bg-slate-800"
                       >
                         <Edit2 className="w-4 h-4" />
                       </button>
                       <button
                         onClick={() => {
-                          if (window.confirm(t('llm.confirm_delete_model'))) {
-                            deleteModelMutation.mutate(m.id);
-                          }
+                          setConfirmDialog({
+                            isOpen: true,
+                            title: t('common.delete'),
+                            message: t('llm.confirm_delete_model'),
+                            onConfirm: () => {
+                              deleteModelMutation.mutate(m.id, {
+                                onSettled: () => setConfirmDialog((prev) => ({ ...prev, isOpen: false })),
+                              });
+                            },
+                            isLoading: deleteModelMutation.isPending,
+                          });
                         }}
                         disabled={deleteModelMutation.isPending}
                         className="flex h-11 w-11 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-rose-600 dark:hover:bg-slate-800"
@@ -1337,8 +1535,8 @@ export const LLMManagePage: React.FC = () => {
 
       {activeTab === 'chains' && !isEmbeddingTabOpen && (
         <div className="space-y-6">
-          <div className="p-4 rounded-xl border border-indigo-100 dark:border-indigo-950/60 bg-indigo-50/50 dark:bg-indigo-950/20 text-xs text-indigo-900 dark:text-indigo-200 flex items-start gap-3">
-            <Shuffle className="w-5 h-5 text-indigo-600 dark:text-indigo-400 shrink-0 mt-0.5" />
+          <div className="p-4 rounded-xl border border-blue-200 dark:border-blue-900/40 bg-blue-50/50 dark:bg-blue-950/30 text-xs text-tlu-navy dark:text-blue-200 flex items-start gap-3">
+            <Shuffle className="w-5 h-5 text-tlu-navy dark:text-blue-400 shrink-0 mt-0.5" />
             <div className="space-y-1">
               <span className="font-bold text-sm block">{t('llm.circuit_breaker_title')}</span>
               <p className="text-slate-600 dark:text-slate-400">
@@ -1369,7 +1567,7 @@ export const LLMManagePage: React.FC = () => {
                   <div className="p-4 sm:p-5 border-b border-slate-100 dark:border-slate-800/80 bg-slate-50/60 dark:bg-slate-800/40 flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="min-w-0 break-words font-bold text-base text-slate-900 dark:text-slate-100">
+                        <span className="min-w-0 wrap-break-word font-bold text-base text-slate-900 dark:text-slate-100">
                           {chain.name}
                         </span>
                         <Badge
@@ -1408,7 +1606,7 @@ export const LLMManagePage: React.FC = () => {
                         <div className="flex items-center gap-1.5">
                           <button
                             onClick={() => handleOpenAddNode(chain)}
-                            className="inline-flex min-h-[44px] items-center gap-1.5 px-3 py-2 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 text-xs font-semibold transition cursor-pointer sm:min-h-0 sm:py-1.5"
+                            className="inline-flex min-h-11 items-center gap-1.5 px-3 py-2 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-tlu-navy dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/50 text-xs font-semibold transition cursor-pointer sm:min-h-0 sm:py-1.5"
                           >
                             <Plus className="w-3.5 h-3.5" />
                             <span>{t('llm.add_node')}</span>
@@ -1422,9 +1620,17 @@ export const LLMManagePage: React.FC = () => {
                           </button>
                           <button
                             onClick={() => {
-                              if (confirm(t('llm.confirm_delete_chain'))) {
-                                deleteChainMutation.mutate(chain.id);
-                              }
+                              setConfirmDialog({
+                                isOpen: true,
+                                title: t('common.delete'),
+                                message: t('llm.confirm_delete_chain'),
+                                onConfirm: () => {
+                                  deleteChainMutation.mutate(chain.id, {
+                                    onSettled: () => setConfirmDialog((prev) => ({ ...prev, isOpen: false })),
+                                  });
+                                },
+                                isLoading: deleteChainMutation.isPending,
+                              });
                             }}
                             className="flex h-11 w-11 items-center justify-center rounded-lg text-rose-500 transition hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/40 cursor-pointer sm:h-9 sm:w-9"
                             title={t('llm.delete_chain')}
@@ -1570,19 +1776,30 @@ export const LLMManagePage: React.FC = () => {
                                     })
                                   }
                                   title={t('llm.reset_breaker')}
-                                  className="inline-flex min-h-[44px] items-center justify-center gap-1 rounded-lg px-3 py-2 text-xs font-medium text-slate-600 transition hover:bg-slate-100 cursor-pointer dark:text-slate-300 dark:hover:bg-slate-800 sm:min-h-0 sm:px-2.5 sm:py-1"
+                                  className="inline-flex min-h-11 items-center justify-center gap-1 rounded-lg px-3 py-2 text-xs font-medium text-slate-600 transition hover:bg-slate-100 cursor-pointer dark:text-slate-300 dark:hover:bg-slate-800 sm:min-h-0 sm:px-2.5 sm:py-1"
                                 >
                                   <RotateCcw className="w-3.5 h-3.5" />
                                   <span className="hidden sm:inline">{t('llm.reset_breaker')}</span>
                                 </button>
                                 <button
                                   onClick={() => {
-                                    if (confirm(t('llm.confirm_delete_node'))) {
-                                      removeNodeMutation.mutate({
-                                        chainId: chain.id,
-                                        nodeId: node.id,
-                                      });
-                                    }
+                                    setConfirmDialog({
+                                      isOpen: true,
+                                      title: t('common.delete'),
+                                      message: t('llm.confirm_delete_node'),
+                                      onConfirm: () => {
+                                        removeNodeMutation.mutate(
+                                          {
+                                            chainId: chain.id,
+                                            nodeId: node.id,
+                                          },
+                                          {
+                                            onSettled: () => setConfirmDialog((prev) => ({ ...prev, isOpen: false })),
+                                          }
+                                        );
+                                      },
+                                      isLoading: removeNodeMutation.isPending,
+                                    });
                                   }}
                                   title={t('llm.remove_node')}
                                   className="flex h-11 w-11 items-center justify-center rounded-lg text-slate-400 transition hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 cursor-pointer sm:h-9 sm:w-9"
@@ -1609,7 +1826,7 @@ export const LLMManagePage: React.FC = () => {
             <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 sm:p-5 shadow-xs space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
                 <div className="flex items-center gap-2">
-                  <div className="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400">
+                  <div className="p-2 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-tlu-navy dark:text-blue-400">
                     <Sliders className="w-4 h-4" />
                   </div>
                   <div>
@@ -1626,9 +1843,9 @@ export const LLMManagePage: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => setTestTargetType('model')}
-                    className={`min-h-[44px] px-3 py-2 text-xs font-semibold rounded-md transition cursor-pointer sm:min-h-0 sm:px-2.5 sm:py-1 ${
+                    className={`min-h-11 px-3 py-2 text-xs font-semibold rounded-md transition cursor-pointer sm:min-h-0 sm:px-2.5 sm:py-1 ${
                       testTargetType === 'model'
-                        ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                        ? 'bg-white dark:bg-slate-900 text-tlu-navy dark:text-blue-400 shadow-xs'
                         : 'text-slate-500 hover:text-slate-900 dark:hover:text-slate-100'
                     }`}
                   >
@@ -1637,9 +1854,9 @@ export const LLMManagePage: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => setTestTargetType('chain')}
-                    className={`min-h-[44px] px-3 py-2 text-xs font-semibold rounded-md transition cursor-pointer sm:min-h-0 sm:px-2.5 sm:py-1 ${
+                    className={`min-h-11 px-3 py-2 text-xs font-semibold rounded-md transition cursor-pointer sm:min-h-0 sm:px-2.5 sm:py-1 ${
                       testTargetType === 'chain'
-                        ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                        ? 'bg-white dark:bg-slate-900 text-tlu-navy dark:text-blue-400 shadow-xs'
                         : 'text-slate-500 hover:text-slate-900 dark:hover:text-slate-100'
                     }`}
                   >
@@ -1656,7 +1873,7 @@ export const LLMManagePage: React.FC = () => {
                   <select
                     value={selectedTestModelId || (models[0]?.id || '')}
                     onChange={(e) => setSelectedTestModelId(e.target.value)}
-                    className="w-full px-3 py-2.5 text-base rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 focus:outline-hidden sm:py-2 sm:text-sm"
+                    className="w-full px-3 py-2.5 text-base rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-tlu-blue focus:outline-hidden sm:py-2 sm:text-sm"
                   >
                     {models.map((m) => (
                       <option key={m.id} value={m.id}>
@@ -1673,7 +1890,7 @@ export const LLMManagePage: React.FC = () => {
                   <select
                     value={selectedTestChainId || (chains[0]?.id || '')}
                     onChange={(e) => setSelectedTestChainId(e.target.value)}
-                    className="w-full px-3 py-2.5 text-base rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 focus:outline-hidden sm:py-2 sm:text-sm"
+                    className="w-full px-3 py-2.5 text-base rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-tlu-blue focus:outline-hidden sm:py-2 sm:text-sm"
                   >
                     {chains.map((c) => (
                       <option key={c.id} value={c.id}>
@@ -1694,7 +1911,7 @@ export const LLMManagePage: React.FC = () => {
                     onClick={() =>
                       setTestPrompt(t('llm.prompt_sample_greeting'))
                     }
-                    className="inline-flex min-h-[44px] items-center rounded-lg px-3 py-2 text-xs bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 hover:text-indigo-600 dark:hover:text-indigo-400 transition cursor-pointer sm:min-h-0 sm:px-2.5 sm:py-1"
+                    className="inline-flex min-h-11 items-center rounded-lg px-3 py-2 text-xs bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-blue-50 dark:hover:bg-blue-950/50 hover:text-tlu-blue dark:hover:text-blue-400 transition cursor-pointer sm:min-h-0 sm:px-2.5 sm:py-1"
                   >
                     {t('llm.prompt_tag_greeting')}
                   </button>
@@ -1703,7 +1920,7 @@ export const LLMManagePage: React.FC = () => {
                     onClick={() =>
                       setTestPrompt(t('llm.prompt_sample_credits'))
                     }
-                    className="inline-flex min-h-[44px] items-center rounded-lg px-3 py-2 text-xs bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 hover:text-indigo-600 dark:hover:text-indigo-400 transition cursor-pointer sm:min-h-0 sm:px-2.5 sm:py-1"
+                    className="inline-flex min-h-11 items-center rounded-lg px-3 py-2 text-xs bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-blue-50 dark:hover:bg-blue-950/50 hover:text-tlu-blue dark:hover:text-blue-400 transition cursor-pointer sm:min-h-0 sm:px-2.5 sm:py-1"
                   >
                     {t('llm.prompt_tag_credits')}
                   </button>
@@ -1712,7 +1929,7 @@ export const LLMManagePage: React.FC = () => {
                     onClick={() =>
                       setTestPrompt(t('llm.prompt_sample_thesis'))
                     }
-                    className="inline-flex min-h-[44px] items-center rounded-lg px-3 py-2 text-xs bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 hover:text-indigo-600 dark:hover:text-indigo-400 transition cursor-pointer sm:min-h-0 sm:px-2.5 sm:py-1"
+                    className="inline-flex min-h-11 items-center rounded-lg px-3 py-2 text-xs bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-blue-50 dark:hover:bg-blue-950/50 hover:text-tlu-blue dark:hover:text-blue-400 transition cursor-pointer sm:min-h-0 sm:px-2.5 sm:py-1"
                   >
                     {t('llm.prompt_tag_thesis')}
                   </button>
@@ -1721,7 +1938,7 @@ export const LLMManagePage: React.FC = () => {
                     onClick={() =>
                       setTestPrompt(t('llm.prompt_sample_cpa'))
                     }
-                    className="inline-flex min-h-[44px] items-center rounded-lg px-3 py-2 text-xs bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 hover:text-indigo-600 dark:hover:text-indigo-400 transition cursor-pointer sm:min-h-0 sm:px-2.5 sm:py-1"
+                    className="inline-flex min-h-11 items-center rounded-lg px-3 py-2 text-xs bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-blue-50 dark:hover:bg-blue-950/50 hover:text-tlu-blue dark:hover:text-blue-400 transition cursor-pointer sm:min-h-0 sm:px-2.5 sm:py-1"
                   >
                     {t('llm.prompt_tag_cpa')}
                   </button>
@@ -1730,7 +1947,7 @@ export const LLMManagePage: React.FC = () => {
                     onClick={() =>
                       setTestPrompt(t('llm.prompt_sample_reasoning'))
                     }
-                    className="inline-flex min-h-[44px] items-center rounded-lg px-3 py-2 text-xs bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 hover:text-indigo-600 dark:hover:text-indigo-400 transition cursor-pointer sm:min-h-0 sm:px-2.5 sm:py-1"
+                    className="inline-flex min-h-11 items-center rounded-lg px-3 py-2 text-xs bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-blue-50 dark:hover:bg-blue-950/50 hover:text-tlu-blue dark:hover:text-blue-400 transition cursor-pointer sm:min-h-0 sm:px-2.5 sm:py-1"
                   >
                     {t('llm.prompt_tag_reasoning')}
                   </button>
@@ -1746,7 +1963,7 @@ export const LLMManagePage: React.FC = () => {
                   value={testPrompt}
                   onChange={(e) => setTestPrompt(e.target.value)}
                   placeholder={t('llm.user_prompt_placeholder')}
-                  className="w-full px-3 py-2.5 text-base rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 focus:outline-hidden leading-relaxed resize-y sm:py-2 sm:text-sm"
+                  className="w-full px-3 py-2.5 text-base rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-tlu-blue focus:outline-hidden leading-relaxed resize-y sm:py-2 sm:text-sm"
                 />
               </div>
 
@@ -1766,7 +1983,7 @@ export const LLMManagePage: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => testFileInputRef.current?.click()}
-                    className="inline-flex min-h-[44px] items-center text-xs text-indigo-600 dark:text-indigo-400 hover:underline font-medium cursor-pointer sm:min-h-0"
+                    className="inline-flex min-h-11 items-center text-xs text-tlu-navy dark:text-blue-400 hover:underline font-medium cursor-pointer sm:min-h-0"
                   >
                     {t('llm.btn_select_image')}
                   </button>
@@ -1813,7 +2030,7 @@ export const LLMManagePage: React.FC = () => {
                         rows={2}
                         value={testSystemPrompt}
                         onChange={(e) => setTestSystemPrompt(e.target.value)}
-                        className="w-full px-3 py-2 text-base rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-hidden focus:ring-1 focus:ring-indigo-500 sm:px-2.5 sm:py-1.5 sm:text-xs"
+                        className="w-full px-3 py-2 text-base rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-hidden focus:ring-1 focus:ring-tlu-blue sm:px-2.5 sm:py-1.5 sm:text-xs"
                       />
                     </div>
 
@@ -1858,7 +2075,7 @@ export const LLMManagePage: React.FC = () => {
                 type="button"
                 onClick={handleExecuteTest}
                 disabled={isTesting || !testPrompt.trim()}
-                className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm shadow-md shadow-indigo-600/20 transition flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
+                className="w-full py-3 rounded-xl bg-tlu-navy hover:bg-tlu-navy-light dark:bg-tlu-blue dark:hover:bg-blue-600 text-white font-semibold text-sm shadow-md shadow-blue-900/20 transition flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
               >
                 {isTesting ? (
                   <>
@@ -1887,8 +2104,8 @@ export const LLMManagePage: React.FC = () => {
             )}
 
             {!testResult && !isTesting && !testError && (
-              <div className="p-8 sm:p-12 text-center bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col items-center justify-center min-h-[280px] sm:min-h-[460px]">
-                <div className="w-16 h-16 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mb-4 shadow-sm">
+              <div className="p-8 sm:p-12 text-center bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col items-center justify-center min-h-70 sm:min-h-115">
+                <div className="w-16 h-16 rounded-2xl bg-blue-50 dark:bg-blue-950/60 text-tlu-navy dark:text-blue-400 flex items-center justify-center mb-4 shadow-sm">
                   <Terminal className="w-8 h-8" />
                 </div>
                 <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
@@ -1901,7 +2118,7 @@ export const LLMManagePage: React.FC = () => {
             )}
 
             {isTesting && (
-              <div className="p-8 sm:p-12 text-center bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col items-center justify-center min-h-[280px] sm:min-h-[460px]">
+              <div className="p-8 sm:p-12 text-center bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col items-center justify-center min-h-70 sm:min-h-115">
                 <LoadingSpinner size="lg" />
                 <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100 mt-4">
                   {t('llm.connecting_provider')}
@@ -1932,7 +2149,7 @@ export const LLMManagePage: React.FC = () => {
                     </span>
 
                     {testResult.total_tokens ? (
-                      <span className="break-words text-xs font-mono text-slate-500 dark:text-slate-400">
+                      <span className="wrap-break-word text-xs font-mono text-slate-500 dark:text-slate-400">
                         {t('llm.tokens_breakdown', { total: testResult.total_tokens, prompt: testResult.prompt_tokens, completion: testResult.completion_tokens })}
                       </span>
                     ) : null}
@@ -1942,9 +2159,9 @@ export const LLMManagePage: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => setActiveResultTab('output')}
-                      className={`min-h-[44px] px-3 py-2 rounded-md transition cursor-pointer sm:min-h-0 sm:py-1 ${
+                      className={`min-h-11 px-3 py-2 rounded-md transition cursor-pointer sm:min-h-0 sm:py-1 ${
                         activeResultTab === 'output'
-                          ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                          ? 'bg-white dark:bg-slate-900 text-tlu-navy dark:text-blue-400 shadow-xs'
                           : 'text-slate-600 dark:text-slate-400'
                       }`}
                     >
@@ -1953,9 +2170,9 @@ export const LLMManagePage: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => setActiveResultTab('raw')}
-                      className={`min-h-[44px] px-3 py-2 rounded-md transition cursor-pointer sm:min-h-0 sm:py-1 ${
+                      className={`min-h-11 px-3 py-2 rounded-md transition cursor-pointer sm:min-h-0 sm:py-1 ${
                         activeResultTab === 'raw'
-                          ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                          ? 'bg-white dark:bg-slate-900 text-tlu-navy dark:text-blue-400 shadow-xs'
                           : 'text-slate-600 dark:text-slate-400'
                       }`}
                     >
@@ -1964,12 +2181,12 @@ export const LLMManagePage: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="px-4 py-2.5 bg-indigo-50/40 dark:bg-indigo-950/20 border-b border-indigo-100/50 dark:border-indigo-900/30 flex flex-wrap items-center justify-between gap-2 text-xs">
+                <div className="px-4 py-2.5 bg-blue-50/40 dark:bg-blue-950/30 border-b border-blue-200/50 dark:border-blue-900/40 flex flex-wrap items-center justify-between gap-2 text-xs">
                   <div className="flex min-w-0 flex-wrap items-center gap-2">
-                    <span className="font-semibold text-indigo-900 dark:text-indigo-200">
+                    <span className="font-semibold text-tlu-navy dark:text-blue-200">
                       {t('llm.model_reply_label')}
                     </span>
-                    <span className="break-all font-mono text-indigo-700 dark:text-indigo-400 font-bold">
+                    <span className="break-all font-mono text-tlu-navy dark:text-blue-400 font-bold">
                       {testResult.node_used || testResult.model_name || testResult.model_key}
                     </span>
                     {testResult.provider_name && (
@@ -1989,12 +2206,12 @@ export const LLMManagePage: React.FC = () => {
                   {activeResultTab === 'output' ? (
                     <div className="space-y-4">
                       {testResult.reasoning_content && (
-                        <div className="p-3.5 rounded-xl bg-violet-50/60 dark:bg-violet-950/30 border border-violet-100 dark:border-violet-900/40 space-y-1.5">
-                          <div className="text-xs font-bold text-violet-800 dark:text-violet-300 flex items-center gap-1.5">
+                        <div className="p-3.5 rounded-xl bg-blue-50/60 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900/40 space-y-1.5">
+                          <div className="text-xs font-bold text-tlu-navy dark:text-blue-300 flex items-center gap-1.5">
                             <Sparkles className="w-3.5 h-3.5" />
                             <span>{t('llm.reasoning_label')}</span>
                           </div>
-                          <p className="text-xs text-violet-700/90 dark:text-violet-300/90 whitespace-pre-wrap leading-relaxed font-mono">
+                          <p className="text-xs text-slate-700 dark:text-slate-300 whitespace-pre-wrap leading-relaxed font-mono">
                             {testResult.reasoning_content}
                           </p>
                         </div>
@@ -2013,12 +2230,12 @@ export const LLMManagePage: React.FC = () => {
                           setCopiedRaw(true);
                           setTimeout(() => setCopiedRaw(false), 2000);
                         }}
-                        className="absolute top-2 right-2 inline-flex min-h-[44px] items-center gap-1 rounded-lg px-3 py-2 text-xs bg-slate-700 hover:bg-slate-600 text-white font-medium transition shadow-xs z-10 cursor-pointer sm:min-h-0 sm:px-2.5 sm:py-1"
+                        className="absolute top-2 right-2 inline-flex min-h-11 items-center gap-1 rounded-lg px-3 py-2 text-xs bg-slate-700 hover:bg-slate-600 text-white font-medium transition shadow-xs z-10 cursor-pointer sm:min-h-0 sm:px-2.5 sm:py-1"
                       >
                         {copiedRaw ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
                         <span>{copiedRaw ? t('llm.copied_json') : t('llm.copy_json')}</span>
                       </button>
-                      <pre className="p-4 rounded-xl bg-slate-900 text-slate-100 text-xs font-mono overflow-x-auto max-h-[300px] sm:max-h-[460px] leading-relaxed">
+                      <pre className="p-4 rounded-xl bg-slate-900 text-slate-100 text-xs font-mono overflow-x-auto max-h-75 sm:max-h-115 leading-relaxed">
                         {JSON.stringify(testResult, null, 2)}
                       </pre>
                     </div>
@@ -2039,14 +2256,14 @@ export const LLMManagePage: React.FC = () => {
               ) : (
                 <AlertTriangle className="w-4 h-4 text-rose-400 dark:text-rose-600 shrink-0" />
               )}
-              <span className="break-words">{toastMessage}</span>
+              <span className="wrap-break-word">{toastMessage}</span>
             </div>
           )}
 
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-5">
             <div className="p-4 sm:p-5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs space-y-4">
               <div className="flex items-center gap-3">
-                <div className="shrink-0 p-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-900/50">
+                <div className="shrink-0 p-2 rounded-xl bg-blue-50 dark:bg-blue-950/40 text-tlu-navy dark:text-blue-400 border border-blue-200 dark:border-blue-900/50">
                   <Server className="w-5 h-5" />
                 </div>
                 <div className="min-w-0">
@@ -2073,9 +2290,9 @@ export const LLMManagePage: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => setProviderDraft('api')}
-                      className={`min-h-[44px] flex-1 px-3 py-2 text-xs font-semibold rounded-md transition cursor-pointer sm:flex-none sm:px-4 ${
+                      className={`min-h-11 flex-1 px-3 py-2 text-xs font-semibold rounded-md transition cursor-pointer sm:flex-none sm:px-4 ${
                         effectiveProvider === 'api'
-                          ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                          ? 'bg-white dark:bg-slate-900 text-tlu-navy dark:text-blue-400 shadow-xs'
                           : 'text-slate-500 hover:text-slate-900 dark:hover:text-slate-100'
                       }`}
                     >
@@ -2084,9 +2301,9 @@ export const LLMManagePage: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => setProviderDraft('onnx')}
-                      className={`min-h-[44px] flex-1 px-3 py-2 text-xs font-semibold rounded-md transition cursor-pointer sm:flex-none sm:px-4 ${
+                      className={`min-h-11 flex-1 px-3 py-2 text-xs font-semibold rounded-md transition cursor-pointer sm:flex-none sm:px-4 ${
                         effectiveProvider === 'onnx'
-                          ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                          ? 'bg-white dark:bg-slate-900 text-tlu-navy dark:text-blue-400 shadow-xs'
                           : 'text-slate-500 hover:text-slate-900 dark:hover:text-slate-100'
                       }`}
                     >
@@ -2112,7 +2329,7 @@ export const LLMManagePage: React.FC = () => {
                             setActiveTab('models');
                             setIsEmbeddingTabOpen(false);
                           }}
-                          className="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline font-medium cursor-pointer"
+                          className="text-[11px] text-tlu-navy dark:text-blue-400 hover:underline font-medium cursor-pointer"
                         >
                           {t('embedding.view_models_tab')}
                         </button>
@@ -2160,7 +2377,7 @@ export const LLMManagePage: React.FC = () => {
                               setActiveTab('chains');
                               setIsEmbeddingTabOpen(false);
                             }}
-                            className="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline font-medium cursor-pointer"
+                            className="text-[11px] text-tlu-navy dark:text-blue-400 hover:underline font-medium cursor-pointer"
                           >
                             {t('embedding.configure_chains_btn')}
                           </button>
@@ -2207,7 +2424,7 @@ export const LLMManagePage: React.FC = () => {
                       effectiveProvider === embeddingSettings.provider ||
                       saveEmbeddingSettingsMutation.isPending
                     }
-                    className="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-indigo-600/20 transition hover:bg-indigo-700 disabled:opacity-50 disabled:pointer-events-none cursor-pointer sm:w-auto sm:py-2"
+                    className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-tlu-blue px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-blue-900/20 transition hover:bg-tlu-navy-light dark:hover:bg-blue-600 disabled:opacity-50 disabled:pointer-events-none cursor-pointer sm:w-auto sm:py-2"
                   >
                     {saveEmbeddingSettingsMutation.isPending && <LoadingSpinner size="sm" />}
                     <span>{t('common.save')}</span>
@@ -2229,7 +2446,7 @@ export const LLMManagePage: React.FC = () => {
 
             <div className="p-4 sm:p-5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs space-y-4">
               <div className="flex items-center gap-3">
-                <div className="shrink-0 p-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-900/50">
+                <div className="shrink-0 p-2 rounded-xl bg-blue-50 dark:bg-blue-950/40 text-tlu-navy dark:text-blue-400 border border-blue-200 dark:border-blue-900/50">
                   <Terminal className="w-5 h-5" />
                 </div>
                 <div className="min-w-0">
@@ -2281,7 +2498,7 @@ export const LLMManagePage: React.FC = () => {
 
                   <div className="pt-4 border-t border-slate-100 dark:border-slate-800 space-y-3">
                     <div className="flex items-center gap-2">
-                      <Download className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                      <Download className="w-4 h-4 text-tlu-navy dark:text-blue-400 shrink-0" />
                       <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100">
                         {t('embedding.runtime_download_title')}
                       </h4>
@@ -2315,7 +2532,7 @@ export const LLMManagePage: React.FC = () => {
                               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                                 <div className="min-w-0">
                                   <div className="flex items-center gap-2">
-                                    <span className="text-xs font-semibold text-slate-900 dark:text-slate-100 break-words">
+                                    <span className="text-xs font-semibold text-slate-900 dark:text-slate-100 wrap-break-word">
                                       {rt.display_name}
                                     </span>
                                     {isInstalled && (
@@ -2337,10 +2554,10 @@ export const LLMManagePage: React.FC = () => {
                                       type="button"
                                       onClick={() => startDownloadMutation.mutate(rt.preset_id)}
                                       disabled={startDownloadMutation.isPending || isRuntimeRunning}
-                                      className={`inline-flex min-h-[44px] items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition cursor-pointer disabled:opacity-50 sm:min-h-0 sm:py-1.5 ${
+                                      className={`inline-flex min-h-11 items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition cursor-pointer disabled:opacity-50 sm:min-h-0 sm:py-1.5 ${
                                         isInstalled
                                           ? 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300'
-                                          : 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/50'
+                                          : 'bg-blue-50 dark:bg-blue-950/40 text-tlu-navy dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/50'
                                       }`}
                                     >
                                       {isRuntimeRunning ? (
@@ -2368,7 +2585,7 @@ export const LLMManagePage: React.FC = () => {
                                 <div className="space-y-1 pt-1">
                                   <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
                                     <div
-                                      className={`h-full rounded-full bg-indigo-600 transition-all duration-300 ${
+                                      className={`h-full rounded-full bg-tlu-blue transition-all duration-300 ${
                                         totalBytes > 0 ? '' : 'animate-pulse w-2/5'
                                       }`}
                                       style={totalBytes > 0 ? { width: `${percent}%` } : undefined}
@@ -2418,7 +2635,7 @@ export const LLMManagePage: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setIsDownloadModalOpen(true)}
-                  className="inline-flex min-h-[44px] w-full items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm shadow-md shadow-indigo-600/20 transition sm:w-auto sm:py-2"
+                  className="inline-flex min-h-11 w-full items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-tlu-navy hover:bg-tlu-navy-light dark:bg-tlu-blue dark:hover:bg-blue-600 text-white font-semibold text-sm shadow-md shadow-blue-900/20 transition sm:w-auto sm:py-2"
                 >
                   <Download className="w-4 h-4" />
                   <span>{t('embedding.download_open_btn')}</span>
@@ -2441,14 +2658,14 @@ export const LLMManagePage: React.FC = () => {
                     key={m.model_id}
                     className={`p-4 rounded-xl border flex flex-col gap-3 ${
                       m.is_active
-                        ? 'border-indigo-300 dark:border-indigo-800 ring-1 ring-indigo-500/30 bg-indigo-50/40 dark:bg-indigo-950/20'
+                        ? 'border-blue-300 dark:border-blue-800 ring-1 ring-tlu-blue/30 bg-blue-50/40 dark:bg-blue-950/20'
                         : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 shadow-xs'
                     }`}
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className="min-w-0 break-words font-bold text-base text-slate-900 dark:text-slate-100">
+                          <span className="min-w-0 wrap-break-word font-bold text-base text-slate-900 dark:text-slate-100">
                             {m.display_name}
                           </span>
                           {m.is_active && (
@@ -2492,7 +2709,7 @@ export const LLMManagePage: React.FC = () => {
                                 setCopiedModelId(m.model_id);
                               }}
                               title={copiedModelId === m.model_id ? t('embedding.copied') : t('embedding.copy_sha')}
-                              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-indigo-600 dark:hover:bg-slate-800 sm:h-7 sm:w-7"
+                              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-tlu-blue dark:hover:bg-slate-800 sm:h-7 sm:w-7"
                             >
                               {copiedModelId === m.model_id ? (
                                 <Check className="w-3.5 h-3.5 text-emerald-500" />
@@ -2509,7 +2726,7 @@ export const LLMManagePage: React.FC = () => {
                         </div>
                       )}
                       {m.status === 'invalid' && m.error && (
-                        <div className="p-2 rounded-lg bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 break-words">
+                        <div className="p-2 rounded-lg bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 wrap-break-word">
                           <span className="font-semibold">{t('embedding.model_error_label')}: </span>
                           {m.error}
                         </div>
@@ -2525,7 +2742,7 @@ export const LLMManagePage: React.FC = () => {
                             validateModelMutation.isPending &&
                             validateModelMutation.variables === m.model_id
                           }
-                          className="inline-flex min-h-[44px] flex-1 sm:flex-none items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 text-xs font-semibold transition cursor-pointer disabled:opacity-50 sm:min-h-0 sm:py-1.5"
+                          className="inline-flex min-h-11 flex-1 sm:flex-none items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-tlu-navy dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/50 text-xs font-semibold transition cursor-pointer disabled:opacity-50 sm:min-h-0 sm:py-1.5"
                         >
                           {validateModelMutation.isPending && validateModelMutation.variables === m.model_id ? (
                             <LoadingSpinner size="sm" />
@@ -2544,7 +2761,7 @@ export const LLMManagePage: React.FC = () => {
                             type="button"
                             onClick={() => activateModelMutation.mutate(m.model_id)}
                             disabled={activateModelMutation.isPending}
-                            className="inline-flex min-h-[44px] flex-1 sm:flex-none items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 text-xs font-semibold transition cursor-pointer disabled:opacity-50 sm:min-h-0 sm:py-1.5"
+                            className="inline-flex min-h-11 flex-1 sm:flex-none items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 text-xs font-semibold transition cursor-pointer disabled:opacity-50 sm:min-h-0 sm:py-1.5"
                           >
                             <CheckCircle2 className="w-3.5 h-3.5" />
                             <span>{t('embedding.activate_btn')}</span>
@@ -2556,7 +2773,7 @@ export const LLMManagePage: React.FC = () => {
                           onClick={() => setDeleteTarget(m)}
                           disabled={m.is_active}
                           title={m.is_active ? t('embedding.delete_active_hint') : t('common.delete')}
-                          className="inline-flex min-h-[44px] items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-xs font-semibold transition cursor-pointer disabled:opacity-40 disabled:pointer-events-none sm:min-h-0 sm:py-1.5 sm:ml-auto"
+                          className="inline-flex min-h-11 items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-xs font-semibold transition cursor-pointer disabled:opacity-40 disabled:pointer-events-none sm:min-h-0 sm:py-1.5 sm:ml-auto"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                           <span>{t('common.delete')}</span>
@@ -2604,7 +2821,7 @@ export const LLMManagePage: React.FC = () => {
                     });
                   }}
                   disabled={isRescanningOnnxModels}
-                  className="inline-flex min-h-[44px] w-full sm:w-auto shrink-0 items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 hover:border-indigo-300 text-xs font-semibold transition cursor-pointer disabled:opacity-50 sm:min-h-0 sm:py-1.5"
+                  className="inline-flex min-h-11 w-full sm:w-auto shrink-0 items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:text-tlu-blue dark:hover:text-blue-400 hover:border-blue-400 text-xs font-semibold transition cursor-pointer disabled:opacity-50 sm:min-h-0 sm:py-1.5"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${isRescanningOnnxModels ? 'animate-spin' : ''}`} />
                   <span>{t('embedding.rescan_btn')}</span>
@@ -2635,6 +2852,44 @@ export const LLMManagePage: React.FC = () => {
             </div>
           )}
 
+          {!editingProvider && (
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+                {t('llm.provider_preset_template')}
+              </label>
+              <div className="flex flex-wrap gap-1.5">
+                {PROVIDER_PRESETS.map((preset) => {
+                  const isSelected =
+                    providerForm.provider_type === preset.provider_type &&
+                    providerForm.base_url === preset.base_url;
+                  return (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() => {
+                        setProviderForm((prev) => ({
+                          ...prev,
+                          id: preset.id !== 'custom' ? preset.id : prev.id,
+                          name: preset.name,
+                          provider_type: preset.provider_type,
+                          base_url: preset.base_url,
+                          allow_private_networks: preset.allow_private_networks ?? false,
+                        }));
+                      }}
+                      className={`px-2.5 py-1 text-xs rounded-lg border font-medium transition cursor-pointer ${
+                        isSelected
+                          ? 'bg-blue-50 border-blue-300 text-tlu-navy dark:bg-blue-950/50 dark:border-blue-700 dark:text-blue-300 shadow-xs'
+                          : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-700'
+                      }`}
+                    >
+                      {preset.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
@@ -2647,7 +2902,7 @@ export const LLMManagePage: React.FC = () => {
                 onChange={(e) => setProviderForm({ ...providerForm, id: e.target.value })}
                 required
                 placeholder={t('llm.provider_id_placeholder')}
-                className="w-full px-3 py-2.5 text-base rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 sm:py-2 sm:text-sm"
+                className="w-full px-3 py-2.5 text-base rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-tlu-blue sm:py-2 sm:text-sm"
               />
             </div>
 
@@ -2661,7 +2916,7 @@ export const LLMManagePage: React.FC = () => {
                 onChange={(e) => setProviderForm({ ...providerForm, name: e.target.value })}
                 required
                 placeholder={t('llm.provider_name_placeholder')}
-                className="w-full px-3 py-2.5 text-base rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 sm:py-2 sm:text-sm"
+                className="w-full px-3 py-2.5 text-base rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-tlu-blue sm:py-2 sm:text-sm"
               />
             </div>
           </div>
@@ -2679,7 +2934,7 @@ export const LLMManagePage: React.FC = () => {
                     provider_type: e.target.value as CreateLLMProviderDTO['provider_type'],
                   })
                 }
-                className="w-full px-3 py-2.5 text-base rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 sm:py-2 sm:text-sm"
+                className="w-full px-3 py-2.5 text-base rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-tlu-blue sm:py-2 sm:text-sm"
               >
                 <option value="openrouter">{t('llm.ptype_openrouter')}</option>
                 <option value="openai">{t('llm.ptype_openai')}</option>
@@ -2698,7 +2953,7 @@ export const LLMManagePage: React.FC = () => {
                 onChange={(e) => setProviderForm({ ...providerForm, base_url: e.target.value })}
                 required
                 placeholder={t('llm.base_url_placeholder')}
-                className="w-full px-3 py-2.5 text-base rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500 sm:py-2 sm:text-xs"
+                className="w-full px-3 py-2.5 text-base rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-mono focus:outline-none focus:ring-2 focus:ring-tlu-blue sm:py-2 sm:text-xs"
               />
             </div>
           </div>
@@ -2719,7 +2974,7 @@ export const LLMManagePage: React.FC = () => {
                     ? t('llm.api_key_edit_placeholder')
                     : t('llm.api_key_placeholder')
                 }
-                className="w-full px-3 py-2.5 pr-12 text-base rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 sm:py-2 sm:text-sm"
+                className="w-full px-3 py-2.5 pr-12 text-base rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-tlu-blue sm:py-2 sm:text-sm"
               />
               <button
                 type="button"
@@ -2824,7 +3079,7 @@ export const LLMManagePage: React.FC = () => {
                     allow_private_networks: e.target.checked,
                   })
                 }
-                className="h-5 w-5 rounded text-indigo-600 focus:ring-indigo-500"
+                className="h-5 w-5 rounded text-tlu-blue focus:ring-tlu-blue"
               />
               <span className="text-xs text-slate-600 dark:text-slate-300">
                 {t('llm.allow_private_networks')}
@@ -2838,7 +3093,7 @@ export const LLMManagePage: React.FC = () => {
                 type="checkbox"
                 checked={providerForm.is_active}
                 onChange={(e) => setProviderForm({ ...providerForm, is_active: e.target.checked })}
-                className="h-5 w-5 rounded text-indigo-600 focus:ring-indigo-500"
+                className="h-5 w-5 rounded text-tlu-blue focus:ring-tlu-blue"
               />
               <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">
                 {t('llm.is_active')}
@@ -2850,7 +3105,7 @@ export const LLMManagePage: React.FC = () => {
                 type="checkbox"
                 checked={providerForm.is_default}
                 onChange={(e) => setProviderForm({ ...providerForm, is_default: e.target.checked })}
-                className="h-5 w-5 rounded text-indigo-600 focus:ring-indigo-500"
+                className="h-5 w-5 rounded text-tlu-blue focus:ring-tlu-blue"
               />
               <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">
                 {t('llm.is_default')}
@@ -2862,14 +3117,14 @@ export const LLMManagePage: React.FC = () => {
             <button
               type="button"
               onClick={() => setIsProviderModalOpen(false)}
-              className="inline-flex min-h-[44px] w-full items-center justify-center rounded-lg px-4 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 sm:w-auto sm:py-2"
+              className="inline-flex min-h-11 w-full items-center justify-center rounded-lg px-4 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 sm:w-auto sm:py-2"
             >
               {t('common.cancel')}
             </button>
             <button
               type="submit"
               disabled={saveProviderMutation.isPending}
-              className="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-indigo-600/20 transition hover:bg-indigo-700 sm:w-auto sm:py-2"
+              className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-tlu-blue px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-blue-900/20 transition hover:bg-tlu-navy-light dark:hover:bg-blue-600 sm:w-auto sm:py-2"
             >
               {saveProviderMutation.isPending && <LoadingSpinner size="sm" />}
               <span>{t('common.save')}</span>
@@ -2899,7 +3154,7 @@ export const LLMManagePage: React.FC = () => {
           )}
 
           {probeResultMsg && (
-            <div className="p-3 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 text-xs flex items-center gap-2">
+            <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-tlu-navy dark:text-blue-400 text-xs flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4 shrink-0" />
               <span>{probeResultMsg}</span>
             </div>
@@ -2914,7 +3169,7 @@ export const LLMManagePage: React.FC = () => {
                 value={modelForm.provider_id}
                 onChange={(e) => setModelForm({ ...modelForm, provider_id: e.target.value })}
                 required
-                className="w-full px-3 py-2.5 text-base rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 sm:py-2 sm:text-sm"
+                className="w-full px-3 py-2.5 text-base rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-tlu-blue sm:py-2 sm:text-sm"
               >
                 {providers.map((p) => (
                   <option key={p.id} value={p.id}>
@@ -2935,7 +3190,7 @@ export const LLMManagePage: React.FC = () => {
                 onChange={(e) => setModelForm({ ...modelForm, id: e.target.value })}
                 required
                 placeholder={t('llm.model_id_placeholder')}
-                className="w-full px-3 py-2.5 text-base rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 sm:py-2 sm:text-sm"
+                className="w-full px-3 py-2.5 text-base rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-tlu-blue sm:py-2 sm:text-sm"
               />
             </div>
           </div>
@@ -2951,7 +3206,7 @@ export const LLMManagePage: React.FC = () => {
                 onChange={(e) => setModelForm({ ...modelForm, name: e.target.value })}
                 required
                 placeholder={t('llm.model_name_placeholder')}
-                className="w-full px-3 py-2.5 text-base rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 sm:py-2 sm:text-sm"
+                className="w-full px-3 py-2.5 text-base rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-tlu-blue sm:py-2 sm:text-sm"
               />
             </div>
 
@@ -2967,7 +3222,7 @@ export const LLMManagePage: React.FC = () => {
                     model_type: e.target.value as CreateLLMModelDTO['model_type'],
                   })
                 }
-                className="w-full px-3 py-2.5 text-base rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 sm:py-2 sm:text-sm"
+                className="w-full px-3 py-2.5 text-base rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-tlu-blue sm:py-2 sm:text-sm"
               >
                 <option value="chat">{t('llm.type_chat')}</option>
                 <option value="embedding">{t('llm.type_embedding')}</option>
@@ -2985,7 +3240,7 @@ export const LLMManagePage: React.FC = () => {
                 type="button"
                 onClick={handleProbeVision}
                 disabled={isProbing || !modelForm.model_key}
-                className="flex min-h-[44px] items-center gap-1 px-2 text-xs font-semibold text-indigo-600 transition hover:text-indigo-700 disabled:opacity-50 dark:text-indigo-400 dark:hover:text-indigo-300 sm:min-h-0 sm:px-0"
+                className="flex min-h-11 items-center gap-1 px-2 text-xs font-semibold text-tlu-blue transition hover:text-blue-700 disabled:opacity-50 dark:text-blue-400 dark:hover:text-blue-300 sm:min-h-0 sm:px-0"
               >
                 {isProbing ? <LoadingSpinner size="sm" /> : <Sparkles className="w-3.5 h-3.5" />}
                 <span>{isProbing ? t('llm.probing_vision') : t('llm.probe_vision_btn')}</span>
@@ -2997,7 +3252,7 @@ export const LLMManagePage: React.FC = () => {
               onChange={(e) => setModelForm({ ...modelForm, model_key: e.target.value })}
               required
               placeholder={t('llm.model_key_placeholder')}
-              className="w-full px-3 py-2.5 text-base rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500 sm:py-2 sm:text-xs"
+              className="w-full px-3 py-2.5 text-base rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-mono focus:outline-none focus:ring-2 focus:ring-tlu-blue sm:py-2 sm:text-xs"
             />
           </div>
 
@@ -3022,7 +3277,7 @@ export const LLMManagePage: React.FC = () => {
                   }
                   className="sr-only peer"
                 />
-                <div className="relative shrink-0 w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-slate-600 peer-checked:bg-indigo-600"></div>
+                <div className="relative shrink-0 w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-slate-600 peer-checked:bg-tlu-blue"></div>
               </label>
             </div>
 
@@ -3039,7 +3294,7 @@ export const LLMManagePage: React.FC = () => {
                       vision_mode: e.target.value as 'auto' | 'manual',
                     })
                   }
-                  className="w-full px-3 py-2 text-base rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 sm:py-1.5 sm:text-xs"
+                  className="w-full px-3 py-2 text-base rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-tlu-blue sm:py-1.5 sm:text-xs"
                 >
                   <option value="auto">{t('llm.vision_auto')}</option>
                   <option value="manual">{t('llm.vision_manual')}</option>
@@ -3058,7 +3313,7 @@ export const LLMManagePage: React.FC = () => {
                   onChange={(e) =>
                     setModelForm({ ...modelForm, max_images: parseInt(e.target.value, 10) || 0 })
                   }
-                  className="w-full px-3 py-2 text-base rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 sm:py-1.5 sm:text-xs"
+                  className="w-full px-3 py-2 text-base rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-tlu-blue sm:py-1.5 sm:text-xs"
                 />
               </div>
             </div>
@@ -3084,7 +3339,7 @@ export const LLMManagePage: React.FC = () => {
                   }
                   className="sr-only peer"
                 />
-                <div className="relative shrink-0 w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-slate-600 peer-checked:bg-indigo-600"></div>
+                <div className="relative shrink-0 w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-slate-600 peer-checked:bg-tlu-blue"></div>
               </label>
             </div>
 
@@ -3101,7 +3356,7 @@ export const LLMManagePage: React.FC = () => {
                       effort_level: e.target.value as 'low' | 'medium' | 'high',
                     })
                   }
-                  className="w-full px-3 py-2 text-base rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 sm:py-1.5 sm:text-xs"
+                  className="w-full px-3 py-2 text-base rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-tlu-blue sm:py-1.5 sm:text-xs"
                 >
                   <option value="low">{t('llm.effort_low')}</option>
                   <option value="medium">{t('llm.effort_medium')}</option>
@@ -3122,7 +3377,7 @@ export const LLMManagePage: React.FC = () => {
                   onChange={(e) =>
                     setModelForm({ ...modelForm, thinking_budget: parseInt(e.target.value, 10) || 0 })
                   }
-                  className="w-full px-3 py-2 text-base rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 sm:py-1.5 sm:text-xs"
+                  className="w-full px-3 py-2 text-base rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-tlu-blue sm:py-1.5 sm:text-xs"
                 />
               </div>
             </div>
@@ -3142,7 +3397,7 @@ export const LLMManagePage: React.FC = () => {
                     context_length: parseInt(e.target.value, 10) || 32768,
                   })
                 }
-                className="w-full px-3 py-2.5 text-base rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 sm:py-2 sm:text-sm"
+                className="w-full px-3 py-2.5 text-base rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-tlu-blue sm:py-2 sm:text-sm"
               />
             </div>
 
@@ -3156,7 +3411,7 @@ export const LLMManagePage: React.FC = () => {
                 onChange={(e) =>
                   setModelForm({ ...modelForm, order_index: parseInt(e.target.value, 10) || 0 })
                 }
-                className="w-full px-3 py-2.5 text-base rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 sm:py-2 sm:text-sm"
+                className="w-full px-3 py-2.5 text-base rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-tlu-blue sm:py-2 sm:text-sm"
               />
             </div>
           </div>
@@ -3167,7 +3422,7 @@ export const LLMManagePage: React.FC = () => {
                 type="checkbox"
                 checked={modelForm.is_active}
                 onChange={(e) => setModelForm({ ...modelForm, is_active: e.target.checked })}
-                className="h-5 w-5 rounded text-indigo-600 focus:ring-indigo-500"
+                className="h-5 w-5 rounded text-tlu-blue focus:ring-tlu-blue"
               />
               <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">
                 {t('llm.is_active')}
@@ -3179,7 +3434,7 @@ export const LLMManagePage: React.FC = () => {
                 type="checkbox"
                 checked={modelForm.is_default}
                 onChange={(e) => setModelForm({ ...modelForm, is_default: e.target.checked })}
-                className="h-5 w-5 rounded text-indigo-600 focus:ring-indigo-500"
+                className="h-5 w-5 rounded text-tlu-blue focus:ring-tlu-blue"
               />
               <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">
                 {t('llm.is_default')}
@@ -3191,14 +3446,14 @@ export const LLMManagePage: React.FC = () => {
             <button
               type="button"
               onClick={() => setIsModelModalOpen(false)}
-              className="inline-flex min-h-[44px] w-full items-center justify-center rounded-lg px-4 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 sm:w-auto sm:py-2"
+              className="inline-flex min-h-11 w-full items-center justify-center rounded-lg px-4 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 sm:w-auto sm:py-2"
             >
               {t('common.cancel')}
             </button>
             <button
               type="submit"
               disabled={saveModelMutation.isPending}
-              className="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-indigo-600/20 transition hover:bg-indigo-700 cursor-pointer sm:w-auto sm:py-2"
+              className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-tlu-blue px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-blue-900/20 transition hover:bg-tlu-navy-light dark:hover:bg-blue-600 cursor-pointer sm:w-auto sm:py-2"
             >
               {saveModelMutation.isPending && <LoadingSpinner size="sm" />}
               <span>{t('common.save')}</span>
@@ -3239,7 +3494,7 @@ export const LLMManagePage: React.FC = () => {
                 onChange={(e) => setChainForm({ ...chainForm, id: e.target.value })}
                 required
                 placeholder={t('llm.chain_id_placeholder')}
-                className="w-full px-3 py-2.5 text-base rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 sm:py-2 sm:text-sm"
+                className="w-full px-3 py-2.5 text-base rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-tlu-blue sm:py-2 sm:text-sm"
               />
             </div>
 
@@ -3256,7 +3511,7 @@ export const LLMManagePage: React.FC = () => {
                     chain_type: e.target.value as CreateLLMChainDTO['chain_type'],
                   })
                 }
-                className="w-full px-3 py-2.5 text-base rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 sm:py-2 sm:text-sm"
+                className="w-full px-3 py-2.5 text-base rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-tlu-blue sm:py-2 sm:text-sm"
               >
                 <option value="chat">{t('llm.chain_type_chat')}</option>
                 <option value="rerank">{t('llm.chain_type_rerank')}</option>
@@ -3275,7 +3530,7 @@ export const LLMManagePage: React.FC = () => {
               onChange={(e) => setChainForm({ ...chainForm, name: e.target.value })}
               required
               placeholder={t('llm.chain_name_placeholder')}
-              className="w-full px-3 py-2.5 text-base rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 sm:py-2 sm:text-sm"
+              className="w-full px-3 py-2.5 text-base rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-tlu-blue sm:py-2 sm:text-sm"
             />
           </div>
 
@@ -3288,7 +3543,7 @@ export const LLMManagePage: React.FC = () => {
               value={chainForm.description || ''}
               onChange={(e) => setChainForm({ ...chainForm, description: e.target.value })}
               placeholder={t('llm.chain_desc_placeholder')}
-              className="w-full px-3 py-2.5 text-base rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 sm:py-2 sm:text-sm"
+              className="w-full px-3 py-2.5 text-base rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-tlu-blue sm:py-2 sm:text-sm"
             />
           </div>
 
@@ -3305,7 +3560,7 @@ export const LLMManagePage: React.FC = () => {
                 onChange={(e) =>
                   setChainForm({ ...chainForm, failure_threshold: parseInt(e.target.value, 10) || 3 })
                 }
-                className="w-full px-3 py-2 text-base rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 sm:py-1.5 sm:text-xs"
+                className="w-full px-3 py-2 text-base rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-tlu-blue sm:py-1.5 sm:text-xs"
               />
             </div>
 
@@ -3321,7 +3576,7 @@ export const LLMManagePage: React.FC = () => {
                 onChange={(e) =>
                   setChainForm({ ...chainForm, cooldown_seconds: parseInt(e.target.value, 10) || 300 })
                 }
-                className="w-full px-3 py-2 text-base rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 sm:py-1.5 sm:text-xs"
+                className="w-full px-3 py-2 text-base rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-tlu-blue sm:py-1.5 sm:text-xs"
               />
             </div>
 
@@ -3337,7 +3592,7 @@ export const LLMManagePage: React.FC = () => {
                 onChange={(e) =>
                   setChainForm({ ...chainForm, retry_count: parseInt(e.target.value, 10) || 3 })
                 }
-                className="w-full px-3 py-2 text-base rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 sm:py-1.5 sm:text-xs"
+                className="w-full px-3 py-2 text-base rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-tlu-blue sm:py-1.5 sm:text-xs"
               />
             </div>
           </div>
@@ -3348,7 +3603,7 @@ export const LLMManagePage: React.FC = () => {
                 type="checkbox"
                 checked={chainForm.is_active}
                 onChange={(e) => setChainForm({ ...chainForm, is_active: e.target.checked })}
-                className="h-5 w-5 rounded text-indigo-600 focus:ring-indigo-500"
+                className="h-5 w-5 rounded text-tlu-blue focus:ring-tlu-blue"
               />
               <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">
                 {t('llm.is_active')}
@@ -3360,14 +3615,14 @@ export const LLMManagePage: React.FC = () => {
             <button
               type="button"
               onClick={() => setIsChainModalOpen(false)}
-              className="inline-flex min-h-[44px] w-full items-center justify-center rounded-lg px-4 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-100 cursor-pointer dark:text-slate-300 dark:hover:bg-slate-800 sm:w-auto sm:py-2"
+              className="inline-flex min-h-11 w-full items-center justify-center rounded-lg px-4 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-100 cursor-pointer dark:text-slate-300 dark:hover:bg-slate-800 sm:w-auto sm:py-2"
             >
               {t('common.cancel')}
             </button>
             <button
               type="submit"
               disabled={saveChainMutation.isPending}
-              className="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-indigo-600/20 transition hover:bg-indigo-700 cursor-pointer sm:w-auto sm:py-2"
+              className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-tlu-blue px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-blue-900/20 transition hover:bg-tlu-navy-light dark:hover:bg-blue-600 cursor-pointer sm:w-auto sm:py-2"
             >
               {saveChainMutation.isPending && <LoadingSpinner size="sm" />}
               <span>{t('common.save')}</span>
@@ -3416,7 +3671,7 @@ export const LLMManagePage: React.FC = () => {
               value={nodeForm.model_id}
               onChange={(e) => setNodeForm({ ...nodeForm, model_id: e.target.value })}
               required
-              className="w-full px-3 py-2.5 text-base rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 sm:py-2 sm:text-sm"
+              className="w-full px-3 py-2.5 text-base rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-tlu-blue sm:py-2 sm:text-sm"
             >
               <option value="" disabled>{t('llm.select_model_placeholder')}</option>
               {models
@@ -3462,7 +3717,7 @@ export const LLMManagePage: React.FC = () => {
                   setNodeForm({ ...nodeForm, priority: parseInt(e.target.value, 10) || 1 })
                 }
                 required
-                className="w-full px-3 py-2.5 text-base rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 sm:py-2 sm:text-sm"
+                className="w-full px-3 py-2.5 text-base rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-tlu-blue sm:py-2 sm:text-sm"
               />
             </div>
 
@@ -3472,7 +3727,7 @@ export const LLMManagePage: React.FC = () => {
                   type="checkbox"
                   checked={nodeForm.is_active}
                   onChange={(e) => setNodeForm({ ...nodeForm, is_active: e.target.checked })}
-                  className="h-5 w-5 rounded text-indigo-600 focus:ring-indigo-500"
+                  className="h-5 w-5 rounded text-tlu-blue focus:ring-tlu-blue"
                 />
                 <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">
                   {t('llm.is_active')}
@@ -3485,14 +3740,14 @@ export const LLMManagePage: React.FC = () => {
             <button
               type="button"
               onClick={() => setIsNodeModalOpen(false)}
-              className="inline-flex min-h-[44px] w-full items-center justify-center rounded-lg px-4 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-100 cursor-pointer dark:text-slate-300 dark:hover:bg-slate-800 sm:w-auto sm:py-2"
+              className="inline-flex min-h-11 w-full items-center justify-center rounded-lg px-4 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-100 cursor-pointer dark:text-slate-300 dark:hover:bg-slate-800 sm:w-auto sm:py-2"
             >
               {t('common.cancel')}
             </button>
             <button
               type="submit"
               disabled={addNodeMutation.isPending || !nodeForm.model_id}
-              className="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-indigo-600/20 transition hover:bg-indigo-700 cursor-pointer sm:w-auto sm:py-2"
+              className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-tlu-blue px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-blue-900/20 transition hover:bg-tlu-navy-light dark:hover:bg-blue-600 cursor-pointer sm:w-auto sm:py-2"
             >
               {addNodeMutation.isPending && <LoadingSpinner size="sm" />}
               <span>{t('llm.add_node')}</span>
@@ -3536,7 +3791,7 @@ export const LLMManagePage: React.FC = () => {
                       <>
                         <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
                           <div
-                            className={`h-full rounded-full bg-indigo-600 transition-all duration-500 ${
+                            className={`h-full rounded-full bg-tlu-blue transition-all duration-500 ${
                               totalBytes > 0 ? '' : 'animate-pulse w-2/5'
                             }`}
                             style={totalBytes > 0 ? { width: `${percent}%` } : undefined}
@@ -3556,7 +3811,7 @@ export const LLMManagePage: React.FC = () => {
                       </>
                     )}
                     {job.state === 'error' && job.error && (
-                      <span className="block text-[11px] text-rose-600 dark:text-rose-400 break-words">
+                      <span className="block text-[11px] text-rose-600 dark:text-rose-400 wrap-break-word">
                         {job.error}
                       </span>
                     )}
@@ -3586,7 +3841,7 @@ export const LLMManagePage: React.FC = () => {
                 >
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-semibold text-sm text-slate-900 dark:text-slate-100 break-words">
+                      <span className="font-semibold text-sm text-slate-900 dark:text-slate-100 wrap-break-word">
                         {preset.display_name}
                       </span>
                       <Badge variant="secondary" size="sm">
@@ -3610,7 +3865,7 @@ export const LLMManagePage: React.FC = () => {
                       type="button"
                       onClick={() => startDownloadMutation.mutate(preset.preset_id)}
                       disabled={isRunning || startDownloadMutation.isPending}
-                      className="inline-flex min-h-[44px] w-full sm:w-auto shrink-0 items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-md shadow-indigo-600/20 transition cursor-pointer disabled:opacity-50 sm:min-h-0 sm:py-2"
+                      className="inline-flex min-h-11 w-full sm:w-auto shrink-0 items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg bg-tlu-navy hover:bg-tlu-navy-light dark:bg-tlu-blue dark:hover:bg-blue-600 text-white text-xs font-semibold shadow-md shadow-blue-900/20 transition cursor-pointer disabled:opacity-50 sm:min-h-0 sm:py-2"
                     >
                       <Download className="w-3.5 h-3.5" />
                       <span>{isRunning ? t('embedding.status_running') : t('embedding.download_action')}</span>
@@ -3639,7 +3894,7 @@ export const LLMManagePage: React.FC = () => {
             <button
               type="button"
               onClick={() => setDeleteTarget(null)}
-              className="inline-flex min-h-[44px] w-full items-center justify-center rounded-lg px-4 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-100 cursor-pointer dark:text-slate-300 dark:hover:bg-slate-800 sm:w-auto sm:py-2"
+              className="inline-flex min-h-11 w-full items-center justify-center rounded-lg px-4 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-100 cursor-pointer dark:text-slate-300 dark:hover:bg-slate-800 sm:w-auto sm:py-2"
             >
               {t('common.cancel')}
             </button>
@@ -3647,7 +3902,7 @@ export const LLMManagePage: React.FC = () => {
               type="button"
               onClick={() => deleteOnnxModelMutation.mutate(deleteTarget?.model_id || '')}
               disabled={deleteOnnxModelMutation.isPending || !deleteTarget}
-              className="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-lg bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-rose-600/20 transition hover:bg-rose-700 disabled:opacity-50 cursor-pointer sm:w-auto sm:py-2"
+              className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-rose-600/20 transition hover:bg-rose-700 disabled:opacity-50 cursor-pointer sm:w-auto sm:py-2"
             >
               {deleteOnnxModelMutation.isPending && <LoadingSpinner size="sm" />}
               <span>{t('common.delete')}</span>
@@ -3655,6 +3910,16 @@ export const LLMManagePage: React.FC = () => {
           </div>
         </div>
       </Modal>
+
+      <ConfirmModal
+        isOpen={confirmDialog.isOpen}
+        onClose={() => setConfirmDialog((prev) => ({ ...prev, isOpen: false }))}
+        onConfirm={confirmDialog.onConfirm}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        variant="danger"
+        isLoading={confirmDialog.isLoading}
+      />
     </div>
   );
 };

@@ -17,6 +17,7 @@ import (
 	"tluagent-web/internal/repositories"
 	"tluagent-web/pkg/apperrors"
 	"tluagent-web/pkg/embedding"
+	"tluagent-web/pkg/guardrail"
 	"tluagent-web/pkg/jsonx"
 	"tluagent-web/pkg/llm"
 )
@@ -44,7 +45,6 @@ type EmbeddingService interface {
 	ValidateModel(ctx context.Context, modelID string) (response.EmbeddingValidationResponse, error)
 	ActivateModel(ctx context.Context, modelID string) (response.EmbeddingSettingsResponse, error)
 	DeleteModel(ctx context.Context, modelID string) error
-	SetLLMManager(manager *llm.Manager)
 	SyncActiveEmbedder(ctx context.Context) error
 }
 
@@ -84,17 +84,14 @@ type embeddingService struct {
 }
 
 // NewEmbeddingService creates an embedding service rooted at the ONNX data directory.
-func NewEmbeddingService(settings repositories.SettingsRepository, rootDir string) EmbeddingService {
+func NewEmbeddingService(settings repositories.SettingsRepository, rootDir string, llmManager *llm.Manager) EmbeddingService {
 	return &embeddingService{
 		settings:   settings,
 		downloader: embedding.NewDownloader(rootDir),
 		rootDir:    rootDir,
 		modelLocks: newModelLockManager(),
+		llmManager: llmManager,
 	}
-}
-
-func (s *embeddingService) SetLLMManager(manager *llm.Manager) {
-	s.llmManager = manager
 }
 
 func (s *embeddingService) SyncActiveEmbedder(ctx context.Context) error {
@@ -131,6 +128,7 @@ func (s *embeddingService) SyncActiveEmbedder(ctx context.Context) error {
 		return fmt.Errorf("create onnx embedder: %w", err)
 	}
 	s.llmManager.SetEmbedder(embedder)
+	guardrail.SetGlobalClassifier(guardrail.NewBGEM3Classifier(embedder))
 	return nil
 }
 
@@ -369,12 +367,12 @@ func (s *embeddingService) getProviderSetting(ctx context.Context) string {
 func (s *embeddingService) getModelIDSetting(ctx context.Context) *string {
 	raw, err := s.settings.GetAppSetting(ctx, SettingKeyEmbeddingOnnxModelID)
 	if err != nil || raw == "" {
-		defaultID := "paraphrase-multilingual-minilm-l12-v2"
+		defaultID := "bge-m3"
 		return &defaultID
 	}
 	var modelID string
 	if err := jsonx.UnmarshalString(raw, &modelID); err != nil || modelID == "" {
-		defaultID := "paraphrase-multilingual-minilm-l12-v2"
+		defaultID := "bge-m3"
 		return &defaultID
 	}
 	return &modelID

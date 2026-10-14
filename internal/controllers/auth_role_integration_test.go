@@ -46,7 +46,7 @@ func setupTestServer(t *testing.T) (*http.ServeMux, *sql.DB) {
 
 	roleSvc := services.NewRoleService(roleRepo, permCache, txManager)
 	authSvc := services.NewAuthService(userRepo, roleRepo, settingsRepo, txManager)
-	userSvc := services.NewUserService(userRepo, roleRepo, settingsRepo, txManager)
+	userSvc := services.NewUserService(userRepo, roleRepo, settingsRepo, txManager, permCache)
 
 	authCtrl := controllers.NewAuthController(authSvc)
 	roleCtrl := controllers.NewRoleController(roleSvc)

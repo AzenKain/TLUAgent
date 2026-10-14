@@ -2,11 +2,8 @@ package controllers
 
 import (
 	"net/http"
-	"time"
-
 	"tluagent-web/internal/dtos/request"
 	"tluagent-web/internal/dtos/response"
-	"tluagent-web/internal/models"
 	"tluagent-web/internal/services"
 	"tluagent-web/pkg/apperrors"
 	"tluagent-web/pkg/validator"
@@ -47,9 +44,9 @@ func (c *MemoryController) GetUserProfile(w http.ResponseWriter, r *http.Request
 
 	writeJSONResponse(w, http.StatusOK, response.CommonResponse{
 		Status: true,
-		Data: map[string]any{
-			"profile":  profile,
-			"memories": memories,
+		Data: &response.StudentProfileBundleResponse{
+			Profile:  profile,
+			Memories: memories,
 		},
 	})
 }
@@ -74,19 +71,7 @@ func (c *MemoryController) UpdateUserProfile(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	profile := &models.StudentProfile{
-		UserID:           userID,
-		Major:            dto.Major,
-		Cohort:           dto.Cohort,
-		AcademicStanding: dto.AcademicStanding,
-		CompletedCredits: dto.CompletedCredits,
-		CumulativeGPA:    dto.CumulativeGPA,
-		TargetGPA:        dto.TargetGPA,
-		AdvisorNotes:     dto.AdvisorNotes,
-		UpdatedAt:        time.Now().UTC(),
-	}
-
-	updated, err := c.svc.UpsertStudentProfile(ctx, profile)
+	updated, err := c.svc.UpdateStudentProfileFromDto(ctx, userID, &dto)
 	if err != nil {
 		apperrors.HandleError(w, err)
 		return
@@ -142,19 +127,7 @@ func (c *MemoryController) CreateUserMemory(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	item := &models.UserMemoryItem{
-		UserID:      userID,
-		Category:    dto.Category,
-		MemoryKey:   dto.MemoryKey,
-		MemoryValue: dto.MemoryValue,
-		Confidence:  dto.Confidence,
-		Source:      dto.Source,
-	}
-	if item.Source == "" {
-		item.Source = "USER_DECLARED"
-	}
-
-	saved, err := c.svc.SaveUserMemory(ctx, item)
+	saved, err := c.svc.CreateUserMemoryFromDto(ctx, userID, &dto)
 	if err != nil {
 		apperrors.HandleError(w, err)
 		return
@@ -242,9 +215,9 @@ func (c *MemoryController) GetAdminStudentProfile(w http.ResponseWriter, r *http
 
 	writeJSONResponse(w, http.StatusOK, response.CommonResponse{
 		Status: true,
-		Data: map[string]any{
-			"profile":  profile,
-			"memories": memories,
+		Data: &response.StudentProfileBundleResponse{
+			Profile:  profile,
+			Memories: memories,
 		},
 	})
 }

@@ -4,7 +4,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import {
   Search,
-  RefreshCw,
   Eye,
   CheckCircle2,
   AlertTriangle,
@@ -12,11 +11,14 @@ import {
   Send,
   ShieldAlert,
   Bot,
+  HelpCircle,
 } from 'lucide-react';
 import { inquiryService, type InquiryDTO } from '@/services/inquiryService';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { Badge } from '@/components/common/Badge';
 import { Modal } from '@/components/common/Modal';
+import { PageHeader } from '@/components/common/PageHeader';
+import { RefreshButton } from '@/components/common/RefreshButton';
 
 export const InquiryManagePage: React.FC = () => {
   const { t } = useTranslation();
@@ -116,7 +118,7 @@ export const InquiryManagePage: React.FC = () => {
     Boolean(selectedInquiry?.context?.toLowerCase().includes('superseded'));
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-7xl mx-auto pb-10">
       {toastMessage && (
         <div
           className={`fixed bottom-6 right-6 z-50 rounded-xl px-5 py-3 shadow-xl backdrop-blur-md transition-all ${
@@ -129,30 +131,28 @@ export const InquiryManagePage: React.FC = () => {
         </div>
       )}
 
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-100">{t('inquiries.title')}</h1>
-          <p className="mt-1 text-sm text-slate-400">{t('inquiries.sub')}</p>
-        </div>
-        <button
-          onClick={() => refetch()}
-          className="flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-800/80 px-4 py-2.5 text-sm font-medium text-slate-300 transition-colors hover:bg-slate-700/80 hover:text-white"
-        >
-          <RefreshCw className="h-4 w-4" />
-          <span>{t('common.loading')}</span>
-        </button>
-      </div>
+      <PageHeader
+        icon={<HelpCircle className="h-6 w-6" />}
+        title={t('inquiries.title')}
+        subtitle={t('inquiries.sub')}
+        actions={
+          <RefreshButton
+            onClick={() => void refetch()}
+            isLoading={isLoading}
+          />
+        }
+      />
 
-      <div className="flex border-b border-slate-800">
+      <div className="flex border-b border-slate-200 dark:border-blue-900/40">
         <button
           onClick={() => {
             setActiveTab('PENDING');
             setPage(1);
           }}
-          className={`flex items-center gap-2 border-b-2 px-5 py-3 text-sm font-medium transition-colors ${
+          className={`flex items-center gap-2 border-b-2 px-5 py-3 text-sm font-semibold transition-colors ${
             activeTab === 'PENDING'
-              ? 'border-indigo-500 text-indigo-400'
-              : 'border-transparent text-slate-400 hover:text-slate-200'
+              ? 'border-tlu-navy text-tlu-navy dark:border-tlu-blue dark:text-blue-400'
+              : 'border-transparent text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200'
           }`}
         >
           <Clock className="h-4 w-4" />
@@ -163,10 +163,10 @@ export const InquiryManagePage: React.FC = () => {
             setActiveTab('ANSWERED');
             setPage(1);
           }}
-          className={`flex items-center gap-2 border-b-2 px-5 py-3 text-sm font-medium transition-colors ${
+          className={`flex items-center gap-2 border-b-2 px-5 py-3 text-sm font-semibold transition-colors ${
             activeTab === 'ANSWERED'
-              ? 'border-indigo-500 text-indigo-400'
-              : 'border-transparent text-slate-400 hover:text-slate-200'
+              ? 'border-tlu-navy text-tlu-navy dark:border-tlu-blue dark:text-blue-400'
+              : 'border-transparent text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200'
           }`}
         >
           <CheckCircle2 className="h-4 w-4" />
@@ -177,10 +177,10 @@ export const InquiryManagePage: React.FC = () => {
             setActiveTab('EXPIRED');
             setPage(1);
           }}
-          className={`flex items-center gap-2 border-b-2 px-5 py-3 text-sm font-medium transition-colors ${
+          className={`flex items-center gap-2 border-b-2 px-5 py-3 text-sm font-semibold transition-colors ${
             activeTab === 'EXPIRED'
-              ? 'border-indigo-500 text-indigo-400'
-              : 'border-transparent text-slate-400 hover:text-slate-200'
+              ? 'border-tlu-navy text-tlu-navy dark:border-tlu-blue dark:text-blue-400'
+              : 'border-transparent text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200'
           }`}
         >
           <AlertTriangle className="h-4 w-4" />
@@ -190,7 +190,7 @@ export const InquiryManagePage: React.FC = () => {
 
       <div className="flex items-center gap-3">
         <div className="relative flex-1">
-          <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+          <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
             value={search}
@@ -199,12 +199,12 @@ export const InquiryManagePage: React.FC = () => {
               setPage(1);
             }}
             placeholder={t('inquiries.filter_search_placeholder')}
-            className="w-full rounded-xl border border-slate-700 bg-slate-800/80 pl-10 pr-4 py-2 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            className="w-full rounded-xl border border-slate-200 dark:border-blue-900/40 bg-white dark:bg-[#111A35] pl-10 pr-4 py-2 text-sm text-slate-900 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-tlu-blue focus:border-tlu-blue"
           />
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/60 shadow-xl backdrop-blur-sm">
+      <div className="overflow-hidden rounded-2xl border border-slate-200 dark:border-blue-900/30 bg-white dark:bg-[#111A35] shadow-sm">
         {isLoading ? (
           <div className="flex h-64 items-center justify-center">
             <LoadingSpinner size="lg" />
@@ -222,8 +222,8 @@ export const InquiryManagePage: React.FC = () => {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm text-slate-300">
-              <thead className="border-b border-slate-800 bg-slate-800/40 text-xs uppercase text-slate-400">
+            <table className="w-full text-left text-sm text-slate-700 dark:text-slate-300">
+              <thead className="border-b border-slate-200 dark:border-blue-900/40 bg-slate-50 dark:bg-slate-900/50 text-xs uppercase text-slate-500 dark:text-slate-400">
                 <tr>
                   <th className="px-6 py-4">{t('inquiries.student_name')}</th>
                   <th className="px-6 py-4">{t('inquiries.question')}</th>
@@ -232,24 +232,24 @@ export const InquiryManagePage: React.FC = () => {
                   <th className="px-6 py-4 text-right">{t('common.actions')}</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/60">
+              <tbody className="divide-y divide-slate-200 dark:divide-blue-900/30">
                 {inquiryData.items.map((inq) => {
                   const isAgent = inq.student_code === 'AI_AGENT';
                   return (
-                    <tr key={inq.id} className="transition-colors hover:bg-slate-800/30">
+                    <tr key={inq.id} className="transition-colors hover:bg-slate-50 dark:hover:bg-blue-950/20">
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-2">
                           {isAgent ? (
-                            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-950 border border-indigo-700/60 text-indigo-400">
+                            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 text-tlu-navy dark:text-blue-400">
                               <Bot className="h-4 w-4" />
                             </div>
                           ) : (
-                            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-800 border border-slate-700 text-xs font-semibold text-slate-300">
+                            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-300">
                               {inq.student_name.charAt(0)}
                             </div>
                           )}
                           <div>
-                            <div className="font-medium text-slate-200">{inq.student_name}</div>
+                            <div className="font-medium text-slate-900 dark:text-slate-200">{inq.student_name}</div>
                             <div className="text-xs text-slate-500 font-mono">
                               {inq.student_code}
                               {inq.student_class ? ` • ${inq.student_class}` : ''}
@@ -258,19 +258,19 @@ export const InquiryManagePage: React.FC = () => {
                         </div>
                       </td>
                       <td className="px-6 py-4">
-                        <p className="max-w-md truncate text-slate-300">{inq.question}</p>
+                        <p className="max-w-md truncate text-slate-700 dark:text-slate-300">{inq.question}</p>
                       </td>
                       <td className="px-6 py-4">{getStatusBadge(inq.status)}</td>
-                      <td className="px-6 py-4 text-xs text-slate-400">
+                      <td className="px-6 py-4 text-xs text-slate-500 dark:text-slate-400">
                         {new Date(inq.created_at).toLocaleString()}
                       </td>
                       <td className="px-6 py-4 text-right">
                         <button
                           onClick={() => handleOpenReview(inq)}
-                          className="inline-flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-1.5 text-xs font-medium text-slate-300 transition-colors hover:bg-slate-700 hover:text-white"
+                          className="inline-flex items-center gap-1 rounded-lg border border-slate-200 dark:border-blue-900/40 bg-white dark:bg-[#111A35] px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-300 transition-colors hover:bg-blue-50 dark:hover:bg-blue-900/30 hover:text-tlu-navy dark:hover:text-blue-400"
                         >
                           <Eye className="h-3.5 w-3.5" />
-                          <span>{t('common.edit')}</span>
+                          <span>{t('common.view')}</span>
                         </button>
                       </td>
                     </tr>
@@ -311,7 +311,7 @@ export const InquiryManagePage: React.FC = () => {
               </label>
               <div className="mt-1 flex items-center gap-2">
                 <span className="font-medium text-slate-200">{selectedInquiry.student_name}</span>
-                <span className="font-mono text-xs text-indigo-400">({selectedInquiry.student_code})</span>
+                <span className="font-mono text-xs text-tlu-blue dark:text-blue-400 font-semibold">({selectedInquiry.student_code})</span>
                 {selectedInquiry.student_class && (
                   <span className="font-mono text-xs text-slate-400">• {selectedInquiry.student_class}</span>
                 )}
@@ -322,7 +322,7 @@ export const InquiryManagePage: React.FC = () => {
               <label className="text-xs font-semibold uppercase text-slate-400">
                 {t('inquiries.question')}
               </label>
-              <div className="mt-1 rounded-xl bg-slate-950 p-3.5 text-sm text-slate-200 border border-slate-800">
+              <div className="mt-1 rounded-xl bg-slate-50 dark:bg-slate-900/90 p-3.5 text-sm text-slate-900 dark:text-slate-200 border border-slate-200 dark:border-blue-900/30">
                 {selectedInquiry.question}
               </div>
             </div>
@@ -332,14 +332,14 @@ export const InquiryManagePage: React.FC = () => {
                 <label className="text-xs font-semibold uppercase text-slate-400">
                   {t('inquiries.context')}
                 </label>
-                <div className="mt-1 rounded-xl bg-slate-950 p-3.5 text-xs text-slate-300 border border-slate-800">
+                <div className="mt-1 rounded-xl bg-slate-50 dark:bg-slate-900/90 p-3.5 text-xs text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-blue-900/30">
                   {selectedInquiry.context}
                 </div>
               </div>
             )}
 
             {selectedInquiry.status === 'PENDING' && (
-              <div className="space-y-4 pt-2 border-t border-slate-800">
+              <div className="space-y-4 pt-2 border-t border-slate-200 dark:border-blue-900/30">
                 {isAISupersession ? (
                   <div>
                     <label className="text-xs font-semibold uppercase text-slate-400">
@@ -349,12 +349,12 @@ export const InquiryManagePage: React.FC = () => {
                       rows={3}
                       value={supersedeReason}
                       onChange={(e) => setSupersedeReason(e.target.value)}
-                      className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      className="mt-1 w-full rounded-xl border border-slate-200 dark:border-blue-900/40 bg-white dark:bg-[#111A35] p-3 text-sm text-slate-900 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-tlu-blue focus:border-tlu-blue"
                     />
                     <div className="mt-4 flex justify-end gap-3">
                       <button
                         onClick={() => setReviewModalOpen(false)}
-                        className="rounded-xl border border-slate-700 px-4 py-2 text-sm font-medium text-slate-300 hover:bg-slate-800"
+                        className="rounded-xl border border-slate-200 dark:border-slate-700 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
                       >
                         {t('common.cancel')}
                       </button>
@@ -383,12 +383,12 @@ export const InquiryManagePage: React.FC = () => {
                       value={answerText}
                       onChange={(e) => setAnswerText(e.target.value)}
                       placeholder={t('inquiries.answer_placeholder')}
-                      className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      className="mt-1 w-full rounded-xl border border-slate-200 dark:border-blue-900/40 bg-white dark:bg-[#111A35] p-3 text-sm text-slate-900 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-tlu-blue focus:border-tlu-blue"
                     />
                     <div className="mt-4 flex justify-end gap-3">
                       <button
                         onClick={() => setReviewModalOpen(false)}
-                        className="rounded-xl border border-slate-700 px-4 py-2 text-sm font-medium text-slate-300 hover:bg-slate-800"
+                        className="rounded-xl border border-slate-200 dark:border-slate-700 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
                       >
                         {t('common.cancel')}
                       </button>
@@ -399,7 +399,7 @@ export const InquiryManagePage: React.FC = () => {
                             reply: answerText,
                           })
                         }
-                        className="flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-lg shadow-indigo-600/20 hover:bg-indigo-500"
+                        className="flex items-center gap-2 rounded-xl bg-tlu-navy hover:bg-tlu-navy-light dark:bg-tlu-blue dark:hover:bg-blue-600 text-white shadow-md shadow-blue-900/20 px-4 py-2 text-sm font-semibold transition"
                       >
                         <Send className="h-4 w-4" />
                         <span>{t('inquiries.answer_btn')}</span>

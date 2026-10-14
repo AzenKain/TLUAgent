@@ -46,7 +46,9 @@ JOIN permissions p ON p.key IN (
     'regulation.read',
     'curriculum.read',
     'chat.ask',
-    'chat.persist'
+    'chat.persist',
+    'inquiry.create',
+    'inquiry.read'
 )
 WHERE r.name = 'STUDENT'
 ON CONFLICT(role_id, permission_key) DO NOTHING;
@@ -62,7 +64,10 @@ JOIN permissions p ON p.key IN (
     'curriculum.manage',
     'chat.ask',
     'chat.persist',
-    'audit.read'
+    'audit.read',
+    'inquiry.answer',
+    'inquiry.read',
+    'inquiry.manage'
 )
 WHERE r.name = 'ADVISOR'
 ON CONFLICT(role_id, permission_key) DO NOTHING;

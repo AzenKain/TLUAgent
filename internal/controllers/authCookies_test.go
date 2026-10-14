@@ -35,8 +35,10 @@ func TestAuthCookies_SecureFlagFollowsEnvironment(t *testing.T) {
 		defer db.Close()
 		t.Setenv("APP_ENV", "production")
 		t.Setenv("COOKIE_SECURE", "")
+		t.Setenv("SETUP_TOKEN", "prod-test-setup-token")
 
 		req := httptest.NewRequest(http.MethodPost, "/api/setup", bytes.NewReader(setupBody))
+		req.Header.Set("X-Setup-Token", "prod-test-setup-token")
 		rec := httptest.NewRecorder()
 		mux.ServeHTTP(rec, req)
 

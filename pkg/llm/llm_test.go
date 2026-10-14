@@ -462,10 +462,50 @@ func TestOpenAIProvider_StreamingToolCallingAssembly(t *testing.T) {
 func TestLive_EnvAPIs(t *testing.T) {
 	_ = config.LoadEnv()
 
-	manager, err := NewManagerFromEnv()
-	if err != nil {
-		t.Skipf("Skipping live test: %v", err)
+	token := os.Getenv("TOKEN")
+	if token == "" {
+		token = os.Getenv("OPENAI_API_KEY")
+	}
+	apiURL := os.Getenv("API")
+	if apiURL == "" {
+		apiURL = os.Getenv("OPENAI_BASE_URL")
+	}
+	model := os.Getenv("MODEL")
+	if model == "" {
+		model = os.Getenv("OPENAI_MODEL")
+	}
+	geminiKey := os.Getenv("GOOGLE_AI_API_KEY")
+	if geminiKey == "" {
+		geminiKey = os.Getenv("GEMINI_API_KEY")
+	}
+	geminiModel := os.Getenv("GEMINI_MODEL")
+
+	if token == "" && geminiKey == "" {
+		t.Skip("Skipping live test: neither OpenAI nor Gemini API key configured")
 		return
+	}
+
+	manager := NewManager()
+	if token != "" || apiURL != "" {
+		if apiURL == "" {
+			apiURL = DefaultOpenAIBaseURL
+		}
+		p := NewOpenAIProvider(OpenAIConfig{
+			BaseURL:      apiURL,
+			APIKey:       token,
+			DefaultModel: model,
+		})
+		manager.Register("openai", p)
+		if strings.Contains(apiURL, "vilao") {
+			manager.Register("vilao", p)
+		}
+	}
+	if geminiKey != "" {
+		p := NewGeminiProvider(GeminiConfig{
+			APIKey:       geminiKey,
+			DefaultModel: geminiModel,
+		})
+		manager.Register("gemini", p)
 	}
 
 	if p, err := manager.Get("vilao"); err == nil || func() bool { p, err = manager.Get("openai"); return err == nil }() {
@@ -681,7 +721,7 @@ func TestOpenRouterReranker_Mock(t *testing.T) {
 }
 
 func TestVisionCapabilityDetection(t *testing.T) {
-	reg := NewCapabilityRegistry("")
+	reg := NewCapabilityRegistry()
 	reg.RegisterCapability("inclusionai/ling-3.1-flash", ModelCapability{SupportsVision: false, MaxImages: 0})
 	reg.RegisterCapability("google/gemini-2.5-flash", ModelCapability{SupportsVision: true, MaxImages: 5})
 
@@ -702,7 +742,7 @@ func TestVisionCapabilityDetection(t *testing.T) {
 }
 
 func TestAdaptiveVisionRequest(t *testing.T) {
-	reg := NewCapabilityRegistry("")
+	reg := NewCapabilityRegistry()
 	ctx := context.Background()
 
 	msgWithImage := UserMessageWithImageURL("Look at this image", "https://example.com/test.png")
@@ -760,7 +800,7 @@ func TestLive_OpenRouter_LingFlash_TextOnly(t *testing.T) {
 	}
 
 	provider := NewOpenAIProvider(OpenAIConfig{
-		BaseURL:      "https://openrouter.ai/api/v1",
+		BaseURL:      DefaultOpenRouterBaseURL,
 		APIKey:       openRouterKey,
 		DefaultModel: "inclusionai/ling-3.1-flash",
 	})
@@ -794,7 +834,7 @@ func TestLive_OpenRouter_Embedding_Qwen(t *testing.T) {
 		t.Skip("No OPEN_ROUTER_API configured")
 	}
 
-	embedder := NewOpenAIEmbedder("https://openrouter.ai/api/v1", openRouterKey, "qwen/qwen3-embedding-8b")
+	embedder := NewOpenAIEmbedder(DefaultOpenRouterBaseURL, openRouterKey, "qwen/qwen3-embedding-8b")
 	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
 	defer cancel()
 
@@ -831,7 +871,7 @@ func TestLive_OpenRouter_Rerank_Cohere(t *testing.T) {
 		t.Skip("No OPEN_ROUTER_API configured")
 	}
 
-	reranker := NewOpenRouterReranker("https://openrouter.ai/api/v1", openRouterKey, "cohere/rerank-4-pro")
+	reranker := NewOpenRouterReranker(DefaultOpenRouterBaseURL, openRouterKey, "cohere/rerank-4-pro")
 	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
 	defer cancel()
 

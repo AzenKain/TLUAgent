@@ -65,3 +65,16 @@ WHERE user_id = ?;
 -- name: ClearAllUserMemories :execrows
 DELETE FROM user_memories
 WHERE user_id = ?;
+
+-- name: ListStudentProfilesByStanding :many
+SELECT sp.user_id, sp.major, sp.cohort, sp.academic_standing, sp.completed_credits,
+       sp.cumulative_gpa, sp.target_gpa, sp.advisor_notes, sp.updated_at,
+       u.full_name, u.student_code, u.email
+FROM student_academic_profiles sp
+JOIN users u ON u.id = sp.user_id
+WHERE (sqlc.arg('cohort') = '' OR sp.cohort = sqlc.arg('cohort'))
+  AND (sqlc.arg('major') = '' OR sp.major = sqlc.arg('major'))
+  AND (sqlc.arg('academic_standing') = '' OR sp.academic_standing = sqlc.arg('academic_standing'))
+ORDER BY sp.cumulative_gpa ASC
+LIMIT sqlc.arg('limit_val');
+

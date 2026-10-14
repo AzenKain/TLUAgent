@@ -18,9 +18,9 @@ import (
 var ErrCacheMiss = errors.New("cache miss")
 
 const (
-	defaultMaxCost     int64 = 64 << 20
-	minAutoMaxCost     int64 = 64 << 20
-	autoMaxCostDivisor int64 = 16
+	defaultMaxCost     int64 = 1024 << 20
+	minAutoMaxCost     int64 = 512 << 20
+	autoMaxCostDivisor int64 = 4
 	objectCacheCost    int64 = 2048
 )
 

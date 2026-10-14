@@ -3,6 +3,8 @@
 *.secret
 .jwt_secret*
 .jwt_refresh_secret*
+.llm_secret*
+.setup_token*
 
 # Data & database
 data/

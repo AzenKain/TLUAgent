@@ -7,6 +7,7 @@ package sqlc
 
 import (
 	"context"
+	"database/sql"
 	"strings"
 	"time"
 )
@@ -159,6 +160,82 @@ func (q *Queries) GetUserMemoryByID(ctx context.Context, id string) (UserMemory,
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const listStudentProfilesByStanding = `-- name: ListStudentProfilesByStanding :many
+SELECT sp.user_id, sp.major, sp.cohort, sp.academic_standing, sp.completed_credits,
+       sp.cumulative_gpa, sp.target_gpa, sp.advisor_notes, sp.updated_at,
+       u.full_name, u.student_code, u.email
+FROM student_academic_profiles sp
+JOIN users u ON u.id = sp.user_id
+WHERE (?1 = '' OR sp.cohort = ?1)
+  AND (?2 = '' OR sp.major = ?2)
+  AND (?3 = '' OR sp.academic_standing = ?3)
+ORDER BY sp.cumulative_gpa ASC
+LIMIT ?4
+`
+
+type ListStudentProfilesByStandingParams struct {
+	Cohort           interface{} `json:"cohort"`
+	Major            interface{} `json:"major"`
+	AcademicStanding interface{} `json:"academic_standing"`
+	LimitVal         int64       `json:"limit_val"`
+}
+
+type ListStudentProfilesByStandingRow struct {
+	UserID           string         `json:"user_id"`
+	Major            string         `json:"major"`
+	Cohort           string         `json:"cohort"`
+	AcademicStanding string         `json:"academic_standing"`
+	CompletedCredits int64          `json:"completed_credits"`
+	CumulativeGpa    float64        `json:"cumulative_gpa"`
+	TargetGpa        float64        `json:"target_gpa"`
+	AdvisorNotes     string         `json:"advisor_notes"`
+	UpdatedAt        time.Time      `json:"updated_at"`
+	FullName         sql.NullString `json:"full_name"`
+	StudentCode      sql.NullString `json:"student_code"`
+	Email            string         `json:"email"`
+}
+
+func (q *Queries) ListStudentProfilesByStanding(ctx context.Context, arg ListStudentProfilesByStandingParams) ([]ListStudentProfilesByStandingRow, error) {
+	rows, err := q.query(ctx, q.listStudentProfilesByStandingStmt, listStudentProfilesByStanding,
+		arg.Cohort,
+		arg.Major,
+		arg.AcademicStanding,
+		arg.LimitVal,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListStudentProfilesByStandingRow{}
+	for rows.Next() {
+		var i ListStudentProfilesByStandingRow
+		if err := rows.Scan(
+			&i.UserID,
+			&i.Major,
+			&i.Cohort,
+			&i.AcademicStanding,
+			&i.CompletedCredits,
+			&i.CumulativeGpa,
+			&i.TargetGpa,
+			&i.AdvisorNotes,
+			&i.UpdatedAt,
+			&i.FullName,
+			&i.StudentCode,
+			&i.Email,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listUserMemoriesByUserID = `-- name: ListUserMemoriesByUserID :many

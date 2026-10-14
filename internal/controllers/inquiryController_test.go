@@ -21,6 +21,7 @@ import (
 	"tluagent-web/internal/repositories"
 	"tluagent-web/internal/services"
 	"tluagent-web/pkg/cache"
+	"tluagent-web/pkg/constants"
 	"tluagent-web/pkg/database"
 )
 
@@ -60,7 +61,7 @@ func setupInquiryTest(t *testing.T) (*controllers.InquiryController, *controller
 	})
 	require.NoError(t, err)
 
-	inquirySvc := services.NewInquiryService(inquiryRepo, ragRepo, userRepo, notificationRepo)
+	inquirySvc := services.NewInquiryService(inquiryRepo, ragRepo, userRepo, notificationRepo, nil)
 	notifSvc := services.NewNotificationService(notificationRepo)
 
 	inquiryCtrl := controllers.NewInquiryController(inquirySvc)
@@ -81,8 +82,16 @@ func setupInquiryTest(t *testing.T) (*controllers.InquiryController, *controller
 	return inquiryCtrl, notifCtrl, mux, studentID, teacherID
 }
 
-func withUserContext(r *http.Request, userID string) *http.Request {
+func withUserContext(r *http.Request, userID string, roles ...constants.RoleType) *http.Request {
+	if len(roles) == 0 {
+		roles = []constants.RoleType{constants.RoleTypeStudent}
+	}
+	claims := &response.JWTClaims{
+		UId:   userID,
+		Roles: roles,
+	}
 	ctx := context.WithValue(r.Context(), middlewares.UserIDContextKey, userID)
+	ctx = context.WithValue(ctx, middlewares.UserClaimsContextKey, claims)
 	return r.WithContext(ctx)
 }
 
@@ -91,7 +100,7 @@ func TestInquiryController_EndToEnd(t *testing.T) {
 
 	createBody, _ := json.Marshal(request.CreateInquiryRequest{
 		StudentName:  "Test Student",
-		StudentCode:  "A35999",
+		StudentCode:  "A36777",
 		StudentClass: "CNTT01",
 		Question:     "Cac buoc dang ky bao luu hoc tap duoc quy dinh nhu the nao?",
 		Context:      "Sinh vien can nghi 1 ky vi ly do suc khoe",
@@ -124,7 +133,7 @@ func TestInquiryController_EndToEnd(t *testing.T) {
 	})
 	req = httptest.NewRequest(http.MethodPost, "/api/advisor/inquiries/"+inquiryID+"/answer", bytes.NewReader(answerBody))
 	req.Header.Set("Content-Type", "application/json")
-	req = withUserContext(req, teacherID)
+	req = withUserContext(req, teacherID, constants.RoleTypeAdvisor)
 	rec = httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 	require.Equal(t, http.StatusOK, rec.Code)
@@ -149,12 +158,19 @@ func TestInquiryController_EndToEnd(t *testing.T) {
 	})
 	req = httptest.NewRequest(http.MethodPost, "/api/advisor/inquiries/"+inquiryID+"/expire", bytes.NewReader(expireBody))
 	req.Header.Set("Content-Type", "application/json")
-	req = withUserContext(req, teacherID)
+	req = withUserContext(req, teacherID, constants.RoleTypeAdvisor)
 	rec = httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 	require.Equal(t, http.StatusOK, rec.Code)
 
+	otherStudentReq := httptest.NewRequest(http.MethodGet, "/api/inquiries/"+inquiryID, nil)
+	otherStudentReq = withUserContext(otherStudentReq, "other-student-id")
+	otherStudentRec := httptest.NewRecorder()
+	mux.ServeHTTP(otherStudentRec, otherStudentReq)
+	require.Equal(t, http.StatusForbidden, otherStudentRec.Code)
+
 	req = httptest.NewRequest(http.MethodGet, "/api/inquiries/"+inquiryID, nil)
+	req = withUserContext(req, studentID)
 	rec = httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 	require.Equal(t, http.StatusOK, rec.Code)

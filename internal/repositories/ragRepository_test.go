@@ -2,7 +2,9 @@ package repositories_test
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"fmt"
 	"testing"
 
 	_ "modernc.org/sqlite"
@@ -242,3 +244,238 @@ func TestRAGRepository_CacheAndSingleflight(t *testing.T) {
 		t.Fatalf("expected doc_cache_test in list, got %s", docs[0].ID)
 	}
 }
+
+// TestRAGRepository_SearchActiveChunkIDsFTS verifies FTS5 matching and Cache IDs resolution.
+func TestRAGRepository_SearchActiveChunkIDsFTS(t *testing.T) {
+	db, err := sql.Open("sqlite", ":memory:?_pragma=foreign_keys(ON)")
+	if err != nil {
+		t.Fatalf("failed to open in-memory sqlite: %v", err)
+	}
+	defer db.Close()
+
+	if err := database.ApplySchema(db); err != nil {
+		t.Fatalf("failed to apply schema: %v", err)
+	}
+
+	ramCache := cache.NewRamCache()
+	repo := repositories.NewRAGRepository(db, ramCache)
+	ctx := context.Background()
+
+	doc := &models.Document{
+		ID:               "doc_fts_1",
+		DocCode:          "2608/QD-DHTL",
+		Type:             "QUY_CHE",
+		Title:            "Quy che dao tao dai hoc 2026",
+		Domain:           "DAO_TAO",
+		ValidityTier:     "CORE_PERMANENT",
+		Status:           "ACTIVE",
+		DepartmentCode:   "PHONG_DAO_TAO",
+		PublishDate:      "2026-08-01",
+		AcademicYear:     "2026-2027",
+		Semester:         "ALL",
+		ApplicableCohort: "ALL",
+		PriorityLevel:    80,
+		FilePath:         "data/test.md",
+		CharCount:        5000,
+	}
+	if _, err := repo.UpsertDocument(ctx, doc); err != nil {
+		t.Fatalf("failed to insert document: %v", err)
+	}
+
+	chunks := []*models.DocumentChunk{
+		{
+			ID:               "chk_fts_1",
+			DocumentID:       "doc_fts_1",
+			ChunkIndex:       0,
+			ChunkType:        "RULE_BODY",
+			Content:          "Hoc phi mot tin chi nam 2026 la 500000 dong",
+			Status:           "ACTIVE",
+			Domain:           "DAO_TAO",
+			ApplicableCohort: "ALL",
+			AcademicYear:     "2026-2027",
+			PriorityLevel:    80,
+		},
+		{
+			ID:               "chk_fts_2",
+			DocumentID:       "doc_fts_1",
+			ChunkIndex:       1,
+			ChunkType:        "RULE_BODY",
+			Content:          "Dieu kien canh bao hoc tap",
+			Status:           "ACTIVE",
+			Domain:           "DAO_TAO",
+			ApplicableCohort: "ALL",
+			AcademicYear:     "2026-2027",
+			PriorityLevel:    80,
+		},
+	}
+	if err := repo.UpsertChunksBatch(ctx, chunks); err != nil {
+		t.Fatalf("failed to insert chunks: %v", err)
+	}
+
+	ids, err := repo.SearchActiveChunkIDsFTS(ctx, `"Hoc" "phi"`, "ALL", "DAO_TAO", 10)
+	if err != nil {
+		t.Fatalf("failed to search active chunk IDs via FTS: %v", err)
+	}
+	if len(ids) != 1 || ids[0] != "chk_fts_1" {
+		t.Fatalf("expected chk_fts_1, got %+v", ids)
+	}
+
+	resolved, err := repo.GetChunksByIDs(ctx, ids)
+	if err != nil || len(resolved) != 1 {
+		t.Fatalf("failed to resolve chunks by IDs: %v", err)
+	}
+	if resolved[0].ID != "chk_fts_1" {
+		t.Fatalf("expected chk_fts_1 resolved, got %+v", resolved[0])
+	}
+}
+
+// TestRAGRepository_FindDocumentByIdentifier verifies document resolution by ID, doc code, and title.
+func TestRAGRepository_FindDocumentByIdentifier(t *testing.T) {
+	db, err := sql.Open("sqlite", ":memory:?_pragma=foreign_keys(ON)")
+	if err != nil {
+		t.Fatalf("failed to open in-memory sqlite: %v", err)
+	}
+	defer db.Close()
+
+	if err := database.ApplySchema(db); err != nil {
+		t.Fatalf("failed to apply schema: %v", err)
+	}
+
+	ramCache := cache.NewRamCache()
+	repo := repositories.NewRAGRepository(db, ramCache)
+	ctx := context.Background()
+
+	doc := &models.Document{
+		ID:               "THONG_BAO_22012",
+		DocCode:          "22012",
+		Type:             "THONG_BAO",
+		Title:            "Quy dinh chuan dau ra Tieng Anh khoa K35",
+		Domain:           "DAO_TAO",
+		ValidityTier:     "CORE_PERMANENT",
+		Status:           "ACTIVE",
+		DepartmentCode:   "PHONG_DAO_TAO",
+		PublishDate:      "2023-09-01",
+		AcademicYear:     "2023-2024",
+		Semester:         "ALL",
+		ApplicableCohort: "K35",
+		PriorityLevel:    80,
+		FilePath:         "data/test_22012.md",
+		CharCount:        3000,
+	}
+
+	if _, err := repo.UpsertDocument(ctx, doc); err != nil {
+		t.Fatalf("failed to insert document: %v", err)
+	}
+
+	byID, err := repo.FindDocumentByIdentifier(ctx, "THONG_BAO_22012")
+	if err != nil || byID.ID != doc.ID {
+		t.Fatalf("expected to find by ID: %v", err)
+	}
+
+	byCode, err := repo.FindDocumentByIdentifier(ctx, "22012")
+	if err != nil || byCode.ID != doc.ID {
+		t.Fatalf("expected to find by code: %v", err)
+	}
+
+	byTitle, err := repo.FindDocumentByIdentifier(ctx, "Quy dinh chuan dau ra Tieng Anh khoa K35")
+	if err != nil || byTitle.ID != doc.ID {
+		t.Fatalf("expected to find by title: %v", err)
+	}
+
+	byPartial, err := repo.FindDocumentByIdentifier(ctx, "chuan dau ra Tieng Anh")
+	if err != nil || byPartial.ID != doc.ID {
+		t.Fatalf("expected to find by partial title: %v", err)
+	}
+}
+
+// TestRAGRepository_GetAndExistsByURL verifies URL-based exact matching, legacy hash lookup, and cache hits.
+func TestRAGRepository_GetAndExistsByURL(t *testing.T) {
+	db, err := sql.Open("sqlite", ":memory:?_pragma=foreign_keys(ON)")
+	if err != nil {
+		t.Fatalf("failed to open in-memory sqlite: %v", err)
+	}
+	defer db.Close()
+
+	if err := database.ApplySchema(db); err != nil {
+		t.Fatalf("failed to apply schema: %v", err)
+	}
+
+	ramCache := cache.NewRamCache()
+	repo := repositories.NewRAGRepository(db, ramCache)
+	ctx := context.Background()
+
+	testURL := "https://thanglong.edu.vn/tin-tuc/thong-bao-hoc-phi-hoc-ky-2-nam-hoc-2025-2026"
+
+	existsBefore, err := repo.DocumentExistsByURL(ctx, testURL)
+	if err != nil || existsBefore {
+		t.Fatalf("expected false before insertion, got exists=%v, err=%v", existsBefore, err)
+	}
+
+	doc := &models.Document{
+		ID:               "DOC_THONG_BAO_22099_aabbccdd",
+		DocCode:          "THONG_BAO_22099",
+		Type:             "THONG_BAO",
+		Title:            "Thong bao hoc phi",
+		Domain:           "TAI_CHINH",
+		ValidityTier:     "TEMPORARY_NOTICE",
+		Status:           "ACTIVE",
+		PublishDate:      "2026-02-15",
+		ApplicableCohort: "ALL",
+		PriorityLevel:    70,
+		FilePath:         testURL,
+		CharCount:        1500,
+	}
+
+	if _, err := repo.UpsertDocument(ctx, doc); err != nil {
+		t.Fatalf("failed to insert document: %v", err)
+	}
+
+	existsAfter, err := repo.DocumentExistsByURL(ctx, testURL)
+	if err != nil || !existsAfter {
+		t.Fatalf("expected true after insertion, got exists=%v, err=%v", existsAfter, err)
+	}
+
+	fetchedDoc, err := repo.GetDocumentByURL(ctx, testURL)
+	if err != nil || fetchedDoc.ID != doc.ID {
+		t.Fatalf("expected to fetch document by URL: %v", err)
+	}
+
+	// Test legacy document matched by 8-hex sha256 hash in ID
+	legacyURL := "https://thanglong.edu.vn/tin-tuc/ke-hoach-tot-nghiep-2026"
+	legacyHash := fmt.Sprintf("%x", sha256.Sum256([]byte(legacyURL)))[:8]
+	legacyDoc := &models.Document{
+		ID:               "DOC_THONG_BAO_99999_" + legacyHash,
+		DocCode:          "THONG_BAO_99999",
+		Type:             "THONG_BAO",
+		Title:            "Ke hoach tot nghiep",
+		Domain:           "DAO_TAO",
+		ValidityTier:     "TEMPORARY_NOTICE",
+		Status:           "ACTIVE",
+		PublishDate:      "2026-03-01",
+		ApplicableCohort: "ALL",
+		PriorityLevel:    70,
+		FilePath:         "",
+		CharCount:        800,
+	}
+	if _, err := repo.UpsertDocument(ctx, legacyDoc); err != nil {
+		t.Fatalf("failed to insert legacy document: %v", err)
+	}
+
+	legacyExists, err := repo.DocumentExistsByURL(ctx, legacyURL)
+	if err != nil || !legacyExists {
+		t.Fatalf("expected true for legacy document lookup, got exists=%v, err=%v", legacyExists, err)
+	}
+
+	fetchedLegacy, err := repo.GetDocumentByURL(ctx, legacyURL)
+	if err != nil || fetchedLegacy.ID != legacyDoc.ID {
+		t.Fatalf("expected to fetch legacy document by URL: %v", err)
+	}
+
+	// Verify non-existent URL returns false
+	missingURL := "https://thanglong.edu.vn/tin-tuc/non-existent-page"
+	missingExists, err := repo.DocumentExistsByURL(ctx, missingURL)
+	if err != nil || missingExists {
+		t.Fatalf("expected false for missing URL, got exists=%v, err=%v", missingExists, err)
+	}
+}
+

@@ -64,6 +64,18 @@ func (u *UserEntity) IsAdmin() bool {
 	return false
 }
 
+func (u *UserEntity) IsBanned() bool {
+	if u == nil {
+		return false
+	}
+	for _, r := range u.Roles {
+		if r != nil && (r.IsBanned || r.Name == "BANNED") {
+			return true
+		}
+	}
+	return false
+}
+
 func (u *UserEntity) FromSqlc(row sqlc.User) *UserEntity {
 	u.ID = row.ID
 	u.Email = row.Email

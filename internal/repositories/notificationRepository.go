@@ -21,9 +21,11 @@ type NotificationRepository interface {
 	GetNotificationByID(ctx context.Context, id string) (*models.UserNotification, error)
 	GetNotificationsByIDs(ctx context.Context, ids []string) ([]*models.UserNotification, error)
 	ListNotificationsByUserID(ctx context.Context, userID string, limit, offset int) ([]*models.UserNotification, error)
+	ListRecentNotifications(ctx context.Context, limit, offset int) ([]*models.UserNotification, error)
 	CountUnreadNotifications(ctx context.Context, userID string) (int, error)
 	MarkNotificationAsRead(ctx context.Context, id, userID string) error
 	MarkAllNotificationsAsRead(ctx context.Context, userID string) error
+	DeleteNotification(ctx context.Context, id string) error
 	InvalidateNotificationCache(ctx context.Context, userID string)
 	WithTx(tx *sql.Tx) NotificationRepository
 }
@@ -61,6 +63,8 @@ func (r *notificationRepository) InvalidateNotificationCache(ctx context.Context
 		cache.BuildKey("notifications", "user", userID),
 		cache.BuildKey("notifications", "unread", userID),
 	)
+	_ = r.c.DelByPattern(ctx, cache.BuildKey("notifications", "user_ids", userID)+"*")
+	_ = r.c.DelByPattern(ctx, "notifications:recent_ids*")
 }
 
 func (r *notificationRepository) CreateNotification(ctx context.Context, notif *models.UserNotification) (*models.UserNotification, error) {
@@ -172,14 +176,32 @@ func (r *notificationRepository) GetNotificationsByIDs(ctx context.Context, ids 
 }
 
 func (r *notificationRepository) ListNotificationsByUserID(ctx context.Context, userID string, limit, offset int) ([]*models.UserNotification, error) {
-	ids, err := r.q.ListNotificationIDsByUserID(ctx, sqlc.ListNotificationIDsByUserIDParams{
-		UserID: userID,
-		Limit:  int64(limit),
-		Offset: int64(offset),
+	key := cache.BuildKey("notifications", "user_ids", userID, fmt.Sprintf("%d", limit), fmt.Sprintf("%d", offset))
+	if r.c != nil && !r.inTx {
+		var ids []string
+		if err := r.c.Get(ctx, key, &ids); err == nil && len(ids) > 0 {
+			return r.GetNotificationsByIDs(ctx, ids)
+		}
+	}
+
+	v, err, _ := r.sfg.Do(key, func() (any, error) {
+		ids, err := r.q.ListNotificationIDsByUserID(ctx, sqlc.ListNotificationIDsByUserIDParams{
+			UserID: userID,
+			Limit:  int64(limit),
+			Offset: int64(offset),
+		})
+		if err != nil {
+			return nil, err
+		}
+		if r.c != nil && !r.inTx {
+			_ = r.c.Set(ctx, key, ids, constants.NormalCacheDuration)
+		}
+		return ids, nil
 	})
 	if err != nil {
 		return nil, err
 	}
+	ids := v.([]string)
 	return r.GetNotificationsByIDs(ctx, ids)
 }
 
@@ -230,3 +252,57 @@ func (r *notificationRepository) MarkAllNotificationsAsRead(ctx context.Context,
 	r.InvalidateNotificationCache(ctx, userID)
 	return nil
 }
+
+// ListRecentNotifications retrieves global recent notifications using the cache IDs pattern.
+func (r *notificationRepository) ListRecentNotifications(ctx context.Context, limit, offset int) ([]*models.UserNotification, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	cacheKey := cache.BuildKey("notifications", "recent_ids", fmt.Sprintf("%d:%d", limit, offset))
+	if r.c != nil && !r.inTx {
+		var cachedIDs []string
+		if err := r.c.Get(ctx, cacheKey, &cachedIDs); err == nil {
+			return r.GetNotificationsByIDs(ctx, cachedIDs)
+		}
+	}
+
+	v, err, _ := r.sfg.Do(cacheKey, func() (any, error) {
+		ids, err := r.q.ListRecentNotificationIDs(ctx, sqlc.ListRecentNotificationIDsParams{
+			Limit:  int64(limit),
+			Offset: int64(offset),
+		})
+		if err != nil {
+			return nil, err
+		}
+		if r.c != nil && !r.inTx {
+			_ = r.c.Set(ctx, cacheKey, ids, constants.ShortCacheDuration)
+		}
+		return ids, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	ids := v.([]string)
+	return r.GetNotificationsByIDs(ctx, ids)
+}
+
+// DeleteNotification removes a notification and invalidates associated caches.
+func (r *notificationRepository) DeleteNotification(ctx context.Context, id string) error {
+	notif, _ := r.GetNotificationByID(ctx, id)
+	err := r.q.DeleteNotificationByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if r.c != nil {
+		_ = r.c.Del(ctx, cache.BuildKey("notification", "id", id))
+		_ = r.c.DelByPattern(ctx, "notifications:recent_ids*")
+	}
+	if notif != nil {
+		r.InvalidateNotificationCache(ctx, notif.UserID)
+	}
+	return nil
+}
+

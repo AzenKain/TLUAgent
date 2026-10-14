@@ -9,6 +9,9 @@ import (
 
 	"github.com/google/uuid"
 
+	"tluagent-web/internal/agent"
+	"tluagent-web/internal/dtos/request"
+	"tluagent-web/internal/dtos/response"
 	"tluagent-web/internal/models"
 	"tluagent-web/internal/repositories"
 	"tluagent-web/pkg/apperrors"
@@ -18,15 +21,18 @@ import (
 
 // MemoryService orchestrates student academic profiles and long-term conversation memories.
 type MemoryService interface {
-	SetLLMManager(llmManager *llm.Manager)
-	GetStudentProfile(ctx context.Context, userID string) (*models.StudentProfile, error)
-	UpsertStudentProfile(ctx context.Context, profile *models.StudentProfile) (*models.StudentProfile, error)
-	ListUserMemories(ctx context.Context, userID string) ([]*models.UserMemoryItem, error)
-	SaveUserMemory(ctx context.Context, memory *models.UserMemoryItem) (*models.UserMemoryItem, error)
+	GetStudentProfile(ctx context.Context, userID string) (*response.StudentProfileResponse, error)
+	UpsertStudentProfile(ctx context.Context, profile *models.StudentProfile) (*response.StudentProfileResponse, error)
+	UpdateStudentProfileFromDto(ctx context.Context, userID string, dto *request.UpsertStudentProfileDto) (*response.StudentProfileResponse, error)
+	ListUserMemories(ctx context.Context, userID string) ([]*response.UserMemoryItemResponse, error)
+	SaveUserMemory(ctx context.Context, memory *models.UserMemoryItem) (*response.UserMemoryItemResponse, error)
+	CreateUserMemoryFromDto(ctx context.Context, userID string, dto *request.SaveUserMemoryDto) (*response.UserMemoryItemResponse, error)
 	DeleteUserMemory(ctx context.Context, id, userID string) error
 	ClearStudentMemoryAndProfile(ctx context.Context, userID string) error
 	BuildLongTermMemoryPromptContext(ctx context.Context, userID string) (string, error)
+	BuildAdminLongTermMemoryPromptContext(ctx context.Context, adminID string) (string, error)
 	ExtractAndSaveMemories(ctx context.Context, userID, userQuery, botReply string) error
+	ExtractAndSaveAdminMemories(ctx context.Context, adminID, adminQuery, botReply string) error
 }
 
 type memoryService struct {
@@ -36,18 +42,19 @@ type memoryService struct {
 }
 
 // NewMemoryService creates a memory service instance.
-func NewMemoryService(memoryRepo repositories.MemoryRepository, userRepo repositories.UserRepository) MemoryService {
+func NewMemoryService(
+	memoryRepo repositories.MemoryRepository,
+	userRepo repositories.UserRepository,
+	llmManager *llm.Manager,
+) MemoryService {
 	return &memoryService{
 		memoryRepo: memoryRepo,
 		userRepo:   userRepo,
+		llmManager: llmManager,
 	}
 }
 
-func (s *memoryService) SetLLMManager(llmManager *llm.Manager) {
-	s.llmManager = llmManager
-}
-
-func (s *memoryService) GetStudentProfile(ctx context.Context, userID string) (*models.StudentProfile, error) {
+func (s *memoryService) GetStudentProfile(ctx context.Context, userID string) (*response.StudentProfileResponse, error) {
 	if userID == "" || userID == "0" {
 		return nil, nil
 	}
@@ -58,14 +65,10 @@ func (s *memoryService) GetStudentProfile(ctx context.Context, userID string) (*
 	if profile == nil && s.userRepo != nil {
 		user, uErr := s.userRepo.GetByID(ctx, userID)
 		if uErr == nil && user != nil {
-			cohort := ""
-			if len(user.StudentCode) >= 3 && strings.HasPrefix(strings.ToUpper(user.StudentCode), "A") {
-				cohort = "K" + user.StudentCode[1:3]
-			}
 			newProfile := &models.StudentProfile{
 				UserID:           userID,
 				Major:            "",
-				Cohort:           cohort,
+				Cohort:           "",
 				AcademicStanding: "NORMAL",
 				CompletedCredits: 0,
 				CumulativeGPA:    0.0,
@@ -76,24 +79,50 @@ func (s *memoryService) GetStudentProfile(ctx context.Context, userID string) (*
 			profile, _ = s.memoryRepo.UpsertStudentProfile(ctx, newProfile)
 		}
 	}
-	return profile, nil
+	return profile.ToResponse(), nil
 }
 
-func (s *memoryService) UpsertStudentProfile(ctx context.Context, profile *models.StudentProfile) (*models.StudentProfile, error) {
+func (s *memoryService) UpsertStudentProfile(ctx context.Context, profile *models.StudentProfile) (*response.StudentProfileResponse, error) {
 	if profile == nil || profile.UserID == "" {
 		return nil, apperrors.New(apperrors.ErrBadRequest, "invalid student profile")
 	}
-	return s.memoryRepo.UpsertStudentProfile(ctx, profile)
-}
-
-func (s *memoryService) ListUserMemories(ctx context.Context, userID string) ([]*models.UserMemoryItem, error) {
-	if userID == "" || userID == "0" {
-		return []*models.UserMemoryItem{}, nil
+	saved, err := s.memoryRepo.UpsertStudentProfile(ctx, profile)
+	if err != nil {
+		return nil, err
 	}
-	return s.memoryRepo.ListUserMemories(ctx, userID)
+	return saved.ToResponse(), nil
 }
 
-func (s *memoryService) SaveUserMemory(ctx context.Context, memory *models.UserMemoryItem) (*models.UserMemoryItem, error) {
+func (s *memoryService) UpdateStudentProfileFromDto(ctx context.Context, userID string, dto *request.UpsertStudentProfileDto) (*response.StudentProfileResponse, error) {
+	if userID == "" || userID == "0" || dto == nil {
+		return nil, apperrors.New(apperrors.ErrBadRequest, "invalid student profile")
+	}
+	profile := &models.StudentProfile{
+		UserID:           userID,
+		Major:            dto.Major,
+		Cohort:           dto.Cohort,
+		AcademicStanding: dto.AcademicStanding,
+		CompletedCredits: dto.CompletedCredits,
+		CumulativeGPA:    dto.CumulativeGPA,
+		TargetGPA:        dto.TargetGPA,
+		AdvisorNotes:     dto.AdvisorNotes,
+		UpdatedAt:        time.Now().UTC(),
+	}
+	return s.UpsertStudentProfile(ctx, profile)
+}
+
+func (s *memoryService) ListUserMemories(ctx context.Context, userID string) ([]*response.UserMemoryItemResponse, error) {
+	if userID == "" || userID == "0" {
+		return []*response.UserMemoryItemResponse{}, nil
+	}
+	items, err := s.memoryRepo.ListUserMemories(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	return models.UserMemoriesToResponse(items), nil
+}
+
+func (s *memoryService) SaveUserMemory(ctx context.Context, memory *models.UserMemoryItem) (*response.UserMemoryItemResponse, error) {
 	if memory == nil || memory.UserID == "" {
 		return nil, apperrors.New(apperrors.ErrBadRequest, "invalid user memory item")
 	}
@@ -117,7 +146,29 @@ func (s *memoryService) SaveUserMemory(ctx context.Context, memory *models.UserM
 		memory.Source = "USER_DECLARED"
 	}
 	memory.IsActive = true
-	return s.memoryRepo.UpsertUserMemory(ctx, memory)
+	saved, err := s.memoryRepo.UpsertUserMemory(ctx, memory)
+	if err != nil {
+		return nil, err
+	}
+	return saved.ToResponse(), nil
+}
+
+func (s *memoryService) CreateUserMemoryFromDto(ctx context.Context, userID string, dto *request.SaveUserMemoryDto) (*response.UserMemoryItemResponse, error) {
+	if userID == "" || userID == "0" || dto == nil {
+		return nil, apperrors.New(apperrors.ErrBadRequest, "invalid user memory item")
+	}
+	item := &models.UserMemoryItem{
+		UserID:      userID,
+		Category:    dto.Category,
+		MemoryKey:   dto.MemoryKey,
+		MemoryValue: dto.MemoryValue,
+		Confidence:  dto.Confidence,
+		Source:      dto.Source,
+	}
+	if item.Source == "" {
+		item.Source = "USER_DECLARED"
+	}
+	return s.SaveUserMemory(ctx, item)
 }
 
 func (s *memoryService) DeleteUserMemory(ctx context.Context, id, userID string) error {
@@ -203,7 +254,7 @@ func (s *memoryService) ExtractAndSaveMemories(ctx context.Context, userID, user
 		return nil
 	}
 
-	prompt := "You are an academic advisor memory extractor for university students. Extract concise long-term academic facts about the student from the conversation, such as: major, cohort, academic goals, target GPA, language certification plans, academic difficulties, course retake concerns. Return a JSON array of objects with keys: 'category' (e.g. 'ACADEMIC_PROFILE', 'ACADEMIC_GOAL', 'LANGUAGE_GOAL', 'ACADEMIC_DIFFICULTY'), 'memory_key', 'memory_value', 'confidence' (number between 0.0 and 1.0). If no long-term facts exist in the input, return an empty JSON array []. Do not include explanation, respond ONLY with valid JSON array."
+	prompt := agent.PromptStudentMemoryExtraction()
 
 	req := &llm.ChatRequest{
 		Messages: []llm.Message{
@@ -250,3 +301,112 @@ func (s *memoryService) ExtractAndSaveMemories(ctx context.Context, userID, user
 	return nil
 }
 
+// BuildAdminLongTermMemoryPromptContext builds the prompt context for an administrator's operational profile and persistent memory.
+func (s *memoryService) BuildAdminLongTermMemoryPromptContext(ctx context.Context, adminID string) (string, error) {
+	if adminID == "" || adminID == "0" {
+		return "", nil
+	}
+
+	var adminName, adminEmail, adminRole string
+	if s.userRepo != nil {
+		user, err := s.userRepo.GetByID(ctx, adminID)
+		if err == nil && user != nil {
+			adminName = user.FullName
+			adminEmail = user.Email
+			if len(user.Roles) > 0 {
+				var roleNames []string
+				for _, r := range user.Roles {
+					if r != nil && r.Name != "" {
+						roleNames = append(roleNames, r.Name)
+					}
+				}
+				adminRole = strings.Join(roleNames, ", ")
+			}
+		}
+	}
+
+	memories, _ := s.ListUserMemories(ctx, adminID)
+	if adminName == "" && len(memories) == 0 {
+		return "", nil
+	}
+
+	var sb strings.Builder
+	sb.WriteString("[ADMINISTRATOR OPERATIONAL PROFILE & MEMORY]\n")
+	if adminName != "" {
+		fmt.Fprintf(&sb, "- Name: %s\n", adminName)
+	}
+	if adminEmail != "" {
+		fmt.Fprintf(&sb, "- Email: %s\n", adminEmail)
+	}
+	if adminRole != "" {
+		fmt.Fprintf(&sb, "- System Roles: %s\n", adminRole)
+	}
+
+	if len(memories) > 0 {
+		sb.WriteString("Retained Operational Preferences & Policy Memories:\n")
+		for _, m := range memories {
+			safeVal := guardrail.SanitizeOutput(m.MemoryValue)
+			fmt.Fprintf(&sb, "  * [%s] %s: %s\n", m.Category, m.MemoryKey, safeVal)
+		}
+	}
+
+	return sb.String(), nil
+}
+
+// ExtractAndSaveAdminMemories extracts operational admin facts and preferences from administrative interactions.
+func (s *memoryService) ExtractAndSaveAdminMemories(ctx context.Context, adminID, adminQuery, botReply string) error {
+	if adminID == "" || adminID == "0" || strings.TrimSpace(adminQuery) == "" || s.llmManager == nil {
+		return nil
+	}
+
+	provider, err := s.llmManager.Default()
+	if err != nil || provider == nil {
+		return nil
+	}
+
+	prompt := agent.PromptAdminMemoryExtraction()
+
+	req := &llm.ChatRequest{
+		Messages: []llm.Message{
+			llm.SystemMessage(prompt),
+			llm.UserMessage(fmt.Sprintf("Administrator: %s\nTLUClaw Assistant: %s", adminQuery, botReply)),
+		},
+		JSONMode: true,
+	}
+
+	resp, err := provider.Chat(ctx, req)
+	if err != nil || resp == nil {
+		return nil
+	}
+
+	content := strings.TrimSpace(resp.Message.Content)
+	content = strings.TrimPrefix(content, "```json")
+	content = strings.TrimPrefix(content, "```")
+	content = strings.TrimSuffix(content, "```")
+	content = strings.TrimSpace(content)
+
+	var facts []extractedFact
+	if err := json.Unmarshal([]byte(content), &facts); err != nil {
+		return nil
+	}
+
+	for _, fact := range facts {
+		if fact.MemoryKey == "" || fact.MemoryValue == "" {
+			continue
+		}
+		if chk := guardrail.CheckQuery(fact.MemoryValue); chk.Decision == guardrail.DecisionBlockedInjection {
+			continue
+		}
+		item := &models.UserMemoryItem{
+			UserID:      adminID,
+			Category:    fact.Category,
+			MemoryKey:   fact.MemoryKey,
+			MemoryValue: guardrail.SanitizeOutput(fact.MemoryValue),
+			Confidence:  fact.Confidence,
+			Source:      "ADMIN_CHAT",
+		}
+		_, _ = s.SaveUserMemory(ctx, item)
+	}
+
+	return nil
+}

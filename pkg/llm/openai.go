@@ -12,8 +12,6 @@ import (
 	"strings"
 	"time"
 )
-
-// OpenAIConfig holds configuration for OpenAI-compatible providers.
 type OpenAIConfig struct {
 	BaseURL              string
 	APIKey               string
@@ -23,7 +21,6 @@ type OpenAIConfig struct {
 	AllowPrivateNetworks bool
 }
 
-// OpenAIProvider connects to OpenAI or any OpenAI-compatible API (Vilao, DeepSeek, Ollama, OpenRouter).
 type OpenAIProvider struct {
 	config     OpenAIConfig
 	httpClient *http.Client
@@ -32,18 +29,7 @@ type OpenAIProvider struct {
 
 // NewOpenAIProvider creates an OpenAI compatible provider instance.
 func NewOpenAIProvider(cfg OpenAIConfig) *OpenAIProvider {
-	if cfg.BaseURL == "" {
-		cfg.BaseURL = "https://api.openai.com/v1"
-	}
-	baseURL := strings.TrimRight(cfg.BaseURL, "/")
-	endpoint := baseURL
-	if !strings.HasSuffix(endpoint, "/chat/completions") {
-		if strings.HasSuffix(endpoint, "/v1") {
-			endpoint += "/chat/completions"
-		} else {
-			endpoint += "/v1/chat/completions"
-		}
-	}
+	endpoint := ResolveOpenAIChatEndpoint(cfg.BaseURL)
 
 	httpClient := cfg.HTTPClient
 	if httpClient == nil {
@@ -58,7 +44,7 @@ func NewOpenAIProvider(cfg OpenAIConfig) *OpenAIProvider {
 }
 
 func (p *OpenAIProvider) Name() string {
-	return "openai-compatible"
+	return ProviderOpenAICompatible
 }
 
 func (p *OpenAIProvider) DefaultModel() string {
@@ -157,7 +143,7 @@ func (p *OpenAIProvider) ChatStream(ctx context.Context, req *ChatRequest) (Stre
 	}
 
 	p.applyHeaders(httpReq)
-	httpReq.Header.Set("Accept", "text/event-stream")
+	httpReq.Header.Set(HeaderAccept, MIMETextEventStream)
 
 	resp, err := p.httpClient.Do(httpReq)
 	if err != nil {
@@ -177,9 +163,9 @@ func (p *OpenAIProvider) ChatStream(ctx context.Context, req *ChatRequest) (Stre
 }
 
 func (p *OpenAIProvider) applyHeaders(req *http.Request) {
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(HeaderContentType, MIMEApplicationJSON)
 	if p.config.APIKey != "" {
-		req.Header.Set("Authorization", "Bearer "+p.config.APIKey)
+		req.Header.Set(HeaderAuthorization, AuthBearerPrefix+p.config.APIKey)
 	}
 	for k, v := range p.config.CustomHeaders {
 		req.Header.Set(k, v)

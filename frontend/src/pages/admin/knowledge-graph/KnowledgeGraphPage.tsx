@@ -7,7 +7,6 @@ import {
   Trash2,
   CheckCircle2,
   AlertTriangle,
-  RefreshCw,
   Search,
   ArrowRight,
   Info,
@@ -24,33 +23,38 @@ import {
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { Badge } from '@/components/common/Badge';
 import { Modal } from '@/components/common/Modal';
+import { ConfirmModal } from '@/components/common/ConfirmModal';
+import { PageHeader } from '@/components/common/PageHeader';
+import { RefreshButton } from '@/components/common/RefreshButton';
+import { StatCard } from '@/components/common/StatCard';
 
 function getNodeColor(node: KGNodeDTO): string {
   if (node.status === 'SUPERSEDED') return '#94a3b8';
+  if (node.status === 'PARTIALLY_AMENDED' || node.status === 'PARTIALLY_SUPERSEDED') return '#f59e0b';
   switch (node.node_type) {
     case 'REGULATION':
-      return '#6366f1';
+      return '#050C56';
     case 'CONDITION':
-      return '#0284c7';
+      return '#1D53E6';
     case 'ENTITY':
-      return '#8b5cf6';
+      return '#3AC2D8';
     case 'METRIC':
       return '#10b981';
     default:
-      return '#4f46e5';
+      return '#1D53E6';
   }
 }
 
 function getEdgeColor(relation: string): string {
   switch (relation) {
     case 'SUPERSEDES':
-      return '#f59e0b';
+      return '#EA2212';
     case 'REQUIRES':
-      return '#3b82f6';
+      return '#1D53E6';
     case 'AMENDS':
-      return '#a855f7';
+      return '#3AC2D8';
     case 'CONTRADICTS':
-      return '#ef4444';
+      return '#EA2212';
     default:
       return '#64748b';
   }
@@ -606,7 +610,7 @@ export const KnowledgeGraphPage: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-7xl mx-auto pb-10">
       {toastMessage && (
         <div
           className={`fixed bottom-5 right-5 z-50 flex items-center gap-2 rounded-xl px-4 py-3 text-sm font-medium text-white shadow-xl transition-all ${
@@ -622,101 +626,57 @@ export const KnowledgeGraphPage: React.FC = () => {
         </div>
       )}
 
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
-            {t('knowledge_graph.title')}
-          </h1>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            {t('knowledge_graph.subtitle')}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => refetch()}
-            className="inline-flex items-center rounded-lg border border-slate-200 bg-white p-2.5 text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
-          >
-            <RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
-          </button>
-          <button
-            onClick={() => setAddEdgeModalOpen(true)}
-            className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white shadow-xs hover:bg-indigo-700 transition"
-          >
-            <Plus className="h-4 w-4" />
-            {t('knowledge_graph.btn_add_edge')}
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        icon={<Network className="h-6 w-6" />}
+        title={t('knowledge_graph.title')}
+        subtitle={t('knowledge_graph.subtitle')}
+        actions={
+          <div className="flex items-center gap-2">
+            <RefreshButton
+              onClick={() => refetch()}
+              isLoading={isFetching}
+            />
+            <button
+              onClick={() => setAddEdgeModalOpen(true)}
+              className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-tlu-navy px-4 py-2 text-xs sm:text-sm font-semibold text-white shadow-xs hover:bg-tlu-navy-light dark:bg-tlu-blue dark:hover:bg-blue-600 transition cursor-pointer"
+            >
+              <Plus className="h-4 w-4" />
+              {t('knowledge_graph.btn_add_edge')}
+            </button>
+          </div>
+        }
+      />
 
       {/* Stats Summary Cards */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-xs dark:border-slate-800 dark:bg-slate-900">
-          <div className="flex items-center gap-3">
-            <div className="rounded-lg bg-indigo-50 p-2.5 text-indigo-600 dark:bg-indigo-950/50 dark:text-indigo-400">
-              <Network className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                {t('knowledge_graph.stat_total_nodes')}
-              </p>
-              <p className="text-xl font-bold text-slate-900 dark:text-slate-100">
-                {stats?.total_nodes ?? graphData?.nodes.length ?? 0}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-xs dark:border-slate-800 dark:bg-slate-900">
-          <div className="flex items-center gap-3">
-            <div className="rounded-lg bg-sky-50 p-2.5 text-sky-600 dark:bg-sky-950/50 dark:text-sky-400">
-              <Network className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                {t('knowledge_graph.stat_total_edges')}
-              </p>
-              <p className="text-xl font-bold text-slate-900 dark:text-slate-100">
-                {stats?.total_edges ?? graphData?.edges.length ?? 0}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-xs dark:border-slate-800 dark:bg-slate-900">
-          <div className="flex items-center gap-3">
-            <div className="rounded-lg bg-emerald-50 p-2.5 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-400">
-              <CheckCircle2 className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                {t('knowledge_graph.stat_active_edges')}
-              </p>
-              <p className="text-xl font-bold text-slate-900 dark:text-slate-100">
-                {graphData?.edges.filter((e) => e.status === 'ACTIVE').length ?? 0}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-xs dark:border-slate-800 dark:bg-slate-900">
-          <div className="flex items-center gap-3">
-            <div className="rounded-lg bg-amber-50 p-2.5 text-amber-600 dark:bg-amber-950/50 dark:text-amber-400">
-              <AlertTriangle className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                {t('knowledge_graph.stat_superseded_nodes')}
-              </p>
-              <p className="text-xl font-bold text-slate-900 dark:text-slate-100">
-                {graphData?.nodes.filter((n) => n.status === 'SUPERSEDED').length ?? 0}
-              </p>
-            </div>
-          </div>
-        </div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 sm:gap-4">
+        <StatCard
+          icon={<Network className="h-5 w-5" />}
+          label={t('knowledge_graph.stat_total_nodes')}
+          value={stats?.total_nodes ?? graphData?.nodes.length ?? 0}
+          variant="blue"
+        />
+        <StatCard
+          icon={<Network className="h-5 w-5" />}
+          label={t('knowledge_graph.stat_total_edges')}
+          value={stats?.total_edges ?? graphData?.edges.length ?? 0}
+          variant="sky"
+        />
+        <StatCard
+          icon={<CheckCircle2 className="h-5 w-5" />}
+          label={t('knowledge_graph.stat_active_edges')}
+          value={graphData?.edges.filter((e) => e.status === 'ACTIVE').length ?? 0}
+          variant="emerald"
+        />
+        <StatCard
+          icon={<AlertTriangle className="h-5 w-5" />}
+          label={t('knowledge_graph.stat_superseded_nodes')}
+          value={graphData?.nodes.filter((n) => n.status === 'SUPERSEDED').length ?? 0}
+          variant="rose"
+        />
       </div>
 
       {/* Filter and Density Toolbar */}
-      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-xs dark:border-slate-800 dark:bg-slate-900">
+      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-xs dark:border-blue-900/30 dark:bg-[#111A35]">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -725,7 +685,7 @@ export const KnowledgeGraphPage: React.FC = () => {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder={t('common.search')}
-              className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm text-slate-800 placeholder-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+              className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm text-slate-800 placeholder-slate-400 focus:border-tlu-blue focus:ring-1 focus:ring-tlu-blue dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
             />
           </div>
 
@@ -733,7 +693,7 @@ export const KnowledgeGraphPage: React.FC = () => {
             <select
               value={nodeTypeFilter}
               onChange={(e) => setNodeTypeFilter(e.target.value)}
-              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 [&>option]:bg-slate-900 [&>option]:text-slate-100"
+              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 shadow-sm focus:border-tlu-blue focus:outline-none focus:ring-1 focus:ring-tlu-blue [&>option]:bg-slate-900 [&>option]:text-slate-100"
             >
               <option value="" className="bg-slate-900 text-slate-100">{t('knowledge_graph.filter_node_type')}</option>
               <option value="REGULATION" className="bg-slate-900 text-slate-100">REGULATION</option>
@@ -747,7 +707,7 @@ export const KnowledgeGraphPage: React.FC = () => {
             <select
               value={relationFilter}
               onChange={(e) => setRelationFilter(e.target.value)}
-              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 [&>option]:bg-slate-900 [&>option]:text-slate-100"
+              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 shadow-sm focus:border-tlu-blue focus:outline-none focus:ring-1 focus:ring-tlu-blue [&>option]:bg-slate-900 [&>option]:text-slate-100"
             >
               <option value="" className="bg-slate-900 text-slate-100">{t('knowledge_graph.filter_relation_type')}</option>
               <option value="SUPERSEDES" className="bg-slate-900 text-slate-100">SUPERSEDES</option>
@@ -761,10 +721,11 @@ export const KnowledgeGraphPage: React.FC = () => {
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 [&>option]:bg-slate-900 [&>option]:text-slate-100"
+              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 shadow-sm focus:border-tlu-blue focus:outline-none focus:ring-1 focus:ring-tlu-blue [&>option]:bg-slate-900 [&>option]:text-slate-100"
             >
               <option value="" className="bg-slate-900 text-slate-100">{t('knowledge_graph.filter_status')}</option>
               <option value="ACTIVE" className="bg-slate-900 text-slate-100">{t('documents.status_active')}</option>
+              <option value="PARTIALLY_AMENDED" className="bg-slate-900 text-slate-100">{t('documents.status_partially_amended')}</option>
               <option value="SUPERSEDED" className="bg-slate-900 text-slate-100">{t('documents.status_superseded')}</option>
             </select>
           </div>
@@ -773,7 +734,7 @@ export const KnowledgeGraphPage: React.FC = () => {
             <select
               value={densityLimit}
               onChange={(e) => setDensityLimit(Number(e.target.value))}
-              className="w-full rounded-lg border border-indigo-500/50 bg-slate-800 px-3 py-2 text-sm font-medium text-slate-100 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 [&>option]:bg-slate-900 [&>option]:text-slate-100"
+              className="w-full rounded-lg border border-blue-500/50 bg-slate-800 px-3 py-2 text-sm font-medium text-slate-100 shadow-sm focus:border-tlu-blue focus:outline-none focus:ring-1 focus:ring-tlu-blue [&>option]:bg-slate-900 [&>option]:text-slate-100"
             >
               <option value={40} className="bg-slate-900 text-slate-100">{t('knowledge_graph.density_top_40')}</option>
               <option value={80} className="bg-slate-900 text-slate-100">{t('knowledge_graph.density_top_80')}</option>
@@ -788,7 +749,7 @@ export const KnowledgeGraphPage: React.FC = () => {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div
           ref={containerRef}
-          className="relative h-[620px] overflow-hidden rounded-2xl border border-slate-800 bg-[#090d16] shadow-xl lg:col-span-2 select-none"
+          className="relative h-155 overflow-hidden rounded-2xl border border-slate-800 bg-[#090d16] shadow-xl lg:col-span-2 select-none"
         >
           {isLoading ? (
             <div className="flex h-full items-center justify-center">
@@ -846,7 +807,7 @@ export const KnowledgeGraphPage: React.FC = () => {
                     onClick={() => setFocusNeighborsOnly(!focusNeighborsOnly)}
                     className={`flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-semibold shadow-md backdrop-blur-md transition ${
                       focusNeighborsOnly
-                        ? 'border-indigo-500 bg-indigo-600 text-white'
+                        ? 'border-tlu-blue bg-tlu-blue text-white'
                         : 'border-slate-700 bg-slate-900/90 text-slate-300 hover:bg-slate-800'
                     }`}
                   >
@@ -866,7 +827,7 @@ export const KnowledgeGraphPage: React.FC = () => {
                     transform: hoverPos.x > 450 ? 'translateX(-110%)' : 'none',
                   }}
                 >
-                  <div className="font-bold text-indigo-400 leading-tight">{hoveredNode.name}</div>
+                  <div className="font-bold text-tlu-cyan leading-tight">{hoveredNode.name}</div>
                   <div className="mt-1 font-mono text-[10px] text-slate-400">{hoveredNode.code || hoveredNode.id}</div>
                   <div className="mt-2 flex items-center gap-2">
                     <span className="rounded bg-slate-800 px-2 py-0.5 text-[10px] font-medium text-slate-300">
@@ -883,19 +844,19 @@ export const KnowledgeGraphPage: React.FC = () => {
               <div className="absolute bottom-3 left-3 right-3 flex flex-wrap items-center justify-between gap-2 pointer-events-none">
                 <div className="flex flex-wrap items-center gap-2 rounded-xl bg-slate-950/85 px-3 py-1.5 text-[11px] text-slate-300 backdrop-blur-md border border-slate-800/80 pointer-events-auto">
                   <div className="flex items-center gap-1.5">
-                    <span className="h-2 w-2 rounded-full bg-amber-500" />
+                    <span className="h-2 w-2 rounded-full bg-tlu-red" />
                     <span>SUPERSEDES</span>
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <span className="h-2 w-2 rounded-full bg-blue-500" />
+                    <span className="h-2 w-2 rounded-full bg-tlu-blue" />
                     <span>REQUIRES</span>
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <span className="h-2 w-2 rounded-full bg-purple-500" />
+                    <span className="h-2 w-2 rounded-full bg-tlu-cyan" />
                     <span>AMENDS</span>
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <span className="h-2 w-2 rounded-full bg-rose-500" />
+                    <span className="h-2 w-2 rounded-full bg-tlu-red" />
                     <span>CONTRADICTS</span>
                   </div>
                 </div>
@@ -914,9 +875,9 @@ export const KnowledgeGraphPage: React.FC = () => {
 
         {/* Node & Edge Inspector Panel */}
         <div className="space-y-4">
-          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs dark:border-slate-800 dark:bg-slate-900">
+          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs dark:border-blue-900/30 dark:bg-[#111A35]">
             <h2 className="text-base font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-              <Info className="h-4 w-4 text-indigo-500" />
+              <Info className="h-4 w-4 text-tlu-blue" />
               {t('knowledge_graph.node_detail_title')}
             </h2>
 
@@ -981,7 +942,7 @@ export const KnowledgeGraphPage: React.FC = () => {
                               {edge.relation_type}
                             </span>
                             <ArrowRight className="h-3 w-3 text-slate-400 shrink-0" />
-                            <span className="truncate max-w-[130px] text-slate-600 dark:text-slate-400">
+                            <span className="truncate max-w-32.5 text-slate-600 dark:text-slate-400">
                               {edge.source_node_id === selectedNode.id
                                 ? edge.target_node_id
                                 : edge.source_node_id}
@@ -1005,7 +966,7 @@ export const KnowledgeGraphPage: React.FC = () => {
               <div className="mt-4 space-y-3 text-sm">
                 <div>
                   <span className="text-xs text-slate-400">{t('knowledge_graph.relation_type')}</span>
-                  <p className="font-semibold text-indigo-600 dark:text-indigo-400">
+                  <p className="font-semibold text-tlu-blue dark:text-blue-400">
                     {selectedEdge.relation_type}
                   </p>
                 </div>
@@ -1056,7 +1017,7 @@ export const KnowledgeGraphPage: React.FC = () => {
               value={sourceNodeId}
               onChange={(e) => setSourceNodeId(e.target.value)}
               required
-              className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 [&>option]:bg-slate-900 [&>option]:text-slate-100"
+              className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:border-tlu-blue focus:outline-none focus:ring-1 focus:ring-tlu-blue [&>option]:bg-slate-900 [&>option]:text-slate-100"
             >
               <option value="" className="bg-slate-900 text-slate-100">{t('knowledge_graph.select_source_node')}</option>
               {(graphData?.nodes || []).slice(0, 300).map((node) => (
@@ -1075,7 +1036,7 @@ export const KnowledgeGraphPage: React.FC = () => {
               value={targetNodeId}
               onChange={(e) => setTargetNodeId(e.target.value)}
               required
-              className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 [&>option]:bg-slate-900 [&>option]:text-slate-100"
+              className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:border-tlu-blue focus:outline-none focus:ring-1 focus:ring-tlu-blue [&>option]:bg-slate-900 [&>option]:text-slate-100"
             >
               <option value="" className="bg-slate-900 text-slate-100">{t('knowledge_graph.select_target_node')}</option>
               {(graphData?.nodes || []).slice(0, 300).map((node) => (
@@ -1093,7 +1054,7 @@ export const KnowledgeGraphPage: React.FC = () => {
             <select
               value={relationType}
               onChange={(e) => setRelationType(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 [&>option]:bg-slate-900 [&>option]:text-slate-100"
+              className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:border-tlu-blue focus:outline-none focus:ring-1 focus:ring-tlu-blue [&>option]:bg-slate-900 [&>option]:text-slate-100"
             >
               <option value="SUPERSEDES" className="bg-slate-900 text-slate-100">SUPERSEDES</option>
               <option value="REQUIRES" className="bg-slate-900 text-slate-100">REQUIRES</option>
@@ -1128,7 +1089,7 @@ export const KnowledgeGraphPage: React.FC = () => {
             <button
               type="submit"
               disabled={addEdgeMutation.isPending}
-              className="rounded-lg bg-indigo-600 px-4 py-2 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+              className="rounded-lg bg-tlu-navy px-4 py-2 text-xs font-medium text-white hover:bg-tlu-navy-light dark:bg-tlu-blue dark:hover:bg-blue-600 disabled:opacity-50"
             >
               {addEdgeMutation.isPending ? t('common.saving') : t('common.save')}
             </button>
@@ -1137,35 +1098,17 @@ export const KnowledgeGraphPage: React.FC = () => {
       </Modal>
 
       {/* Delete Edge Confirmation */}
-      <Modal
+      <ConfirmModal
         isOpen={deleteEdgeConfirmOpen}
         onClose={() => setDeleteEdgeConfirmOpen(false)}
+        onConfirm={() => deletingEdgeId && deleteEdgeMutation.mutate(deletingEdgeId)}
         title={t('knowledge_graph.delete_edge_confirm_title')}
-        maxWidth="sm"
-      >
-        <div className="space-y-4">
-          <p className="text-xs text-slate-600 dark:text-slate-300">
-            {t('knowledge_graph.delete_edge_confirm_desc')}
-          </p>
-          <div className="flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => setDeleteEdgeConfirmOpen(false)}
-              className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-            >
-              {t('common.cancel')}
-            </button>
-            <button
-              type="button"
-              disabled={deleteEdgeMutation.isPending}
-              onClick={() => deletingEdgeId && deleteEdgeMutation.mutate(deletingEdgeId)}
-              className="rounded-lg bg-rose-600 px-4 py-2 text-xs font-medium text-white hover:bg-rose-700 disabled:opacity-50"
-            >
-              {deleteEdgeMutation.isPending ? t('common.loading') : t('common.delete')}
-            </button>
-          </div>
-        </div>
-      </Modal>
+        message={t('knowledge_graph.delete_edge_confirm_desc')}
+        variant="danger"
+        confirmText={t('common.delete')}
+        cancelText={t('common.cancel')}
+        isLoading={deleteEdgeMutation.isPending}
+      />
     </div>
   );
 };

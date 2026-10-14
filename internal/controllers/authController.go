@@ -3,6 +3,7 @@ package controllers
 import (
 	"crypto/subtle"
 	"net/http"
+	"strings"
 	"time"
 
 	"tluagent-web/internal/dtos/request"
@@ -70,6 +71,7 @@ func (c *AuthController) clearAuthCookies(w http.ResponseWriter) {
 		Path:     "/",
 		HttpOnly: true,
 		Secure:   secure,
+		SameSite: http.SameSiteLaxMode,
 		MaxAge:   -1,
 	})
 
@@ -79,6 +81,7 @@ func (c *AuthController) clearAuthCookies(w http.ResponseWriter) {
 		Path:     "/",
 		HttpOnly: true,
 		Secure:   secure,
+		SameSite: http.SameSiteLaxMode,
 		MaxAge:   -1,
 	})
 
@@ -88,6 +91,7 @@ func (c *AuthController) clearAuthCookies(w http.ResponseWriter) {
 		Path:     "/",
 		HttpOnly: false,
 		Secure:   secure,
+		SameSite: http.SameSiteLaxMode,
 		MaxAge:   -1,
 	})
 }
@@ -98,10 +102,7 @@ func (c *AuthController) Login(w http.ResponseWriter, r *http.Request) {
 
 	var dto request.SignInDto
 	if err := validator.ValidateBodyDto(r, &dto); err != nil {
-		writeJSONResponse(w, http.StatusBadRequest, response.CommonResponse{
-			Status: false,
-			Errors: err,
-		})
+		writeValidationError(w, err)
 		return
 	}
 
@@ -142,7 +143,12 @@ func (c *AuthController) SubmitSetup(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := requestContext(r, defaultRequestTimeout)
 	defer cancel()
 
-	if requiredToken := config.GetConfigWithDefault("SETUP_TOKEN", ""); requiredToken != "" {
+	requiredToken := config.GetConfigWithDefault("SETUP_TOKEN", "")
+	if requiredToken == "" && strings.EqualFold(config.GetConfigWithDefault("APP_ENV", ""), "production") {
+		apperrors.HandleError(w, apperrors.New(apperrors.ErrForbidden, "Setup token must be configured in production"))
+		return
+	}
+	if requiredToken != "" {
 		provided := r.Header.Get("X-Setup-Token")
 		if subtle.ConstantTimeCompare([]byte(provided), []byte(requiredToken)) != 1 {
 			apperrors.HandleError(w, apperrors.New(apperrors.ErrForbidden, "Invalid or missing setup token"))
@@ -152,10 +158,7 @@ func (c *AuthController) SubmitSetup(w http.ResponseWriter, r *http.Request) {
 
 	var dto request.SetupDto
 	if err := validator.ValidateBodyDto(r, &dto); err != nil {
-		writeJSONResponse(w, http.StatusBadRequest, response.CommonResponse{
-			Status: false,
-			Errors: err,
-		})
+		writeValidationError(w, err)
 		return
 	}
 

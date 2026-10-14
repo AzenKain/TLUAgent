@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strconv"
+	"strings"
 
 	"golang.org/x/sync/singleflight"
 
@@ -17,6 +19,7 @@ import (
 type MemoryRepository interface {
 	GetStudentProfile(ctx context.Context, userID string) (*models.StudentProfile, error)
 	UpsertStudentProfile(ctx context.Context, profile *models.StudentProfile) (*models.StudentProfile, error)
+	ListStudentProfilesByStanding(ctx context.Context, cohort, major, academicStanding string, limit int32) ([]sqlc.ListStudentProfilesByStandingRow, error)
 
 	GetUserMemoryByID(ctx context.Context, id string) (*models.UserMemoryItem, error)
 	GetUserMemoriesByIDs(ctx context.Context, ids []string) ([]*models.UserMemoryItem, error)
@@ -99,6 +102,39 @@ func (r *memoryRepository) UpsertStudentProfile(ctx context.Context, profile *mo
 	return (&models.StudentProfile{}).FromSqlc(row), nil
 }
 
+func (r *memoryRepository) ListStudentProfilesByStanding(ctx context.Context, cohort, major, academicStanding string, limit int32) ([]sqlc.ListStudentProfilesByStandingRow, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	key := cache.BuildKey("student_profiles_standing", cohort, major, academicStanding, strconv.FormatInt(int64(limit), 10))
+	if r.c != nil && !r.inTx {
+		var cached []sqlc.ListStudentProfilesByStandingRow
+		if err := r.c.Get(ctx, key, &cached); err == nil {
+			return cached, nil
+		}
+	}
+
+	v, err, _ := r.sfg.Do(key, func() (any, error) {
+		rows, err := r.q.ListStudentProfilesByStanding(ctx, sqlc.ListStudentProfilesByStandingParams{
+			Cohort:           cohort,
+			Major:            major,
+			AcademicStanding: academicStanding,
+			LimitVal:         int64(limit),
+		})
+		if err != nil {
+			return nil, err
+		}
+		if r.c != nil && !r.inTx {
+			_ = r.c.Set(ctx, key, rows, constants.NormalCacheDuration)
+		}
+		return rows, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return v.([]sqlc.ListStudentProfilesByStandingRow), nil
+}
+
 func (r *memoryRepository) GetUserMemoryByID(ctx context.Context, id string) (*models.UserMemoryItem, error) {
 	key := cache.BuildKey("user_memory", "id", id)
 	if r.c != nil && !r.inTx {
@@ -152,16 +188,27 @@ func (r *memoryRepository) GetUserMemoriesByIDs(ctx context.Context, ids []strin
 	}
 
 	if len(missingIDs) > 0 {
-		rows, err := r.q.GetUserMemoriesByIDs(ctx, missingIDs)
+		sfgKey := "user_memories:get_by_ids:" + strings.Join(missingIDs, ",")
+		v, err, _ := r.sfg.Do(sfgKey, func() (any, error) {
+			rows, err := r.q.GetUserMemoriesByIDs(ctx, missingIDs)
+			if err != nil {
+				return nil, err
+			}
+			fetched := make([]*models.UserMemoryItem, 0, len(rows))
+			for _, row := range rows {
+				item := (&models.UserMemoryItem{}).FromSqlc(row)
+				if r.c != nil && !r.inTx {
+					_ = r.c.Set(ctx, cache.BuildKey("user_memory", "id", item.ID), item, constants.NormalCacheDuration)
+				}
+				fetched = append(fetched, item)
+			}
+			return fetched, nil
+		})
 		if err != nil {
 			return nil, err
 		}
-		for _, row := range rows {
-			item := (&models.UserMemoryItem{}).FromSqlc(row)
+		for _, item := range v.([]*models.UserMemoryItem) {
 			resultMap[item.ID] = item
-			if r.c != nil && !r.inTx {
-				_ = r.c.Set(ctx, cache.BuildKey("user_memory", "id", item.ID), item, constants.NormalCacheDuration)
-			}
 		}
 	}
 
@@ -275,6 +322,7 @@ func (r *memoryRepository) InvalidateProfileCache(ctx context.Context, userID st
 		return
 	}
 	_ = r.c.Del(ctx, cache.BuildKey("student_profile", "user_id", userID))
+	_ = r.c.DelByPattern(ctx, "student_profiles_standing*")
 }
 
 func (r *memoryRepository) InvalidateMemoryCache(ctx context.Context, id, userID string) {

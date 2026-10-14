@@ -36,17 +36,15 @@ type GeminiProvider struct {
 	baseURL    string
 }
 
-// NewGeminiProvider creates a Google Gemini provider instance.
 func NewGeminiProvider(cfg GeminiConfig) *GeminiProvider {
-	baseURL := cfg.BaseURL
+	baseURL := strings.TrimRight(cfg.BaseURL, "/")
 	if baseURL == "" {
-		baseURL = "https://generativelanguage.googleapis.com/v1beta"
+		baseURL = DefaultGeminiBaseURL
 	}
-	baseURL = strings.TrimRight(baseURL, "/")
 
 	defaultModel := cfg.DefaultModel
 	if defaultModel == "" {
-		defaultModel = "gemini-2.5-flash"
+		defaultModel = DefaultGeminiModel
 	}
 
 	httpClient := cfg.HTTPClient
@@ -56,10 +54,11 @@ func NewGeminiProvider(cfg GeminiConfig) *GeminiProvider {
 
 	return &GeminiProvider{
 		config: GeminiConfig{
-			APIKey:       cfg.APIKey,
-			DefaultModel: defaultModel,
-			BaseURL:      baseURL,
-			HTTPClient:   httpClient,
+			APIKey:               cfg.APIKey,
+			DefaultModel:         defaultModel,
+			BaseURL:              baseURL,
+			HTTPClient:           httpClient,
+			AllowPrivateNetworks: cfg.AllowPrivateNetworks,
 		},
 		httpClient: httpClient,
 		baseURL:    baseURL,
@@ -67,7 +66,7 @@ func NewGeminiProvider(cfg GeminiConfig) *GeminiProvider {
 }
 
 func (p *GeminiProvider) Name() string {
-	return "google-gemini"
+	return ProviderGoogleGemini
 }
 
 func (p *GeminiProvider) DefaultModel() string {
@@ -80,9 +79,8 @@ func (p *GeminiProvider) Chat(ctx context.Context, req *ChatRequest) (*ChatRespo
 	if model == "" {
 		model = p.config.DefaultModel
 	}
-	model = cleanGeminiModel(model)
 
-	endpoint := fmt.Sprintf("%s/models/%s:generateContent", p.baseURL, model)
+	endpoint := ResolveGeminiGenerateContentEndpoint(p.baseURL, model)
 
 	reqBody, err := p.buildRequestBody(req)
 	if err != nil {
@@ -94,9 +92,9 @@ func (p *GeminiProvider) Chat(ctx context.Context, req *ChatRequest) (*ChatRespo
 		return nil, fmt.Errorf("failed to create HTTP request: %w", err)
 	}
 
-	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set(HeaderContentType, MIMEApplicationJSON)
 	if p.config.APIKey != "" {
-		httpReq.Header.Set("x-goog-api-key", p.config.APIKey)
+		httpReq.Header.Set(HeaderGoogAPIKey, p.config.APIKey)
 	}
 
 	resp, err := p.httpClient.Do(httpReq)
@@ -184,9 +182,8 @@ func (p *GeminiProvider) ChatStream(ctx context.Context, req *ChatRequest) (Stre
 	if model == "" {
 		model = p.config.DefaultModel
 	}
-	model = cleanGeminiModel(model)
 
-	endpoint := fmt.Sprintf("%s/models/%s:streamGenerateContent?alt=sse", p.baseURL, model)
+	endpoint := ResolveGeminiStreamGenerateContentEndpoint(p.baseURL, model)
 
 	reqBody, err := p.buildRequestBody(req)
 	if err != nil {
@@ -198,10 +195,10 @@ func (p *GeminiProvider) ChatStream(ctx context.Context, req *ChatRequest) (Stre
 		return nil, fmt.Errorf("failed to create HTTP stream request: %w", err)
 	}
 
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Accept", "text/event-stream")
+	httpReq.Header.Set(HeaderContentType, MIMEApplicationJSON)
+	httpReq.Header.Set(HeaderAccept, MIMETextEventStream)
 	if p.config.APIKey != "" {
-		httpReq.Header.Set("x-goog-api-key", p.config.APIKey)
+		httpReq.Header.Set(HeaderGoogAPIKey, p.config.APIKey)
 	}
 
 	resp, err := p.httpClient.Do(httpReq)
@@ -361,8 +358,7 @@ func (p *GeminiProvider) buildRequestBody(req *ChatRequest) ([]byte, error) {
 }
 
 func cleanGeminiModel(m string) string {
-	m = strings.TrimPrefix(m, "models/")
-	return m
+	return CleanGeminiModel(m)
 }
 
 func mapGeminiFinishReason(reason string, hasToolCalls bool) string {

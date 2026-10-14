@@ -9,59 +9,61 @@ import (
 
 	"github.com/rs/zerolog/log"
 
+	"tluagent-web/internal/agent"
 	"tluagent-web/internal/agent/defaults"
 	"tluagent-web/internal/dtos/request"
 	"tluagent-web/internal/dtos/response"
 	"tluagent-web/internal/models"
 	"tluagent-web/internal/repositories"
 	"tluagent-web/pkg/apperrors"
+	"tluagent-web/pkg/crypto"
+	"tluagent-web/pkg/llm"
 	"tluagent-web/pkg/memory"
 )
 
 // AgentService manages agent personas, rules, and modular skill instructions.
 type AgentService interface {
-	SetRAGService(ragService RAGService)
 	SeedDefaultsIfEmpty(ctx context.Context) error
 
-	GetPrompts(ctx context.Context) ([]*models.AgentPrompt, error)
-	GetPrompt(ctx context.Context, id string) (*models.AgentPrompt, error)
-	UpdatePrompt(ctx context.Context, id string, title, content string, updatedBy string) (*models.AgentPrompt, error)
-	ResetPrompt(ctx context.Context, id string, updatedBy string) (*models.AgentPrompt, error)
+	GetPrompts(ctx context.Context) ([]*response.AgentPromptResponse, error)
+	GetPrompt(ctx context.Context, id string) (*response.AgentPromptResponse, error)
+	UpdatePrompt(ctx context.Context, id string, title, content string, updatedBy string) (*response.AgentPromptResponse, error)
+	ResetPrompt(ctx context.Context, id string, updatedBy string) (*response.AgentPromptResponse, error)
 
-	GetSkills(ctx context.Context) ([]*models.AgentSkill, error)
-	GetSkill(ctx context.Context, id string) (*models.AgentSkill, error)
-	CreateSkill(ctx context.Context, skill *models.AgentSkill) (*models.AgentSkill, error)
-	UpdateSkill(ctx context.Context, id string, name, description, content, toolDef string, priority int, updatedBy string) (*models.AgentSkill, error)
+	GetSkills(ctx context.Context) ([]*response.AgentSkillResponse, error)
+	GetSkill(ctx context.Context, id string) (*response.AgentSkillResponse, error)
+	CreateSkill(ctx context.Context, req *request.CreateAgentSkillRequest, updatedBy string) (*response.AgentSkillResponse, error)
+	UpdateSkill(ctx context.Context, id string, req *request.UpdateAgentSkillRequest, updatedBy string) (*response.AgentSkillResponse, error)
 	ToggleSkill(ctx context.Context, id string, isEnabled bool, updatedBy string) error
 	DeleteSkill(ctx context.Context, id string) error
-	ResetSkill(ctx context.Context, id string, updatedBy string) (*models.AgentSkill, error)
+	ResetSkill(ctx context.Context, id string, updatedBy string) (*response.AgentSkillResponse, error)
 
-	BuildSystemPrompt(ctx context.Context, profile *memory.StudentAcademicProfile, ragItems []*models.RAGSearchResultItem) (string, []string, error)
+	GetActiveToolDefinitions(ctx context.Context) ([]llm.ToolDefinition, error)
+	BuildSystemPrompt(ctx context.Context, profile *memory.StudentAcademicProfile, ragItems []*response.RAGSearchResultItemResponse, nonce ...string) (string, []string, error)
 	PreviewSystemPrompt(ctx context.Context, studentCohort string, includeSampleRAG bool) (string, error)
 	GetCompactorSettings(ctx context.Context) (*response.CompactorSettingsResponse, error)
 	UpdateCompactorSettings(ctx context.Context, req *request.UpdateCompactorSettingsRequest) (*response.CompactorSettingsResponse, error)
-	SetSettingsRepository(settingsRepo repositories.SettingsRepository)
 }
 
 type agentService struct {
 	agentRepo    repositories.AgentRepository
+	skillLoader  agent.SkillLoader
 	ragService   RAGService
 	settingsRepo repositories.SettingsRepository
 }
 
 // NewAgentService creates a new instance of AgentService.
-func NewAgentService(agentRepo repositories.AgentRepository) AgentService {
+func NewAgentService(
+	agentRepo repositories.AgentRepository,
+	ragService RAGService,
+	settingsRepo repositories.SettingsRepository,
+) AgentService {
 	return &agentService{
-		agentRepo: agentRepo,
+		agentRepo:    agentRepo,
+		skillLoader:  agent.NewDBSkillLoader(agentRepo),
+		ragService:   ragService,
+		settingsRepo: settingsRepo,
 	}
-}
-
-func (s *agentService) SetSettingsRepository(settingsRepo repositories.SettingsRepository) {
-	s.settingsRepo = settingsRepo
-}
-
-func (s *agentService) SetRAGService(ragService RAGService) {
-	s.ragService = ragService
 }
 
 func (s *agentService) SeedDefaultsIfEmpty(ctx context.Context) error {
@@ -87,11 +89,17 @@ func (s *agentService) SeedDefaultsIfEmpty(ctx context.Context) error {
 			if err := s.agentRepo.UpsertPrompt(ctx, prompt); err != nil {
 				log.Warn().Err(err).Str("prompt_id", meta.ID).Msg("Failed to seed default prompt")
 			}
+		} else if existing.UpdatedBy == "system" {
+			if content, readErr := defaults.ReadDefaultFile(meta.Path); readErr == nil && content != "" {
+				existing.Title = meta.Title
+				existing.Content = content
+				_ = s.agentRepo.UpsertPrompt(ctx, existing)
+			}
 		}
 	}
 
 	for _, meta := range defaults.GetDefaultSkillsMetadata() {
-		existing, err := s.agentRepo.GetSkill(ctx, meta.ID)
+		existing, err := s.skillLoader.GetSkill(ctx, meta.ID)
 		if err != nil {
 			log.Warn().Err(err).Str("skill_id", meta.ID).Msg("Failed to check existing skill during seeding")
 			continue
@@ -115,16 +123,32 @@ func (s *agentService) SeedDefaultsIfEmpty(ctx context.Context) error {
 			if err := s.agentRepo.UpsertSkill(ctx, skill); err != nil {
 				log.Warn().Err(err).Str("skill_id", meta.ID).Msg("Failed to seed default skill")
 			}
+		} else if existing.UpdatedBy == "system" {
+			if content, readErr := defaults.ReadDefaultFile(meta.Path); readErr == nil && content != "" {
+				existing.Name = meta.Name
+				existing.Description = meta.Description
+				existing.Content = content
+				existing.ToolDefinition = meta.ToolDef
+				existing.Priority = meta.Priority
+				_ = s.agentRepo.UpsertSkill(ctx, existing)
+			}
+		} else if existing.ToolDefinition == "" && meta.ToolDef != "" {
+			existing.ToolDefinition = meta.ToolDef
+			_ = s.agentRepo.UpsertSkill(ctx, existing)
 		}
 	}
 	return nil
 }
 
-func (s *agentService) GetPrompts(ctx context.Context) ([]*models.AgentPrompt, error) {
-	return s.agentRepo.ListPrompts(ctx)
+func (s *agentService) GetPrompts(ctx context.Context) ([]*response.AgentPromptResponse, error) {
+	prompts, err := s.agentRepo.ListPrompts(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return models.AgentPromptsToResponse(prompts), nil
 }
 
-func (s *agentService) GetPrompt(ctx context.Context, id string) (*models.AgentPrompt, error) {
+func (s *agentService) GetPrompt(ctx context.Context, id string) (*response.AgentPromptResponse, error) {
 	prompt, err := s.agentRepo.GetPrompt(ctx, id)
 	if err != nil {
 		return nil, err
@@ -132,10 +156,10 @@ func (s *agentService) GetPrompt(ctx context.Context, id string) (*models.AgentP
 	if prompt == nil {
 		return nil, apperrors.New(apperrors.ErrNotFound, "prompt not found")
 	}
-	return prompt, nil
+	return prompt.ToResponse(), nil
 }
 
-func (s *agentService) UpdatePrompt(ctx context.Context, id string, title, content string, updatedBy string) (*models.AgentPrompt, error) {
+func (s *agentService) UpdatePrompt(ctx context.Context, id string, title, content string, updatedBy string) (*response.AgentPromptResponse, error) {
 	trimmedTitle := strings.TrimSpace(title)
 	trimmedContent := strings.TrimSpace(content)
 	if trimmedTitle == "" {
@@ -155,10 +179,17 @@ func (s *agentService) UpdatePrompt(ctx context.Context, id string, title, conte
 	if err := s.agentRepo.UpsertPrompt(ctx, prompt); err != nil {
 		return nil, err
 	}
-	return s.agentRepo.GetPrompt(ctx, id)
+	res, err := s.agentRepo.GetPrompt(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if res == nil {
+		return nil, apperrors.New(apperrors.ErrNotFound, "prompt not found")
+	}
+	return res.ToResponse(), nil
 }
 
-func (s *agentService) ResetPrompt(ctx context.Context, id string, updatedBy string) (*models.AgentPrompt, error) {
+func (s *agentService) ResetPrompt(ctx context.Context, id string, updatedBy string) (*response.AgentPromptResponse, error) {
 	var targetMeta *defaults.DefaultPromptMeta
 	for _, meta := range defaults.GetDefaultPromptsMetadata() {
 		if meta.ID == id {
@@ -185,44 +216,55 @@ func (s *agentService) ResetPrompt(ctx context.Context, id string, updatedBy str
 	if err := s.agentRepo.UpsertPrompt(ctx, prompt); err != nil {
 		return nil, err
 	}
-	return s.agentRepo.GetPrompt(ctx, id)
+	res, err := s.agentRepo.GetPrompt(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if res == nil {
+		return nil, apperrors.New(apperrors.ErrNotFound, "prompt not found")
+	}
+	return res.ToResponse(), nil
 }
 
-func (s *agentService) GetSkills(ctx context.Context) ([]*models.AgentSkill, error) {
-	return s.agentRepo.ListSkills(ctx)
+func (s *agentService) GetSkills(ctx context.Context) ([]*response.AgentSkillResponse, error) {
+	skills, err := s.skillLoader.ListSkills(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return models.AgentSkillsToResponse(skills), nil
 }
 
-func (s *agentService) GetSkill(ctx context.Context, id string) (*models.AgentSkill, error) {
-	skill, err := s.agentRepo.GetSkill(ctx, id)
+func (s *agentService) GetSkill(ctx context.Context, id string) (*response.AgentSkillResponse, error) {
+	skill, err := s.skillLoader.GetSkill(ctx, id)
 	if err != nil {
 		return nil, err
 	}
 	if skill == nil {
 		return nil, apperrors.New(apperrors.ErrNotFound, "skill not found")
 	}
-	return skill, nil
+	return skill.ToResponse(), nil
 }
 
-func (s *agentService) CreateSkill(ctx context.Context, skill *models.AgentSkill) (*models.AgentSkill, error) {
-	if skill == nil {
+func (s *agentService) CreateSkill(ctx context.Context, req *request.CreateAgentSkillRequest, updatedBy string) (*response.AgentSkillResponse, error) {
+	if req == nil {
 		return nil, apperrors.New(apperrors.ErrBadRequest, "skill cannot be nil")
 	}
-	skill.ID = strings.TrimSpace(skill.ID)
-	skill.Name = strings.TrimSpace(skill.Name)
-	skill.Description = strings.TrimSpace(skill.Description)
-	skill.Content = strings.TrimSpace(skill.Content)
+	id := strings.TrimSpace(req.ID)
+	name := strings.TrimSpace(req.Name)
+	description := strings.TrimSpace(req.Description)
+	content := strings.TrimSpace(req.Content)
 
-	if skill.ID == "" {
+	if id == "" {
 		return nil, apperrors.New(apperrors.ErrBadRequest, "skill id cannot be empty")
 	}
-	if skill.Name == "" {
+	if name == "" {
 		return nil, apperrors.New(apperrors.ErrBadRequest, "skill name cannot be empty")
 	}
-	if skill.Content == "" {
+	if content == "" {
 		return nil, apperrors.New(apperrors.ErrBadRequest, "skill content cannot be empty")
 	}
 
-	existing, err := s.agentRepo.GetSkill(ctx, skill.ID)
+	existing, err := s.agentRepo.GetSkill(ctx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -230,13 +272,43 @@ func (s *agentService) CreateSkill(ctx context.Context, skill *models.AgentSkill
 		return nil, apperrors.New(apperrors.ErrConflict, "skill with this id already exists")
 	}
 
+	isEnabled := true
+	if req.IsEnabled != nil {
+		isEnabled = *req.IsEnabled
+	}
+	priority := 0
+	if req.Priority != nil {
+		priority = *req.Priority
+	}
+
+	skill := &models.AgentSkill{
+		ID:             id,
+		Name:           name,
+		Description:    description,
+		Content:        content,
+		ToolDefinition: strings.TrimSpace(req.ToolDefinition),
+		IsEnabled:      isEnabled,
+		Priority:       priority,
+		UpdatedBy:      updatedBy,
+	}
+
 	if err := s.agentRepo.UpsertSkill(ctx, skill); err != nil {
 		return nil, err
 	}
-	return s.agentRepo.GetSkill(ctx, skill.ID)
+	res, err := s.agentRepo.GetSkill(ctx, skill.ID)
+	if err != nil {
+		return nil, err
+	}
+	if res == nil {
+		return nil, apperrors.New(apperrors.ErrNotFound, "skill not found")
+	}
+	return res.ToResponse(), nil
 }
 
-func (s *agentService) UpdateSkill(ctx context.Context, id string, name, description, content, toolDef string, priority int, updatedBy string) (*models.AgentSkill, error) {
+func (s *agentService) UpdateSkill(ctx context.Context, id string, req *request.UpdateAgentSkillRequest, updatedBy string) (*response.AgentSkillResponse, error) {
+	if req == nil {
+		return nil, apperrors.New(apperrors.ErrBadRequest, "skill cannot be nil")
+	}
 	existing, err := s.agentRepo.GetSkill(ctx, id)
 	if err != nil {
 		return nil, err
@@ -245,8 +317,8 @@ func (s *agentService) UpdateSkill(ctx context.Context, id string, name, descrip
 		return nil, apperrors.New(apperrors.ErrNotFound, "skill not found")
 	}
 
-	trimmedName := strings.TrimSpace(name)
-	trimmedContent := strings.TrimSpace(content)
+	trimmedName := strings.TrimSpace(req.Name)
+	trimmedContent := strings.TrimSpace(req.Content)
 	if trimmedName == "" {
 		return nil, apperrors.New(apperrors.ErrBadRequest, "skill name cannot be empty")
 	}
@@ -254,17 +326,29 @@ func (s *agentService) UpdateSkill(ctx context.Context, id string, name, descrip
 		return nil, apperrors.New(apperrors.ErrBadRequest, "skill content cannot be empty")
 	}
 
+	priority := 0
+	if req.Priority != nil {
+		priority = *req.Priority
+	}
+
 	existing.Name = trimmedName
-	existing.Description = strings.TrimSpace(description)
+	existing.Description = strings.TrimSpace(req.Description)
 	existing.Content = trimmedContent
-	existing.ToolDefinition = strings.TrimSpace(toolDef)
+	existing.ToolDefinition = strings.TrimSpace(req.ToolDefinition)
 	existing.Priority = priority
 	existing.UpdatedBy = updatedBy
 
 	if err := s.agentRepo.UpsertSkill(ctx, existing); err != nil {
 		return nil, err
 	}
-	return s.agentRepo.GetSkill(ctx, id)
+	res, err := s.agentRepo.GetSkill(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if res == nil {
+		return nil, apperrors.New(apperrors.ErrNotFound, "skill not found")
+	}
+	return res.ToResponse(), nil
 }
 
 func (s *agentService) ToggleSkill(ctx context.Context, id string, isEnabled bool, updatedBy string) error {
@@ -289,7 +373,7 @@ func (s *agentService) DeleteSkill(ctx context.Context, id string) error {
 	return s.agentRepo.DeleteSkill(ctx, id)
 }
 
-func (s *agentService) ResetSkill(ctx context.Context, id string, updatedBy string) (*models.AgentSkill, error) {
+func (s *agentService) ResetSkill(ctx context.Context, id string, updatedBy string) (*response.AgentSkillResponse, error) {
 	var targetMeta *defaults.DefaultSkillMeta
 	for _, meta := range defaults.GetDefaultSkillsMetadata() {
 		if meta.ID == id {
@@ -319,12 +403,26 @@ func (s *agentService) ResetSkill(ctx context.Context, id string, updatedBy stri
 	if err := s.agentRepo.UpsertSkill(ctx, skill); err != nil {
 		return nil, err
 	}
-	return s.agentRepo.GetSkill(ctx, id)
+	res, err := s.agentRepo.GetSkill(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if res == nil {
+		return nil, apperrors.New(apperrors.ErrNotFound, "skill not found")
+	}
+	return res.ToResponse(), nil
 }
 
-func (s *agentService) BuildSystemPrompt(ctx context.Context, profile *memory.StudentAcademicProfile, ragItems []*models.RAGSearchResultItem) (string, []string, error) {
+func (s *agentService) BuildSystemPrompt(ctx context.Context, profile *memory.StudentAcademicProfile, ragItems []*response.RAGSearchResultItemResponse, nonce ...string) (string, []string, error) {
 	var sb strings.Builder
 	var sources []string
+
+	currentNonce := ""
+	if len(nonce) > 0 && nonce[0] != "" {
+		currentNonce = nonce[0]
+	} else {
+		currentNonce, _ = crypto.GenerateRandomHex(8)
+	}
 
 	soulPrompt, err := s.agentRepo.GetPrompt(ctx, defaults.PromptSoulID)
 	if err == nil && soulPrompt != nil && soulPrompt.IsActive && soulPrompt.Content != "" {
@@ -346,7 +444,7 @@ func (s *agentService) BuildSystemPrompt(ctx context.Context, profile *memory.St
 		}
 	}
 
-	enabledSkills, err := s.agentRepo.ListEnabledSkills(ctx)
+	enabledSkills, err := s.skillLoader.GetActiveSkills(ctx)
 	if err == nil && len(enabledSkills) > 0 {
 		sb.WriteString("\n\n---\n\n# ACTIVE OPERATIONAL SKILLS\n\n")
 		for _, skill := range enabledSkills {
@@ -356,24 +454,20 @@ func (s *agentService) BuildSystemPrompt(ctx context.Context, profile *memory.St
 
 	if profile != nil {
 		sb.WriteString("\n---\n\n# CURRENT STUDENT PROFILE CONTEXT\n\n")
-		sb.WriteString(memory.FormatStudentPromptContext(profile))
-		sb.WriteString("\n")
+		fmt.Fprintf(&sb, "<student_memory nonce=\"%s\">\n%s\n</student_memory>\n", currentNonce, memory.FormatStudentPromptContext(profile))
 	}
 
 	if len(ragItems) > 0 {
 		sb.WriteString("\n---\n\n# RETRIEVED REGULATORY DOCUMENTS (RAG KNOWLEDGE):\n\n")
+		seenSources := make(map[string]bool)
 		for _, item := range ragItems {
-			fmt.Fprintf(&sb, "- Document: %s\nContent: %s\n\n", item.DocTitle, item.Content)
-			if item.DocTitle != "" {
+			fmt.Fprintf(&sb, "<rag_context nonce=\"%s\">\n- Document: %s\nContent: %s\n</rag_context>\n\n", currentNonce, item.DocTitle, item.Content)
+			if item.DocTitle != "" && !seenSources[item.DocTitle] {
+				seenSources[item.DocTitle] = true
 				sources = append(sources, item.DocTitle)
 			}
 		}
 	}
-
-	sb.WriteString("\n---\n\n# MANDATORY CITATION & VERIFICATION DIRECTIVE:\n")
-	sb.WriteString("1. CITATION REQUIREMENT: At the very end of EVERY response, you MUST append a 'Nguồn trích dẫn / Căn cứ pháp lý:' section clearly citing the document titles and specific articles used so the student can verify.\n")
-	sb.WriteString("2. STRICT ZERO-HALLUCINATION POLICY: Never invent or guess rules, policies, dates, or tuition fees not present in the retrieved context. If an inquiry cannot be answered by the official documents provided, clearly declare that the information is not found in official TLU documents and guide the student to contact the Academic Affairs Department (Phòng Đào tạo / Nhà T).\n")
-	sb.WriteString("3. ADVISOR ESCALATION DIRECTIVE: If and ONLY if you DO NOT have sufficient official documents in the provided context to answer the student's question, OR if the question involves special personal requests requiring advisor approval/intervention (e.g. grade appeal, deferred exam, special study plan approval), you MUST append the exact token `[CAN_ESCALATE]` at the very end of your response. If you have enough official documents to answer clearly, DO NOT include `[CAN_ESCALATE]`.\n")
 
 	return sb.String(), sources, nil
 }
@@ -387,12 +481,12 @@ func (s *agentService) PreviewSystemPrompt(ctx context.Context, studentCohort st
 			cohortNum = n
 		}
 		profile = &memory.StudentAcademicProfile{
-			StudentID:  "SV" + cleanCohort + "001",
+			StudentID:  "SV_PREVIEW_USER",
 			CohortYear: cohortNum,
 		}
 	}
 
-	var sampleRAG []*models.RAGSearchResultItem
+	var sampleRAG []*response.RAGSearchResultItemResponse
 	if includeSampleRAG && s.ragService != nil {
 		if results, err := s.ragService.Search(ctx, models.RAGSearchParams{
 			StudentCohort: studentCohort,
@@ -443,3 +537,51 @@ func (s *agentService) UpdateCompactorSettings(ctx context.Context, req *request
 		KeepRecentTurns:       req.KeepRecentTurns,
 	}, nil
 }
+
+// GetActiveToolDefinitions dynamically resolves active tool definitions from enabled skills.
+func (s *agentService) GetActiveToolDefinitions(ctx context.Context) ([]llm.ToolDefinition, error) {
+	enabledSkills, err := s.skillLoader.GetActiveSkills(ctx)
+	if err != nil || len(enabledSkills) == 0 {
+		return agent.GetDefaultToolDefinitions(), nil
+	}
+
+	defaultMetaMap := make(map[string]string)
+	for _, meta := range defaults.GetDefaultSkillsMetadata() {
+		if meta.ToolDef != "" {
+			defaultMetaMap[meta.ID] = meta.ToolDef
+		}
+	}
+
+	var results []llm.ToolDefinition
+	seen := make(map[string]bool)
+
+	for _, skill := range enabledSkills {
+		rawDef := strings.TrimSpace(skill.ToolDefinition)
+		if rawDef == "" {
+			rawDef = defaultMetaMap[skill.ID]
+		}
+		if rawDef == "" {
+			continue
+		}
+
+		defs, parseErr := agent.ParseToolDefinitions(rawDef)
+		if parseErr != nil {
+			log.Warn().Err(parseErr).Str("skill_id", skill.ID).Msg("Failed to parse tool definition for skill")
+			continue
+		}
+
+		for _, d := range defs {
+			if d.Function.Name != "" && !seen[d.Function.Name] {
+				seen[d.Function.Name] = true
+				results = append(results, d)
+			}
+		}
+	}
+
+	if len(results) == 0 {
+		return agent.GetDefaultToolDefinitions(), nil
+	}
+
+	return results, nil
+}
+

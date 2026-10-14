@@ -31,7 +31,8 @@ func TestLLMConfigService_ProviderAndModelLifecycle(t *testing.T) {
 	ramCache := cache.NewTheineCache(10 << 20)
 	repo := repositories.NewLLMRepository(db, ramCache)
 	manager := llm.NewManager()
-	svc := services.NewLLMConfigService(repo, manager)
+	settingsRepo := repositories.NewSettingsRepository(db, ramCache)
+	svc := services.NewLLMConfigService(repo, manager, settingsRepo)
 	ctx := context.Background()
 
 	rawKey := os.Getenv("OPEN_ROUTER_API")
@@ -153,7 +154,8 @@ func TestLLMConfigService_ChainsAndEmbeddingHomogeneity(t *testing.T) {
 	ramCache := cache.NewTheineCache(10 << 20)
 	repo := repositories.NewLLMRepository(db, ramCache)
 	manager := llm.NewManager()
-	svc := services.NewLLMConfigService(repo, manager)
+	settingsRepo := repositories.NewSettingsRepository(db, ramCache)
+	svc := services.NewLLMConfigService(repo, manager, settingsRepo)
 	ctx := context.Background()
 
 	testKey1, err := crypto.GenerateRandomHex(24)

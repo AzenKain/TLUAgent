@@ -53,6 +53,7 @@ export interface DocumentDetailDTO {
   supersedes?: DocumentDTO[];
   chunks: DocumentChunkDTO[];
   audit_logs: SupersessionAuditLogDTO[];
+  full_content?: string;
 }
 
 export interface KGNodeDTO {
@@ -83,6 +84,8 @@ export interface KnowledgeStatsDTO {
   total_documents: number;
   active_documents: number;
   superseded_documents: number;
+  partially_amended_documents?: number;
+  archived_documents?: number;
   total_chunks: number;
   total_nodes: number;
   total_edges: number;

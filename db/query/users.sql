@@ -156,3 +156,10 @@ FROM role_permissions rp
 JOIN user_roles ur ON ur.role_id = rp.role_id
 WHERE ur.user_id = ?
 ORDER BY rp.role_id ASC, rp.permission_key ASC;
+
+-- name: GetUserByStudentCode :one
+SELECT id, email, full_name, student_code, avatar_url, password_hash, auth_provider, token_version, refresh_token, is_deleted, created_at, updated_at
+FROM users
+WHERE student_code = ? AND is_deleted = 0
+LIMIT 1;
+

@@ -108,22 +108,41 @@ type LLMChainResponse struct {
 	UpdatedAt        string                 `json:"updated_at"`
 }
 
-type TestLLMModelResponse struct {
-	Success          bool           `json:"success"`
-	ModelID          string         `json:"model_id,omitempty"`
-	ModelName        string         `json:"model_name,omitempty"`
-	ModelKey         string         `json:"model_key,omitempty"`
-	ProviderName     string         `json:"provider_name,omitempty"`
-	ChainID          string         `json:"chain_id,omitempty"`
-	NodeUsed         string         `json:"node_used,omitempty"`
-	Content          string         `json:"content"`
-	ReasoningContent string         `json:"reasoning_content,omitempty"`
-	LatencyMs        int64          `json:"latency_ms"`
-	PromptTokens     int            `json:"prompt_tokens"`
-	CompletionTokens int            `json:"completion_tokens"`
-	ReasoningTokens  int            `json:"reasoning_tokens"`
-	TotalTokens      int            `json:"total_tokens"`
-	FinishReason     string         `json:"finish_reason,omitempty"`
-	Error            string         `json:"error,omitempty"`
-	RawResponse      map[string]any `json:"raw_response,omitempty"`
+// LLMTestRawResponse encapsulates detailed telemetry from a provider test.
+type LLMTestRawResponse struct {
+	Content      string `json:"content,omitempty"`
+	FinishReason string `json:"finish_reason,omitempty"`
+	Usage        any    `json:"usage,omitempty"`
+	Node         string `json:"node,omitempty"`
+	VectorCount  int    `json:"vector_count,omitempty"`
+	Dimensions   int    `json:"dimensions,omitempty"`
 }
+
+// TestLLMModelResponse encapsulates the outcome of testing an LLM or embedding model.
+type TestLLMModelResponse struct {
+	Success          bool                `json:"success"`
+	ModelID          string              `json:"model_id,omitempty"`
+	ModelName        string              `json:"model_name,omitempty"`
+	ModelKey         string              `json:"model_key,omitempty"`
+	ProviderName     string              `json:"provider_name,omitempty"`
+	ChainID          string              `json:"chain_id,omitempty"`
+	NodeUsed         string              `json:"node_used,omitempty"`
+	Content          string              `json:"content"`
+	ReasoningContent string              `json:"reasoning_content,omitempty"`
+	LatencyMs        int64               `json:"latency_ms"`
+	PromptTokens     int                 `json:"prompt_tokens"`
+	CompletionTokens int                 `json:"completion_tokens"`
+	ReasoningTokens  int                 `json:"reasoning_tokens"`
+	TotalTokens      int                 `json:"total_tokens"`
+	FinishReason     string              `json:"finish_reason,omitempty"`
+	Error            string              `json:"error,omitempty"`
+	RawResponse      *LLMTestRawResponse `json:"raw_response,omitempty"`
+}
+
+// VisionSettingsResponse describes system vision handling strategy and available fallback models.
+type VisionSettingsResponse struct {
+	VisionStrategy        string   `json:"vision_strategy"`
+	VisionFallbackModel   string   `json:"vision_fallback_model"`
+	AvailableVisionModels []string `json:"available_vision_models"`
+}
+

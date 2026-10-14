@@ -3,6 +3,7 @@ package repositories
 import (
 	"context"
 	"database/sql"
+	"strconv"
 	"strings"
 	"time"
 
@@ -157,18 +158,40 @@ func (r *jobScheduleRepository) GetByIDs(ctx context.Context, ids []string) ([]*
 }
 
 func (r *jobScheduleRepository) List(ctx context.Context) ([]*models.JobScheduleEntity, error) {
-	ids, err := r.q.ListJobScheduleIDs(ctx)
+	key := cache.BuildKey("job_schedules", "all")
+	if r.c != nil && !r.inTx {
+		var cachedIDs []string
+		if err := r.c.Get(ctx, key, &cachedIDs); err == nil && len(cachedIDs) > 0 {
+			return r.GetByIDs(ctx, cachedIDs)
+		}
+	}
+
+	v, err, _ := r.sfg.Do(key, func() (any, error) {
+		ids, err := r.q.ListJobScheduleIDs(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if r.c != nil && !r.inTx {
+			_ = r.c.Set(ctx, key, ids, constants.ListCacheDuration)
+		}
+		return ids, nil
+	})
 	if err != nil {
 		return nil, err
 	}
+	ids := v.([]string)
 	return r.GetByIDs(ctx, ids)
 }
 
 func (r *jobScheduleRepository) ListDue(ctx context.Context, now time.Time) ([]*models.JobScheduleEntity, error) {
-	ids, err := r.q.ListDueJobScheduleIDs(ctx, now)
+	sfgKey := "job_schedules:due:" + strconv.FormatInt(now.Unix(), 10)
+	v, err, _ := r.sfg.Do(sfgKey, func() (any, error) {
+		return r.q.ListDueJobScheduleIDs(ctx, now)
+	})
 	if err != nil {
 		return nil, err
 	}
+	ids := v.([]string)
 	return r.GetByIDs(ctx, ids)
 }
 

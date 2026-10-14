@@ -65,6 +65,16 @@ func (q *Queries) CreateNotification(ctx context.Context, arg CreateNotification
 	return i, err
 }
 
+const deleteNotificationByID = `-- name: DeleteNotificationByID :exec
+DELETE FROM user_notifications
+WHERE id = ?
+`
+
+func (q *Queries) DeleteNotificationByID(ctx context.Context, id string) error {
+	_, err := q.exec(ctx, q.deleteNotificationByIDStmt, deleteNotificationByID, id)
+	return err
+}
+
 const getNotificationByID = `-- name: GetNotificationByID :one
 SELECT id, user_id, inquiry_id, title, content, type, is_read, created_at FROM user_notifications
 WHERE id = ? LIMIT 1
@@ -148,6 +158,40 @@ type ListNotificationIDsByUserIDParams struct {
 
 func (q *Queries) ListNotificationIDsByUserID(ctx context.Context, arg ListNotificationIDsByUserIDParams) ([]string, error) {
 	rows, err := q.query(ctx, q.listNotificationIDsByUserIDStmt, listNotificationIDsByUserID, arg.UserID, arg.Limit, arg.Offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRecentNotificationIDs = `-- name: ListRecentNotificationIDs :many
+SELECT id FROM user_notifications
+ORDER BY created_at DESC
+LIMIT ? OFFSET ?
+`
+
+type ListRecentNotificationIDsParams struct {
+	Limit  int64 `json:"limit"`
+	Offset int64 `json:"offset"`
+}
+
+func (q *Queries) ListRecentNotificationIDs(ctx context.Context, arg ListRecentNotificationIDsParams) ([]string, error) {
+	rows, err := q.query(ctx, q.listRecentNotificationIDsStmt, listRecentNotificationIDs, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}

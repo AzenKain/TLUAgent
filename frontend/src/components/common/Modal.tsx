@@ -7,7 +7,7 @@ interface ModalProps {
   onClose: () => void;
   title: string;
   children: React.ReactNode;
-  maxWidth?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '3xl' | '4xl';
+  maxWidth?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '3xl' | '4xl' | '5xl' | '6xl';
 }
 
 // Modal renders a centered dialog with a near-fullscreen scrollable layout on small screens.
@@ -49,6 +49,8 @@ export const Modal: React.FC<ModalProps> = ({
     '2xl': 'sm:max-w-3xl',
     '3xl': 'sm:max-w-4xl',
     '4xl': 'sm:max-w-5xl',
+    '5xl': 'sm:max-w-6xl',
+    '6xl': 'sm:max-w-7xl',
   };
 
   return (

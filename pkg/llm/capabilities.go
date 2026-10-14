@@ -2,16 +2,11 @@ package llm
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"strings"
 	"sync"
-	"time"
 )
 
-// ModelCapability describes the operational features of an LLM.
 type ModelCapability struct {
 	SupportsVision    bool     `json:"supports_vision"`
 	SupportsTools     bool     `json:"supports_tools"`
@@ -21,7 +16,6 @@ type ModelCapability struct {
 	InputModalities   []string `json:"input_modalities,omitempty"`
 }
 
-// VisionHandlingStrategy determines how to handle requests with images sent to non-vision models.
 type VisionHandlingStrategy string
 
 const (
@@ -33,24 +27,18 @@ const (
 	VisionStrategyReject VisionHandlingStrategy = "reject"
 )
 
-// CapabilityRegistry caches and detects model capabilities across providers.
 type CapabilityRegistry struct {
-	mu            sync.RWMutex
-	cache         map[string]ModelCapability
-	openRouterKey string
-	httpClient    *http.Client
+	mu    sync.RWMutex
+	cache map[string]ModelCapability
 }
 
 // NewCapabilityRegistry creates a registry instance.
-func NewCapabilityRegistry(openRouterKey string) *CapabilityRegistry {
+func NewCapabilityRegistry() *CapabilityRegistry {
 	return &CapabilityRegistry{
-		cache:         make(map[string]ModelCapability),
-		openRouterKey: openRouterKey,
-		httpClient:    NewSafeRetryClient(10*time.Second, 2, false),
+		cache: make(map[string]ModelCapability),
 	}
 }
 
-// RegisterCapability registers or overrides capabilities for a model.
 func (r *CapabilityRegistry) RegisterCapability(model string, cap ModelCapability) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -113,7 +101,7 @@ func SanitizeForTextOnly(messages []Message) []Message {
 	return clean
 }
 
-// DetectCapabilities returns the capabilities of a given model from cache/registered models or dynamic discovery.
+// DetectCapabilities returns the capabilities of a given model from cache.
 func (r *CapabilityRegistry) DetectCapabilities(ctx context.Context, model string) ModelCapability {
 	if model == "" {
 		return ModelCapability{SupportsVision: false, SupportsTools: true, MaxImages: 0}
@@ -128,92 +116,12 @@ func (r *CapabilityRegistry) DetectCapabilities(ctx context.Context, model strin
 		return cap
 	}
 
-	cap = ModelCapability{SupportsVision: false, SupportsTools: true, MaxImages: 0}
-
-	if strings.Contains(modelLower, "/") && r.openRouterKey != "" {
-		if discovered, ok := r.fetchOpenRouterCapability(ctx, model); ok {
-			cap = discovered
-		}
-	}
-
-	r.mu.Lock()
-	r.cache[modelLower] = cap
-	r.mu.Unlock()
-
-	return cap
+	return ModelCapability{SupportsVision: false, SupportsTools: true, MaxImages: 0}
 }
 
 // SupportsVision checks whether a model supports image input.
 func (r *CapabilityRegistry) SupportsVision(ctx context.Context, model string) bool {
 	return r.DetectCapabilities(ctx, model).SupportsVision
-}
-
-// fetchOpenRouterCapability dynamically queries OpenRouter /models endpoint.
-func (r *CapabilityRegistry) fetchOpenRouterCapability(ctx context.Context, modelID string) (ModelCapability, bool) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://openrouter.ai/api/v1/models", nil)
-	if err != nil {
-		return ModelCapability{}, false
-	}
-
-	req.Header.Set("Authorization", "Bearer "+r.openRouterKey)
-	resp, err := r.httpClient.Do(req)
-	if err != nil || resp.StatusCode != http.StatusOK {
-		if resp != nil {
-			resp.Body.Close()
-		}
-		return ModelCapability{}, false
-	}
-	defer resp.Body.Close()
-
-	bodyBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return ModelCapability{}, false
-	}
-
-	var data struct {
-		Data []struct {
-			ID           string `json:"id"`
-			ContextLen   int    `json:"context_length"`
-			Architecture struct {
-				Modality        string   `json:"modality"`
-				InputModalities []string `json:"input_modalities"`
-			} `json:"architecture"`
-		} `json:"data"`
-	}
-
-	if err := json.Unmarshal(bodyBytes, &data); err != nil {
-		return ModelCapability{}, false
-	}
-
-	for _, item := range data.Data {
-		if strings.EqualFold(item.ID, modelID) {
-			hasImage := false
-			for _, mod := range item.Architecture.InputModalities {
-				if strings.EqualFold(mod, "image") {
-					hasImage = true
-					break
-				}
-			}
-			if !hasImage && strings.Contains(item.Architecture.Modality, "image") {
-				hasImage = true
-			}
-
-			maxImages := 0
-			if hasImage {
-				maxImages = 5
-			}
-
-			return ModelCapability{
-				SupportsVision:  hasImage,
-				SupportsTools:   true,
-				ContextLength:   item.ContextLen,
-				MaxImages:       maxImages,
-				InputModalities: item.Architecture.InputModalities,
-			}, true
-		}
-	}
-
-	return ModelCapability{}, false
 }
 
 // AdaptiveChatRequest inspects if the target model supports vision and checks image limits.
@@ -241,7 +149,7 @@ func AdaptiveChatRequest(
 	switch strategy {
 	case VisionStrategyFallback:
 		if visionFallbackModel == "" {
-			visionFallbackModel = "gemini-2.5-flash"
+			return nil, fmt.Errorf("model '%s' does not support vision and no vision fallback model is configured in admin settings", targetModel)
 		}
 		cloned := *req
 		cloned.Model = visionFallbackModel

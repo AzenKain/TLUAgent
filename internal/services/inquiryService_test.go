@@ -58,13 +58,12 @@ func TestInquiryService_SelfEvolutionAndOutdatedExpiry(t *testing.T) {
 		t.Fatalf("Failed to create teacher: %v", err)
 	}
 
-	inquirySvc := services.NewInquiryService(inquiryRepo, ragRepo, userRepo, notificationRepo)
-	ragSvc := services.NewRAGService(ragRepo)
-	ragSvc.SetInquiryService(inquirySvc)
+	inquirySvc := services.NewInquiryService(inquiryRepo, ragRepo, userRepo, notificationRepo, nil)
+	ragSvc := services.NewRAGService(ragRepo, nil, nil, inquirySvc)
 
 	createdInq, err := inquirySvc.CreateInquiry(ctx, studentID, &request.CreateInquiryRequest{
 		StudentName:  "Nguyen Van Sinh Vien",
-		StudentCode:  "A36001",
+		StudentCode:  "A36888",
 		StudentClass: "CNTT01",
 		Question:     "Sinh vien bi diem F mon GDTC thi hoc ky he co duoc hoc lai khong?",
 		Context:      "Sinh vien K36 CNTT, ky truoc truot the chat 1",
@@ -72,7 +71,7 @@ func TestInquiryService_SelfEvolutionAndOutdatedExpiry(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create inquiry: %v", err)
 	}
-	if createdInq.Status != models.InquiryStatusPending {
+	if createdInq.Status != string(models.InquiryStatusPending) {
 		t.Fatalf("Expected status PENDING, got %s", createdInq.Status)
 	}
 
@@ -82,7 +81,7 @@ func TestInquiryService_SelfEvolutionAndOutdatedExpiry(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to answer inquiry: %v", err)
 	}
-	if answered.Status != models.InquiryStatusAnswered || answered.KnowledgeChunkID == "" {
+	if answered.Status != string(models.InquiryStatusAnswered) || answered.KnowledgeChunkID == "" {
 		t.Fatalf("Expected answered inquiry with knowledge chunk, got chunkID=%s status=%s", answered.KnowledgeChunkID, answered.Status)
 	}
 
@@ -138,7 +137,7 @@ func TestInquiryService_SelfEvolutionAndOutdatedExpiry(t *testing.T) {
 	}
 
 	refetchedInq, err := inquirySvc.GetInquiry(ctx, createdInq.ID)
-	if err != nil || refetchedInq.Status != models.InquiryStatusExpired || !refetchedInq.IsExpired {
+	if err != nil || refetchedInq.Status != string(models.InquiryStatusExpired) || !refetchedInq.IsExpired {
 		t.Fatalf("Expected inquiry to be marked EXPIRED, got status=%s isExpired=%v", refetchedInq.Status, refetchedInq.IsExpired)
 	}
 

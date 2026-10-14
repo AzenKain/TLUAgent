@@ -1,57 +1,53 @@
 import { create } from 'zustand';
 import type { User } from '@/types';
 
-interface CreateUserFormData {
+export interface CreateUserFormData {
   email: string;
   password: string;
+  confirm_password: string;
   full_name: string;
   student_code: string;
   role_ids: string[];
 }
 
-interface EditUserFormData {
+export interface EditUserFormData {
   full_name: string;
   student_code: string;
 }
 
 interface UserManageState {
-  // Filter & pagination
   search: string;
   roleFilter: string;
   isDeletedFilter: boolean | undefined;
   page: number;
   limit: number;
 
-  // Selected user for action modals
   selectedUser: User | null;
 
-  // Modals visibility
   isCreateModalOpen: boolean;
   isEditModalOpen: boolean;
   isRoleModalOpen: boolean;
   isResetPassModalOpen: boolean;
 
-  // Form values
   createForm: CreateUserFormData;
   editForm: EditUserFormData;
   selectedRoleIds: string[];
   newPassword: string;
+  resetPassConfirm: string;
 
-  // Error and Toast
   modalError: string;
   toastMessage: string | null;
 
-  // Actions - Filters
   setSearch: (search: string) => void;
   setRoleFilter: (roleId: string) => void;
   setIsDeletedFilter: (isDeleted: boolean | undefined) => void;
   setPage: (page: number) => void;
   resetFilters: () => void;
 
-  // Actions - Modals & Forms
   openCreateModal: () => void;
   closeCreateModal: () => void;
   setCreateForm: (patch: Partial<CreateUserFormData>) => void;
+  toggleCreateRoleId: (roleId: string) => void;
 
   openEditModal: (user: User) => void;
   closeEditModal: () => void;
@@ -64,6 +60,7 @@ interface UserManageState {
   openResetPassModal: (user: User) => void;
   closeResetPassModal: () => void;
   setNewPassword: (password: string) => void;
+  setResetPassConfirm: (confirm: string) => void;
 
   setModalError: (error: string) => void;
   showToast: (message: string) => void;
@@ -73,6 +70,7 @@ interface UserManageState {
 const initialCreateForm: CreateUserFormData = {
   email: '',
   password: '',
+  confirm_password: '',
   full_name: '',
   student_code: '',
   role_ids: [],
@@ -86,7 +84,6 @@ const initialEditForm: EditUserFormData = {
 let toastTimer: ReturnType<typeof setTimeout> | null = null;
 
 export const useUserManageStore = create<UserManageState>((set) => ({
-  // Initial filter state
   search: '',
   roleFilter: '',
   isDeletedFilter: undefined,
@@ -104,18 +101,17 @@ export const useUserManageStore = create<UserManageState>((set) => ({
   editForm: { ...initialEditForm },
   selectedRoleIds: [],
   newPassword: '',
+  resetPassConfirm: '',
 
   modalError: '',
   toastMessage: null,
 
-  // Filters actions
   setSearch: (search) => set({ search, page: 1 }),
   setRoleFilter: (roleFilter) => set({ roleFilter, page: 1 }),
   setIsDeletedFilter: (isDeletedFilter) => set({ isDeletedFilter, page: 1 }),
   setPage: (page) => set({ page }),
   resetFilters: () => set({ search: '', roleFilter: '', isDeletedFilter: undefined, page: 1 }),
 
-  // Create Modal
   openCreateModal: () =>
     set({
       isCreateModalOpen: true,
@@ -127,8 +123,19 @@ export const useUserManageStore = create<UserManageState>((set) => ({
     set((state) => ({
       createForm: { ...state.createForm, ...patch },
     })),
+  toggleCreateRoleId: (roleId) =>
+    set((state) => {
+      const exists = state.createForm.role_ids.includes(roleId);
+      return {
+        createForm: {
+          ...state.createForm,
+          role_ids: exists
+            ? state.createForm.role_ids.filter((id) => id !== roleId)
+            : [...state.createForm.role_ids, roleId],
+        },
+      };
+    }),
 
-  // Edit Modal
   openEditModal: (user) =>
     set({
       selectedUser: user,
@@ -145,7 +152,6 @@ export const useUserManageStore = create<UserManageState>((set) => ({
       editForm: { ...state.editForm, ...patch },
     })),
 
-  // Role Modal
   openRoleModal: (user) =>
     set({
       selectedUser: user,
@@ -164,19 +170,25 @@ export const useUserManageStore = create<UserManageState>((set) => ({
       };
     }),
 
-  // Reset Password Modal
   openResetPassModal: (user) =>
     set({
       selectedUser: user,
       isResetPassModalOpen: true,
       newPassword: '',
+      resetPassConfirm: '',
       modalError: '',
     }),
   closeResetPassModal: () =>
-    set({ isResetPassModalOpen: false, selectedUser: null, modalError: '', newPassword: '' }),
+    set({
+      isResetPassModalOpen: false,
+      selectedUser: null,
+      modalError: '',
+      newPassword: '',
+      resetPassConfirm: '',
+    }),
   setNewPassword: (newPassword) => set({ newPassword }),
+  setResetPassConfirm: (resetPassConfirm) => set({ resetPassConfirm }),
 
-  // Errors & Toasts
   setModalError: (modalError) => set({ modalError }),
   showToast: (message) => {
     if (toastTimer) {

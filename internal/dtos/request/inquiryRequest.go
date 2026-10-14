@@ -1,12 +1,12 @@
 package request
 
 type CreateInquiryRequest struct {
-	ConversationID string `json:"conversation_id,omitempty"`
+	ConversationID string `json:"conversation_id,omitempty" validate:"omitempty,max=128"`
 	StudentName    string `json:"student_name" validate:"required,min=2,max=100"`
 	StudentCode    string `json:"student_code" validate:"required,min=2,max=30"`
 	StudentClass   string `json:"student_class" validate:"required,min=2,max=50"`
 	Question       string `json:"question" validate:"required,min=5,max=2000"`
-	Context        string `json:"context,omitempty"`
+	Context        string `json:"context,omitempty" validate:"omitempty,max=10000"`
 }
 
 type AnswerInquiryRequest struct {
@@ -14,7 +14,7 @@ type AnswerInquiryRequest struct {
 }
 
 type ExpireInquiryRequest struct {
-	SupersededByDocID string `json:"superseded_by_doc_id"`
+	SupersededByDocID string `json:"superseded_by_doc_id" validate:"omitempty,max=128"`
 	Reason            string `json:"reason" validate:"required,min=5,max=500"`
 }
 

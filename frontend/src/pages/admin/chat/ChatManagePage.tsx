@@ -9,7 +9,6 @@ import {
   ThumbsDown,
   Trash2,
   Eye,
-  RefreshCw,
   User as UserIcon,
   Bot,
   Layers,
@@ -24,6 +23,12 @@ import {
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { Badge } from '@/components/common/Badge';
 import { Modal } from '@/components/common/Modal';
+import { ConfirmModal } from '@/components/common/ConfirmModal';
+import { DocumentViewerModal } from '@/components/common/DocumentViewerModal';
+import { PageHeader } from '@/components/common/PageHeader';
+import { RefreshButton } from '@/components/common/RefreshButton';
+import { StatCard } from '@/components/common/StatCard';
+import { MarkdownRenderer } from '@/components/common/MarkdownRenderer';
 
 // Admin page for auditing and moderating student advisory conversations.
 export const ChatManagePage: React.FC = () => {
@@ -38,6 +43,8 @@ export const ChatManagePage: React.FC = () => {
 
   const [inspectModalOpen, setInspectModalOpen] = useState(false);
   const [selectedConversation, setSelectedConversation] = useState<ConversationDetailDTO | null>(null);
+  const [viewingDocIdentifier, setViewingDocIdentifier] = useState<string | null>(null);
+  const [docViewerOpen, setDocViewerOpen] = useState(false);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
 
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -113,7 +120,7 @@ export const ChatManagePage: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-7xl mx-auto pb-10">
       {toastMessage && (
         <div className="fixed inset-x-4 top-4 z-50 flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-slate-900 text-white shadow-xl animate-in fade-in slide-in-from-top-4 duration-200 sm:inset-x-auto sm:right-4 sm:max-w-sm sm:justify-start">
           <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
@@ -121,99 +128,51 @@ export const ChatManagePage: React.FC = () => {
         </div>
       )}
 
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div className="min-w-0">
-          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100 flex items-center gap-2">
-            <MessagesSquare className="w-6 h-6 sm:w-7 sm:h-7 shrink-0 text-indigo-600 dark:text-indigo-400" />
-            <span className="min-w-0">{t('admin_chat.title')}</span>
-          </h1>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{t('admin_chat.subtitle')}</p>
-        </div>
-        <button
-          onClick={() => {
-            queryClient.invalidateQueries({ queryKey: ['admin-chats'] });
-            refetch();
-          }}
-          disabled={isLoading || isFetching || isStatsFetching}
-          className="inline-flex items-center justify-center gap-2 px-3.5 min-h-11 shrink-0 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm sm:text-xs font-semibold text-slate-700 dark:text-slate-300 shadow-xs hover:bg-slate-50 dark:hover:bg-slate-700 transition disabled:opacity-50"
-        >
-          <RefreshCw className={`w-4 h-4 sm:w-3.5 sm:h-3.5 ${isFetching ? 'animate-spin' : ''}`} />
-          <span>{t('admin_chat.btn_refresh')}</span>
-        </button>
-      </div>
+      <PageHeader
+        icon={<MessagesSquare className="h-6 w-6" />}
+        title={t('admin_chat.title')}
+        subtitle={t('admin_chat.subtitle')}
+        actions={
+          <RefreshButton
+            onClick={() => {
+              queryClient.invalidateQueries({ queryKey: ['admin-chats'] });
+              refetch();
+            }}
+            isLoading={isLoading || isFetching || isStatsFetching}
+          />
+        }
+      />
 
       {stats && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs">
-            <div className="flex items-center justify-between gap-2">
-              <span className="min-w-0 text-xs font-semibold uppercase tracking-wider text-slate-400">
-                {t('admin_chat.stat_total_chats')}
-              </span>
-              <div className="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 shrink-0">
-                <MessageSquare className="w-4 h-4" />
-              </div>
-            </div>
-            <div className="mt-2 text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
-              {stats.total_conversations.toLocaleString()}
-            </div>
-          </div>
-
-          <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs">
-            <div className="flex items-center justify-between gap-2">
-              <span className="min-w-0 text-xs font-semibold uppercase tracking-wider text-slate-400">
-                {t('admin_chat.stat_total_messages')}
-              </span>
-              <div className="p-2 rounded-xl bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400 shrink-0">
-                <Layers className="w-4 h-4" />
-              </div>
-            </div>
-            <div className="mt-2 text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
-              {stats.total_messages.toLocaleString()}
-            </div>
-          </div>
-
-          <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs">
-            <div className="flex items-center justify-between gap-2">
-              <span className="min-w-0 text-xs font-semibold uppercase tracking-wider text-slate-400">
-                {t('admin_chat.col_feedback')}
-              </span>
-              <div className="flex items-center gap-1 shrink-0">
-                <div className="p-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400">
-                  <ThumbsUp className="w-3.5 h-3.5" />
-                </div>
-                <div className="p-1.5 rounded-lg bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400">
-                  <ThumbsDown className="w-3.5 h-3.5" />
-                </div>
-              </div>
-            </div>
-            <div className="mt-2 flex items-baseline gap-3">
-              <span className="text-2xl font-bold tracking-tight text-emerald-600 dark:text-emerald-400">
-                +{stats.feedback_up}
-              </span>
-              <span className="text-sm font-medium text-slate-300 dark:text-slate-700">/</span>
-              <span className="text-2xl font-bold tracking-tight text-rose-600 dark:text-rose-400">
-                -{stats.feedback_down}
-              </span>
-            </div>
-          </div>
-
-          <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs">
-            <div className="flex items-center justify-between gap-2">
-              <span className="min-w-0 text-xs font-semibold uppercase tracking-wider text-slate-400">
-                {t('admin_chat.stat_satisfaction_rate')}
-              </span>
-              <div className="p-2 rounded-xl bg-violet-50 dark:bg-violet-950/60 text-violet-600 dark:text-violet-400 shrink-0">
-                <Sparkles className="w-4 h-4" />
-              </div>
-            </div>
-            <div className="mt-2 text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
-              {stats.satisfaction_rate.toFixed(1)}%
-            </div>
-          </div>
+          <StatCard
+            icon={<MessageSquare className="h-5 w-5" />}
+            label={t('admin_chat.stat_total_chats')}
+            value={stats.total_conversations.toLocaleString()}
+            variant="blue"
+          />
+          <StatCard
+            icon={<Layers className="h-5 w-5" />}
+            label={t('admin_chat.stat_total_messages')}
+            value={stats.total_messages.toLocaleString()}
+            variant="sky"
+          />
+          <StatCard
+            icon={<ThumbsUp className="h-5 w-5" />}
+            label={t('admin_chat.col_feedback')}
+            value={`+${stats.feedback_up} / -${stats.feedback_down}`}
+            variant="emerald"
+          />
+          <StatCard
+            icon={<Sparkles className="h-5 w-5" />}
+            label={t('admin_chat.stat_satisfaction_rate')}
+            value={`${stats.satisfaction_rate.toFixed(1)}%`}
+            variant="amber"
+          />
         </div>
       )}
 
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 p-4 bg-white dark:bg-[#111A35] rounded-2xl border border-slate-200 dark:border-blue-900/30 shadow-xs">
         <div className="relative flex-1 min-w-0">
           <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
           <input
@@ -224,7 +183,7 @@ export const ChatManagePage: React.FC = () => {
               setPage(1);
             }}
             placeholder={t('admin_chat.search_placeholder')}
-            className="w-full pl-10 pr-4 min-h-11 py-2 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 rounded-xl text-base sm:text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+            className="w-full pl-10 pr-4 min-h-11 py-2 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 rounded-xl text-base sm:text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-tlu-blue/20 focus:border-tlu-blue"
           />
         </div>
 
@@ -234,7 +193,7 @@ export const ChatManagePage: React.FC = () => {
             setFeedbackFilter(e.target.value);
             setPage(1);
           }}
-          className="w-full sm:w-auto px-3 min-h-11 py-2 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 rounded-xl text-base sm:text-xs text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+          className="w-full sm:w-auto px-3 min-h-11 py-2 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 rounded-xl text-base sm:text-xs text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-tlu-blue/20"
         >
           <option value="">{t('admin_chat.filter_all_feedback')}</option>
           <option value="up">{t('admin_chat.filter_up_only')}</option>
@@ -247,7 +206,7 @@ export const ChatManagePage: React.FC = () => {
             setModelFilter(e.target.value);
             setPage(1);
           }}
-          className="w-full sm:w-auto px-3 min-h-11 py-2 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 rounded-xl text-base sm:text-xs text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+          className="w-full sm:w-auto px-3 min-h-11 py-2 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 rounded-xl text-base sm:text-xs text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-tlu-blue/20"
         >
           <option value="">{t('admin_chat.filter_all_models')}</option>
           {models.map((m) => (
@@ -258,7 +217,7 @@ export const ChatManagePage: React.FC = () => {
         </select>
       </div>
 
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs overflow-hidden">
+      <div className="bg-white dark:bg-[#111A35] rounded-2xl border border-slate-200 dark:border-blue-900/30 shadow-xs overflow-hidden">
         <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
@@ -294,10 +253,10 @@ export const ChatManagePage: React.FC = () => {
                   >
                     <td className="px-3 lg:px-5 py-3.5">
                       <div className="flex items-center gap-2.5">
-                        <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-indigo-600 to-violet-500 text-white flex items-center justify-center text-xs font-bold uppercase shrink-0">
+                        <div className="w-7 h-7 rounded-full bg-tlu-navy text-white flex items-center justify-center text-xs font-bold uppercase shrink-0">
                           {item.user_name ? item.user_name.charAt(0) : <UserIcon className="w-3.5 h-3.5" />}
                         </div>
-                        <div className="min-w-0 max-w-[11rem] xl:max-w-[14rem]">
+                        <div className="min-w-0 max-w-44 xl:max-w-56">
                           <div className="font-semibold text-slate-900 dark:text-slate-100 truncate">
                             {item.user_name || t('admin_chat.anonymous')}
                           </div>
@@ -309,14 +268,14 @@ export const ChatManagePage: React.FC = () => {
                       </div>
                     </td>
 
-                    <td className="px-3 lg:px-5 py-3.5 max-w-[12rem] lg:max-w-[16rem]">
+                    <td className="px-3 lg:px-5 py-3.5 max-w-48 lg:max-w-[16rem]">
                       <div className="font-medium text-slate-800 dark:text-slate-200 truncate">
                         {item.title}
                       </div>
                     </td>
 
                     <td className="px-3 lg:px-5 py-3.5">
-                      <Badge variant="secondary" size="sm" className="max-w-[9rem]">
+                      <Badge variant="secondary" size="sm" className="max-w-36">
                         <span className="truncate">{item.model_id || t('admin_chat.model_default')}</span>
                       </Badge>
                     </td>
@@ -334,7 +293,7 @@ export const ChatManagePage: React.FC = () => {
                           </span>
                         )}
                         {item.thumbs_down > 0 && (
-                          <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-600 dark:text-rose-400">
+                          <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-tlu-red dark:text-red-400">
                             <ThumbsDown className="w-3 h-3" />
                             {item.thumbs_down}
                           </span>
@@ -355,7 +314,7 @@ export const ChatManagePage: React.FC = () => {
                           onClick={() => handleOpenInspect(item.id)}
                           title={t('admin_chat.btn_inspect')}
                           aria-label={t('admin_chat.btn_inspect')}
-                          className="inline-flex items-center justify-center w-11 h-11 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition"
+                          className="inline-flex items-center justify-center w-11 h-11 rounded-lg text-slate-400 hover:text-tlu-blue hover:bg-blue-50 dark:hover:bg-blue-950/40 transition"
                         >
                           <Eye className="w-4 h-4" />
                         </button>
@@ -366,7 +325,7 @@ export const ChatManagePage: React.FC = () => {
                           }}
                           title={t('admin_chat.btn_delete')}
                           aria-label={t('admin_chat.btn_delete')}
-                          className="inline-flex items-center justify-center w-11 h-11 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition"
+                          className="inline-flex items-center justify-center w-11 h-11 rounded-lg text-slate-400 hover:text-tlu-red hover:bg-red-50 dark:hover:bg-red-950/40 transition"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -396,7 +355,7 @@ export const ChatManagePage: React.FC = () => {
                 className="p-4 cursor-pointer transition hover:bg-slate-50/80 active:bg-slate-100 dark:hover:bg-slate-800/50 dark:active:bg-slate-800"
               >
                 <div className="flex items-start gap-3">
-                  <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-indigo-600 to-violet-500 text-white flex items-center justify-center text-sm font-bold uppercase shrink-0">
+                  <div className="w-9 h-9 rounded-full bg-tlu-navy text-white flex items-center justify-center text-sm font-bold uppercase shrink-0">
                     {item.user_name ? item.user_name.charAt(0) : <UserIcon className="w-4 h-4" />}
                   </div>
                   <div className="min-w-0 flex-1">
@@ -412,7 +371,7 @@ export const ChatManagePage: React.FC = () => {
                     <button
                       onClick={() => handleOpenInspect(item.id)}
                       aria-label={t('admin_chat.btn_inspect')}
-                      className="inline-flex items-center justify-center w-11 h-11 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition"
+                      className="inline-flex items-center justify-center w-11 h-11 rounded-lg text-slate-400 hover:text-tlu-blue hover:bg-blue-50 dark:hover:bg-blue-950/40 transition"
                     >
                       <Eye className="w-5 h-5" />
                     </button>
@@ -422,19 +381,19 @@ export const ChatManagePage: React.FC = () => {
                         setDeleteModalOpen(true);
                       }}
                       aria-label={t('admin_chat.btn_delete')}
-                      className="inline-flex items-center justify-center w-11 h-11 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition"
+                      className="inline-flex items-center justify-center w-11 h-11 rounded-lg text-slate-400 hover:text-tlu-red hover:bg-red-50 dark:hover:bg-red-950/40 transition"
                     >
                       <Trash2 className="w-5 h-5" />
                     </button>
                   </div>
                 </div>
 
-                <div className="mt-1.5 text-sm font-medium text-slate-800 dark:text-slate-200 break-words line-clamp-2">
+                <div className="mt-1.5 text-sm font-medium text-slate-800 dark:text-slate-200 wrap-break-word line-clamp-2">
                   {item.title}
                 </div>
 
                 <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[11px] text-slate-500 dark:text-slate-400">
-                  <Badge variant="secondary" size="sm" className="max-w-[10rem]">
+                  <Badge variant="secondary" size="sm" className="max-w-40">
                     <span className="truncate">{item.model_id || t('admin_chat.model_default')}</span>
                   </Badge>
                   <span className="inline-flex items-center gap-1 font-medium text-slate-600 dark:text-slate-300">
@@ -448,7 +407,7 @@ export const ChatManagePage: React.FC = () => {
                     </span>
                   )}
                   {item.thumbs_down > 0 && (
-                    <span className="inline-flex items-center gap-1 font-semibold text-rose-600 dark:text-rose-400">
+                    <span className="inline-flex items-center gap-1 font-semibold text-tlu-red dark:text-red-400">
                       <ThumbsDown className="w-3 h-3" />
                       {item.thumbs_down}
                     </span>
@@ -500,17 +459,17 @@ export const ChatManagePage: React.FC = () => {
           setSelectedConversation(null);
         }}
         title={t('admin_chat.modal_inspect_title')}
-        maxWidth="xl"
+        maxWidth="5xl"
       >
         {isDetailLoading || !selectedConversation ? (
           <div className="py-12 flex justify-center text-slate-400">
             <LoadingSpinner size="md" />
           </div>
         ) : (
-          <div className="flex flex-col space-y-4 max-h-[50dvh] sm:max-h-[65dvh]">
+          <div className="flex flex-col space-y-4 max-h-[75dvh] sm:max-h-[82dvh]">
             <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 flex flex-wrap items-center justify-between gap-3 text-xs">
               <div className="flex items-center gap-3 min-w-0">
-                <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-indigo-600 to-violet-500 text-white flex items-center justify-center font-bold uppercase shrink-0">
+                <div className="w-8 h-8 rounded-full bg-tlu-navy text-white flex items-center justify-center font-bold uppercase shrink-0">
                   {selectedConversation.user?.full_name ? selectedConversation.user.full_name.charAt(0) : <UserIcon className="w-4 h-4" />}
                 </div>
                 <div className="min-w-0">
@@ -525,7 +484,7 @@ export const ChatManagePage: React.FC = () => {
               </div>
 
               <div className="flex items-center gap-2 shrink-0">
-                <Badge variant="secondary" size="sm" className="max-w-[9rem]">
+                <Badge variant="secondary" size="sm" className="max-w-36">
                   <span className="truncate">{selectedConversation.conversation.model_id || t('admin_chat.model_default')}</span>
                 </Badge>
                 <button
@@ -556,10 +515,10 @@ export const ChatManagePage: React.FC = () => {
                     <div className="flex items-center gap-1.5 mb-1 px-1 max-w-full text-[10px] text-slate-400">
                       {msg.sender === 'user' ? (
                         <>
-                          <span className="truncate max-w-[12rem] sm:max-w-[16rem]">
+                          <span className="truncate max-w-48 sm:max-w-[16rem]">
                             {selectedConversation.user?.full_name || t('admin_chat.anonymous')}
                           </span>
-                          <UserIcon className="w-3 h-3 shrink-0 text-indigo-500" />
+                          <UserIcon className="w-3 h-3 shrink-0 text-tlu-blue" />
                         </>
                       ) : (
                         <>
@@ -576,7 +535,7 @@ export const ChatManagePage: React.FC = () => {
                     <div
                       className={`max-w-[85%] rounded-2xl p-3.5 text-xs leading-relaxed ${
                         msg.sender === 'user'
-                          ? 'bg-indigo-600 text-white rounded-br-xs'
+                          ? 'bg-tlu-blue text-white rounded-br-xs'
                           : 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-bl-xs'
                       }`}
                     >
@@ -593,17 +552,34 @@ export const ChatManagePage: React.FC = () => {
                         </div>
                       )}
 
-                      <div className="whitespace-pre-wrap break-words">{msg.content}</div>
+                      {msg.sender === 'user' ? (
+                        <div className="whitespace-pre-wrap wrap-break-word">{msg.content}</div>
+                      ) : (
+                        <div className="text-xs sm:text-sm">
+                          <MarkdownRenderer content={msg.content} />
+                        </div>
+                      )}
 
                       {msg.sources && msg.sources.length > 0 && (
                         <div className="mt-3 pt-2 border-t border-slate-200/60 dark:border-slate-700/60 text-[11px]">
                           <div className="font-semibold text-slate-500 dark:text-slate-400 flex items-center gap-1 mb-1">
-                            <BookOpen className="w-3 h-3 shrink-0 text-indigo-500" />
+                            <BookOpen className="w-3 h-3 shrink-0 text-tlu-blue" />
                             <span>{t('admin_chat.sources_cited')}</span>
                           </div>
-                          <ul className="list-disc pl-4 space-y-0.5 text-slate-600 dark:text-slate-300 break-words">
+                          <ul className="space-y-1 text-slate-600 dark:text-slate-300 wrap-break-word">
                             {msg.sources.map((src, sIdx) => (
-                              <li key={sIdx}>{src}</li>
+                              <li key={sIdx}>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setViewingDocIdentifier(src);
+                                    setDocViewerOpen(true);
+                                  }}
+                                  className="text-left font-medium text-tlu-blue dark:text-blue-400 hover:underline cursor-pointer inline-flex items-center gap-1 text-[11px]"
+                                >
+                                  <span>• {src}</span>
+                                </button>
+                              </li>
                             ))}
                           </ul>
                         </div>
@@ -645,40 +621,29 @@ export const ChatManagePage: React.FC = () => {
         )}
       </Modal>
 
-      <Modal
+      <ConfirmModal
         isOpen={deleteModalOpen}
         onClose={() => {
           setDeleteModalOpen(false);
           setDeletingId(null);
         }}
+        onConfirm={handleConfirmDelete}
         title={t('admin_chat.btn_delete')}
-        maxWidth="sm"
-      >
-        <div className="space-y-4">
-          <p className="text-sm sm:text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-            {t('admin_chat.modal_delete_confirm')}
-          </p>
-          <div className="flex gap-2 pt-2">
-            <button
-              onClick={() => {
-                setDeleteModalOpen(false);
-                setDeletingId(null);
-              }}
-              disabled={deleteMutation.isPending}
-              className="flex-1 sm:flex-none inline-flex items-center justify-center min-h-11 px-3.5 rounded-xl border border-slate-200 dark:border-slate-700 text-sm sm:text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition disabled:opacity-50"
-            >
-              {t('common.cancel')}
-            </button>
-            <button
-              onClick={handleConfirmDelete}
-              disabled={deleteMutation.isPending}
-              className="flex-1 sm:flex-none inline-flex items-center justify-center min-h-11 px-3.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-sm sm:text-xs font-semibold shadow-xs disabled:opacity-50 transition"
-            >
-              {deleteMutation.isPending ? t('common.loading') : t('common.delete')}
-            </button>
-          </div>
-        </div>
-      </Modal>
+        message={t('admin_chat.modal_delete_confirm')}
+        variant="danger"
+        confirmText={t('common.delete')}
+        cancelText={t('common.cancel')}
+        isLoading={deleteMutation.isPending}
+      />
+
+      <DocumentViewerModal
+        isOpen={docViewerOpen}
+        onClose={() => {
+          setDocViewerOpen(false);
+          setViewingDocIdentifier(null);
+        }}
+        documentIdentifier={viewingDocIdentifier}
+      />
     </div>
   );
 };

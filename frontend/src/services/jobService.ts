@@ -3,10 +3,12 @@ import { apiClient } from '@/lib/axios';
 export interface JobDTO {
   id: string;
   type: string;
-  status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
+  status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED' | string;
   progress: number;
+  total?: number;
   payload_json?: string;
   result_json?: string;
+  error_msg?: string;
   error_message?: string;
   started_at?: string;
   finished_at?: string;

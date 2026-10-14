@@ -1,11 +1,32 @@
 package guardrail
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/hex"
 	"regexp"
 	"strings"
+	"sync"
 )
+
+var (
+	classifierMu     sync.RWMutex
+	globalClassifier SemanticClassifier
+)
+
+// SetGlobalClassifier sets the shared semantic intent classifier for guardrail checks.
+func SetGlobalClassifier(sc SemanticClassifier) {
+	classifierMu.Lock()
+	defer classifierMu.Unlock()
+	globalClassifier = sc
+}
+
+// GetGlobalClassifier retrieves the shared semantic intent classifier.
+func GetGlobalClassifier() SemanticClassifier {
+	classifierMu.RLock()
+	defer classifierMu.RUnlock()
+	return globalClassifier
+}
 
 // Decision defines the outcome of a guardrail safety evaluation.
 type Decision string
@@ -34,16 +55,16 @@ var (
 
 	injectionRegexes = []*regexp.Regexp{
 		// English
-		regexp.MustCompile(`(?i)\b(?:ignore|disregard|forget|override|bypass)\s+.*?\b(?:instructions|rules|prompts|directives|constraints)\b`),
-		regexp.MustCompile(`(?i)\b(?:repeat|reveal|show|print|output|display|dump|what\s+are|tell\s+me)\s+.*?\b(?:system\s+prompt|developer\s+instructions|initial\s+prompt|instructions\s+above|secret\s+rules|rule\.md|soul\.md)\b`),
-		regexp.MustCompile(`(?i)\b(?:repeat\s+everything\s+above|verbatim\s+starting\s+from)\b`),
-		regexp.MustCompile(`(?i)\b(?:dan\s+mode|jailbreak|developer\s+mode|uncensored\s+ai|evil\s+bot|oppo\s+mode|do\s+anything\s+now)\b`),
-		regexp.MustCompile(`(?i)\b(?:you\s+are\s+(?:now\s+)?dan|broken\s+free\s+of\s+all\s+rules)\b`),
+		regexp.MustCompile(`(?is)\b(?:ignore|disregard|forget|override|bypass)\s+.*?\b(?:instructions|rules|prompts|directives|constraints)\b`),
+		regexp.MustCompile(`(?is)\b(?:repeat|reveal|show|print|output|display|dump|what\s+are|tell\s+me|transcribe|list|extract)\s+.*?\b(?:system\s+prompt|developer\s+instructions|initial\s+prompt|instructions\s+above|secret\s+rules|rule\.md|soul\.md|(?:hidden\s+)?initialization\s+message|hidden\s+instructions)\b`),
+		regexp.MustCompile(`(?is)\b(?:repeat\s+everything\s+above|verbatim\s+starting\s+from|transcribe\s+the\s+hidden)\b`),
+		regexp.MustCompile(`(?is)\b(?:dan\s+mode|jailbreak|developer\s+mode|uncensored\s+ai|evil\s+bot|oppo\s+mode|do\s+anything\s+now)\b`),
+		regexp.MustCompile(`(?is)\b(?:you\s+are\s+(?:now\s+)?dan|broken\s+free\s+of\s+all\s+rules)\b`),
 
 		// Vietnamese
-		regexp.MustCompile(`(?i)(?:bỏ\s*qua|quên\s*đi|hủy\s*bỏ|ghi\s*đè)\s+.*?(?:chỉ\s*dẫn|quy\s*tắc|hướng\s*dẫn|lệnh|ràng\s*buộc)`),
-		regexp.MustCompile(`(?i)(?:tiết\s*lộ|cho\s*xem|in\s*ra|hiển\s*thị|đọc\s*lại|xuất\s*ra)\s+.*?(?:system\s*prompt|prompt\s*gốc|chỉ\s*dẫn\s*khởi\s*tạo|lệnh\s*hệ\s*thống|hướng\s*dẫn\s*nội\s*bộ|cấu\s*hình\s*llm|quản\s*trị\s*viên)`),
-		regexp.MustCompile(`(?i)(?:ai\s*bẻ\s*khóa|bẻ\s*khóa\s*tự\s*do|không\s*bị\s*ràng\s*buộc\s*bởi\s*(?:bất\s*kỳ\s*)?quy\s*(?:chế|tắc|định))`),
+		regexp.MustCompile(`(?i)(?:bỏ\s*qua|quên\s*đi|hủy\s*bỏ|ghi\s*đè|bo\s*qua|quen\s*di|huy\s*bo|ghi\s*de)\s+.*?(?:chỉ\s*dẫn|hướng\s*dẫn|quy\s*tắc|lệnh|ràng\s*buộc|chi\s*dan|huong\s*dan|quy\s*tac|lenh|rang\s*buoc|prompt)`),
+		regexp.MustCompile(`(?i)(?:tiết\s*lộ|cho\s*xem|in\s*ra|hiển\s*thị|đọc\s*lại|xuất\s*ra|tiet\s*lo|in\s*ra|hien\s*thi|doc\s*lai|xuat\s*ra)\s+.*?(?:system\s*prompt|prompt\s*gốc|chỉ\s*dẫn\s*khởi\s*tạo|lệnh\s*hệ\s*thống|hướng\s*dẫn\s*nội\s*bộ|cấu\s*hình\s*llm|quản\s*trị\s*viên|chi\s*dan\s*khoi\s*tao|lenh\s*he\s*thong|huong\s*dan\s*noi\s*bo|system|prompt)`),
+		regexp.MustCompile(`(?i)(?:ai\s*bẻ\s*khóa|bẻ\s*khóa\s*tự\s*do|be\s*khoa\s*tu\s*do|không\s*bị\s*ràng\s*buộc\s*bởi\s*(?:bất\s*kỳ\s*)?quy\s*(?:chế|tắc|định)|khong\s*bi\s*rang\s*buoc)`),
 
 		// Chinese (Simplified & Traditional)
 		regexp.MustCompile(`(?i)(?:忽略|无视|跳过|忘记).*?(?:所有|全部)?.*?(?:指令|指示|提示词|规则|约束)`),
@@ -162,11 +183,53 @@ func checkEncodedPayloads(query string) bool {
 	return false
 }
 
+var (
+	delimiterTagRegex = regexp.MustCompile(`(?i)</?(?:user_query|rag_context|untrusted_rag_chunk|student_memory|system_prompt|student_academic_records)[^>]*>`)
+	dsmlBlockRegex    = regexp.MustCompile(`(?s)<[|｜]{1,2}DSML[|｜]{1,2}\s*calls>.*?</[|｜]{1,2}DSML[|｜]{1,2}\s*calls>|<[|｜]{1,2}[^>]*?>`)
+	nonceAttrRegex    = regexp.MustCompile(`(?i)\bnonce="[a-f0-9]{8,64}"`)
+	forbiddenOutputRegexes = []*regexp.Regexp{
+		regexp.MustCompile(`(?i)mandatory\s+citation\s+&\s+verification\s+directive:`),
+		regexp.MustCompile(`(?i)strict\s+zero-hallucination\s+policy:`),
+		regexp.MustCompile(`(?i)#\s*Căn\s*Tính\s*&\s*Sứ\s*Mệnh\s*Cố\s*Vấn\s*Học\s*Vụ`),
+		regexp.MustCompile(`(?i)#\s*RETRIEVED\s*REGULATORY\s*DOCUMENTS`),
+		regexp.MustCompile(`(?i)\[SYSTEM\s+ADVISORY\s+RULE\]`),
+		regexp.MustCompile(`(?i)\[SYSTEM\s+INSTRUCTION`),
+		regexp.MustCompile(`(?i)<system_prompt>`),
+		regexp.MustCompile(`(?i)CONFIDENTIAL\s+INTERNAL\s+RULES:`),
+		regexp.MustCompile(`(?i)Lex\s+Posterior\s+Derogat\s+Legi\s+Priori`),
+		regexp.MustCompile(`(?i)\[SECURITY\s+&\s+DELIMITER\s+HIERARCHY\s+DIRECTIVE\]`),
+		regexp.MustCompile(`(?i)#\s*Quy\s*Tắc\s*Hoạt\s*Động\s*&\s*Ranh\s*Giới\s*Pháp\s*Lý`),
+		regexp.MustCompile(`(?i)#\s*MANDATORY\s+DELIMITER\s+ISOLATION`),
+		regexp.MustCompile(`(?i)#\s*MANDATORY\s+SOCRATIC\s+CLARIFICATION`),
+	}
+)
+
 // CheckQuery inspects the user inquiry for safety violations, prompt injections, and out-of-scope topics.
 func CheckQuery(query string) CheckResult {
+	return CheckQueryContext(context.Background(), query)
+}
+
+// CheckQueryContext inspects the user inquiry using regex heuristics and optional semantic vector classification.
+func CheckQueryContext(ctx context.Context, query string) CheckResult {
 	trimmed := strings.TrimSpace(query)
 	if trimmed == "" {
 		return CheckResult{Decision: DecisionAllow}
+	}
+
+	normalized := NormalizeQuery(trimmed)
+
+	decodedList := ExtractDecodedPayloads(trimmed, 3)
+	for _, decoded := range decodedList {
+		normDecoded := NormalizeQuery(decoded)
+		for _, re := range injectionRegexes {
+			if re.MatchString(decoded) || re.MatchString(normDecoded) {
+				return CheckResult{
+					Decision: DecisionBlockedInjection,
+					Reason:   "Obfuscated encoded (Base64/Hex) prompt injection pattern detected",
+					Response: defaultInjectionReply,
+				}
+			}
+		}
 	}
 
 	if checkEncodedPayloads(trimmed) {
@@ -177,8 +240,17 @@ func CheckQuery(query string) CheckResult {
 		}
 	}
 
+	asciiFolded := FoldToASCII(trimmed)
+	leetNormalized := NormalizeLeetspeak(trimmed)
+	asciiLeet := FoldToASCII(leetNormalized)
+	normLeet := NormalizeQuery(leetNormalized)
 	for _, re := range injectionRegexes {
-		if re.MatchString(trimmed) {
+		if re.MatchString(trimmed) ||
+			(normalized != "" && re.MatchString(normalized)) ||
+			(asciiFolded != "" && re.MatchString(asciiFolded)) ||
+			(leetNormalized != "" && re.MatchString(leetNormalized)) ||
+			(asciiLeet != "" && re.MatchString(asciiLeet)) ||
+			(normLeet != "" && re.MatchString(normLeet)) {
 			return CheckResult{
 				Decision: DecisionBlockedInjection,
 				Reason:   "Prompt injection, system prompt extraction, or jailbreak pattern detected",
@@ -187,12 +259,10 @@ func CheckQuery(query string) CheckResult {
 		}
 	}
 
-	if academicContextRegex.MatchString(trimmed) {
-		return CheckResult{Decision: DecisionAllow}
-	}
+	hasAcademicContext := academicContextRegex.MatchString(trimmed) || (normalized != "" && academicContextRegex.MatchString(normalized))
 
 	for _, re := range romanceRegexes {
-		if re.MatchString(trimmed) {
+		if re.MatchString(trimmed) || (normalized != "" && re.MatchString(normalized)) {
 			return CheckResult{
 				Decision: DecisionBlockedOutOfScope,
 				Reason:   "Romance, dating, or relationship topic is out of academic advisory scope",
@@ -202,7 +272,7 @@ func CheckQuery(query string) CheckResult {
 	}
 
 	for _, re := range lifestyleRegexes {
-		if re.MatchString(trimmed) {
+		if re.MatchString(trimmed) || (normalized != "" && re.MatchString(normalized)) {
 			return CheckResult{
 				Decision: DecisionBlockedOutOfScope,
 				Reason:   "Lifestyle, cooking, or sports prediction topic is out of academic advisory scope",
@@ -212,11 +282,27 @@ func CheckQuery(query string) CheckResult {
 	}
 
 	for _, re := range generalCodeRegexes {
-		if re.MatchString(trimmed) {
+		if re.MatchString(trimmed) || (normalized != "" && re.MatchString(normalized)) {
+			if !hasAcademicContext {
+				return CheckResult{
+					Decision: DecisionBlockedOutOfScope,
+					Reason:   "General programming or game development requests are outside academic advisory scope",
+					Response: defaultOutOfScopeReply,
+				}
+			}
+		}
+	}
+
+	classifierMu.RLock()
+	sc := globalClassifier
+	classifierMu.RUnlock()
+
+	if sc != nil {
+		if dec, reason, _ := sc.Classify(ctx, trimmed); dec == DecisionBlockedInjection {
 			return CheckResult{
-				Decision: DecisionBlockedOutOfScope,
-				Reason:   "General programming or game development requests are outside academic advisory scope",
-				Response: defaultOutOfScopeReply,
+				Decision: DecisionBlockedInjection,
+				Reason:   reason,
+				Response: defaultInjectionReply,
 			}
 		}
 	}
@@ -226,23 +312,30 @@ func CheckQuery(query string) CheckResult {
 
 // SanitizeOutput verifies generated assistant reply to prevent unintended internal prompt leakage.
 func SanitizeOutput(reply string) string {
-	forbiddenPatterns := []string{
-		"MANDATORY CITATION & VERIFICATION DIRECTIVE:",
-		"STRICT ZERO-HALLUCINATION POLICY:",
-		"# Căn Tính & Sứ Mệnh Cố Vấn Học Vụ",
-		"# RETRIEVED REGULATORY DOCUMENTS",
-		"[SYSTEM ADVISORY RULE]",
-		"[SYSTEM INSTRUCTION",
-		"<system_prompt>",
-		"CONFIDENTIAL INTERNAL RULES:",
-		"Lex Posterior Derogat Legi Priori",
-	}
+	cleaned := dsmlBlockRegex.ReplaceAllString(reply, "")
+	cleaned = delimiterTagRegex.ReplaceAllString(cleaned, "")
+	cleaned = nonceAttrRegex.ReplaceAllString(cleaned, "")
 
-	for _, pat := range forbiddenPatterns {
-		if strings.Contains(reply, pat) {
+	for _, re := range forbiddenOutputRegexes {
+		if re.MatchString(cleaned) {
 			return "Thông tin được trích xuất từ quy chế học vụ chính thức của Trường Đại học Thăng Long. Vui lòng tham khảo thông báo chính thức tại Phòng Đào tạo."
 		}
 	}
 
-	return reply
+	return strings.TrimSpace(cleaned)
+}
+
+// SanitizeStreamChunk filters streaming text chunks without stripping whitespace between tokens.
+func SanitizeStreamChunk(chunk string) (string, bool) {
+	cleaned := dsmlBlockRegex.ReplaceAllString(chunk, "")
+	cleaned = delimiterTagRegex.ReplaceAllString(cleaned, "")
+	cleaned = nonceAttrRegex.ReplaceAllString(cleaned, "")
+
+	for _, re := range forbiddenOutputRegexes {
+		if re.MatchString(cleaned) {
+			return "Thông tin được trích xuất từ quy chế học vụ chính thức của Trường Đại học Thăng Long. Vui lòng tham khảo thông báo chính thức tại Phòng Đào tạo.", true
+		}
+	}
+
+	return cleaned, false
 }

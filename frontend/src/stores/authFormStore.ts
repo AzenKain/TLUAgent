@@ -8,6 +8,7 @@ export interface AuthFormState {
 
   setupEmail: string;
   setupPassword: string;
+  setupConfirmPassword: string;
   setupFullName: string;
   setupStudentCode: string;
   setupError: string;
@@ -19,6 +20,7 @@ export interface AuthFormState {
 
   setSetupEmail: (email: string) => void;
   setSetupPassword: (password: string) => void;
+  setSetupConfirmPassword: (confirmPassword: string) => void;
   setSetupFullName: (fullName: string) => void;
   setSetupStudentCode: (studentCode: string) => void;
   setSetupError: (error: string) => void;
@@ -33,6 +35,7 @@ export const useAuthFormStore = create<AuthFormState>((set) => ({
 
   setupEmail: '',
   setupPassword: '',
+  setupConfirmPassword: '',
   setupFullName: '',
   setupStudentCode: '',
   setupError: '',
@@ -44,6 +47,7 @@ export const useAuthFormStore = create<AuthFormState>((set) => ({
 
   setSetupEmail: (setupEmail) => set({ setupEmail }),
   setSetupPassword: (setupPassword) => set({ setupPassword }),
+  setSetupConfirmPassword: (setupConfirmPassword) => set({ setupConfirmPassword }),
   setSetupFullName: (setupFullName) => set({ setupFullName }),
   setSetupStudentCode: (setupStudentCode) => set({ setupStudentCode }),
   setSetupError: (setupError) => set({ setupError }),
@@ -51,6 +55,7 @@ export const useAuthFormStore = create<AuthFormState>((set) => ({
     set({
       setupEmail: '',
       setupPassword: '',
+      setupConfirmPassword: '',
       setupFullName: '',
       setupStudentCode: '',
       setupError: '',

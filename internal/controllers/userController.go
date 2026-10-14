@@ -30,10 +30,7 @@ func (c *UserController) CreateUser(w http.ResponseWriter, r *http.Request) {
 
 	var dto request.CreateUserDto
 	if err := validator.ValidateBodyDto(r, &dto); err != nil {
-		writeJSONResponse(w, http.StatusBadRequest, response.CommonResponse{
-			Status: false,
-			Errors: err,
-		})
+		writeValidationError(w, err)
 		return
 	}
 
@@ -56,10 +53,7 @@ func (c *UserController) SearchUser(w http.ResponseWriter, r *http.Request) {
 
 	var dto request.SearchUserDto
 	if err := validator.ValidateQueryDto(r, &dto); err != nil {
-		writeJSONResponse(w, http.StatusBadRequest, response.CommonResponse{
-			Status: false,
-			Errors: err,
-		})
+		writeValidationError(w, err)
 		return
 	}
 
@@ -128,10 +122,7 @@ func (c *UserController) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 
 	var dto request.UpdateProfileDto
 	if err := validator.ValidateBodyDto(r, &dto); err != nil {
-		writeJSONResponse(w, http.StatusBadRequest, response.CommonResponse{
-			Status: false,
-			Errors: err,
-		})
+		writeValidationError(w, err)
 		return
 	}
 
@@ -166,10 +157,7 @@ func (c *UserController) AdminUpdateProfile(w http.ResponseWriter, r *http.Reque
 
 	var dto request.UpdateProfileDto
 	if err := validator.ValidateBodyDto(r, &dto); err != nil {
-		writeJSONResponse(w, http.StatusBadRequest, response.CommonResponse{
-			Status: false,
-			Errors: err,
-		})
+		writeValidationError(w, err)
 		return
 	}
 
@@ -198,10 +186,7 @@ func (c *UserController) ChangePassword(w http.ResponseWriter, r *http.Request) 
 
 	var dto request.ChangePasswordDto
 	if err := validator.ValidateBodyDto(r, &dto); err != nil {
-		writeJSONResponse(w, http.StatusBadRequest, response.CommonResponse{
-			Status: false,
-			Errors: err,
-		})
+		writeValidationError(w, err)
 		return
 	}
 
@@ -234,10 +219,7 @@ func (c *UserController) AdminResetPassword(w http.ResponseWriter, r *http.Reque
 
 	var dto request.ResetPasswordDto
 	if err := validator.ValidateBodyDto(r, &dto); err != nil {
-		writeJSONResponse(w, http.StatusBadRequest, response.CommonResponse{
-			Status: false,
-			Errors: err,
-		})
+		writeValidationError(w, err)
 		return
 	}
 
@@ -270,10 +252,7 @@ func (c *UserController) ChangeRoleUser(w http.ResponseWriter, r *http.Request) 
 
 	var dto request.ChangeRoleDto
 	if err := validator.ValidateBodyDto(r, &dto); err != nil {
-		writeJSONResponse(w, http.StatusBadRequest, response.CommonResponse{
-			Status: false,
-			Errors: err,
-		})
+		writeValidationError(w, err)
 		return
 	}
 

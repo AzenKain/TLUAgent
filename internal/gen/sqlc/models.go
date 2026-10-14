@@ -79,6 +79,85 @@ type ChatMessage struct {
 	ImagesJson     string         `json:"images_json"`
 	Feedback       sql.NullString `json:"feedback"`
 	CreatedAt      time.Time      `json:"created_at"`
+	CanEscalate    int64          `json:"can_escalate"`
+}
+
+type CourseGroupSubstitution struct {
+	ID                         string `json:"id"`
+	TargetDescription          string `json:"target_description"`
+	ReplacementRuleDescription string `json:"replacement_rule_description"`
+	ScopeCohort                string `json:"scope_cohort"`
+	ScopeMajor                 string `json:"scope_major"`
+	MinCohort                  int64  `json:"min_cohort"`
+	MaxCohort                  int64  `json:"max_cohort"`
+	AllowedPrefixes            string `json:"allowed_prefixes"`
+	SourceReference            string `json:"source_reference"`
+	CreatedAt                  string `json:"created_at"`
+}
+
+type CoursePrerequisite struct {
+	ID                     string  `json:"id"`
+	CurriculumCourseID     string  `json:"curriculum_course_id"`
+	Cohort                 string  `json:"cohort"`
+	MajorName              string  `json:"major_name"`
+	CourseCode             string  `json:"course_code"`
+	PrerequisiteCourseCode string  `json:"prerequisite_course_code"`
+	MinGrade               float64 `json:"min_grade"`
+	ConditionType          string  `json:"condition_type"`
+	RawExpression          string  `json:"raw_expression"`
+	CreatedAt              string  `json:"created_at"`
+}
+
+type CourseSubstitution struct {
+	ID                    string  `json:"id"`
+	OriginalCourseCode    string  `json:"original_course_code"`
+	OriginalCourseName    string  `json:"original_course_name"`
+	ReplacementCourseCode string  `json:"replacement_course_code"`
+	ReplacementCourseName string  `json:"replacement_course_name"`
+	ScopeCohort           string  `json:"scope_cohort"`
+	ScopeMajor            string  `json:"scope_major"`
+	MinCohort             int64   `json:"min_cohort"`
+	MaxCohort             int64   `json:"max_cohort"`
+	IsBidirectional       int64   `json:"is_bidirectional"`
+	IsTransitive          int64   `json:"is_transitive"`
+	CreditsOriginal       float64 `json:"credits_original"`
+	CreditsReplacement    float64 `json:"credits_replacement"`
+	RuleType              string  `json:"rule_type"`
+	RuleNote              string  `json:"rule_note"`
+	SourceReference       string  `json:"source_reference"`
+	CreatedAt             string  `json:"created_at"`
+}
+
+type Curriculum struct {
+	ID           string  `json:"id"`
+	Cohort       string  `json:"cohort"`
+	AcademicYear string  `json:"academic_year"`
+	MajorName    string  `json:"major_name"`
+	MajorCode    string  `json:"major_code"`
+	FacultyCode  string  `json:"faculty_code"`
+	Aliases      string  `json:"aliases"`
+	TotalCourses int64   `json:"total_courses"`
+	TotalCredits float64 `json:"total_credits"`
+	CreatedAt    string  `json:"created_at"`
+	UpdatedAt    string  `json:"updated_at"`
+}
+
+type CurriculumCourse struct {
+	ID                string  `json:"id"`
+	CurriculumID      string  `json:"curriculum_id"`
+	Cohort            string  `json:"cohort"`
+	MajorName         string  `json:"major_name"`
+	CourseCode        string  `json:"course_code"`
+	CourseName        string  `json:"course_name"`
+	Credits           float64 `json:"credits"`
+	Weight            float64 `json:"weight"`
+	Hours             string  `json:"hours"`
+	KnowledgeBlock    string  `json:"knowledge_block"`
+	PrerequisitesText string  `json:"prerequisites_text"`
+	SuggestedSemester int64   `json:"suggested_semester"`
+	IsElearning       int64   `json:"is_elearning"`
+	CreatedAt         string  `json:"created_at"`
+	UpdatedAt         string  `json:"updated_at"`
 }
 
 type Document struct {
@@ -296,6 +375,22 @@ type StudentAcademicProfile struct {
 	UpdatedAt        time.Time `json:"updated_at"`
 }
 
+type StudentCourseGrade struct {
+	ID          string    `json:"id"`
+	UserID      string    `json:"user_id"`
+	CourseCode  string    `json:"course_code"`
+	CourseName  string    `json:"course_name"`
+	Credits     float64   `json:"credits"`
+	Score10     float64   `json:"score_10"`
+	Score4      float64   `json:"score_4"`
+	GradeLetter string    `json:"grade_letter"`
+	IsPassed    int64     `json:"is_passed"`
+	IsRetake    int64     `json:"is_retake"`
+	TermTaken   string    `json:"term_taken"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
 type SupersessionAuditLog struct {
 	ID              int64     `json:"id"`
 	ActiveDocID     string    `json:"active_doc_id"`
@@ -303,6 +398,45 @@ type SupersessionAuditLog struct {
 	RuleType        string    `json:"rule_type"`
 	Reason          string    `json:"reason"`
 	CreatedAt       time.Time `json:"created_at"`
+}
+
+type TluclawActionSnapshot struct {
+	ID                string       `json:"id"`
+	BatchID           string       `json:"batch_id"`
+	SessionID         string       `json:"session_id"`
+	OperatorID        string       `json:"operator_id"`
+	ActionType        string       `json:"action_type"`
+	Summary           string       `json:"summary"`
+	DiffPreviewJson   string       `json:"diff_preview_json"`
+	BlastRadiusJson   string       `json:"blast_radius_json"`
+	PreviousStateJson string       `json:"previous_state_json"`
+	NewStateJson      string       `json:"new_state_json"`
+	Status            string       `json:"status"`
+	ConfirmationNonce string       `json:"confirmation_nonce"`
+	NonceExpiresAt    sql.NullTime `json:"nonce_expires_at"`
+	AppliedAt         sql.NullTime `json:"applied_at"`
+	CreatedAt         time.Time    `json:"created_at"`
+	UpdatedAt         time.Time    `json:"updated_at"`
+}
+
+type TluclawMessage struct {
+	ID               string    `json:"id"`
+	SessionID        string    `json:"session_id"`
+	Role             string    `json:"role"`
+	Content          string    `json:"content"`
+	ReasoningContent string    `json:"reasoning_content"`
+	ToolCallsJson    string    `json:"tool_calls_json"`
+	ToolCallID       string    `json:"tool_call_id"`
+	MetadataJson     string    `json:"metadata_json"`
+	CreatedAt        time.Time `json:"created_at"`
+}
+
+type TluclawSession struct {
+	ID          string    `json:"id"`
+	AdminUserID string    `json:"admin_user_id"`
+	Title       string    `json:"title"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
 
 type User struct {

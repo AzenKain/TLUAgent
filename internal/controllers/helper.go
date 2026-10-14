@@ -10,6 +10,7 @@ import (
 	"tluagent-web/internal/dtos/response"
 	"tluagent-web/internal/middlewares"
 	"tluagent-web/pkg/jsonx"
+	"tluagent-web/pkg/validator"
 )
 
 const (
@@ -66,4 +67,23 @@ func writeJSON(w http.ResponseWriter, status int, data any) {
 // writeJSONResponse writes CommonResponse or paginated response with status code.
 func writeJSONResponse(w http.ResponseWriter, status int, data any) {
 	writeJSON(w, status, data)
+}
+
+// writeValidationError writes validation error response with status code 400.
+func writeValidationError(w http.ResponseWriter, errs []*validator.ErrorResponse) {
+	var msgs []string
+	for _, e := range errs {
+		if e != nil && e.Message != "" {
+			msgs = append(msgs, e.Message)
+		}
+	}
+	msg := "Validation failed"
+	if len(msgs) > 0 {
+		msg = strings.Join(msgs, "; ")
+	}
+	writeJSONResponse(w, http.StatusBadRequest, response.CommonResponse{
+		Status:  false,
+		Message: msg,
+		Errors:  errs,
+	})
 }

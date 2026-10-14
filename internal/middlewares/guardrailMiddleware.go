@@ -24,7 +24,8 @@ func GuardrailQuery() func(http.Handler) http.Handler {
 			if r.Method == http.MethodPost || r.Method == http.MethodPut || r.Method == http.MethodPatch {
 				contentType := r.Header.Get("Content-Type")
 				if strings.Contains(contentType, "application/json") && r.Body != nil {
-					bodyBytes, err := io.ReadAll(r.Body)
+					limitedBody := http.MaxBytesReader(w, r.Body, 1<<20)
+					bodyBytes, err := io.ReadAll(limitedBody)
 					if err == nil && len(bodyBytes) > 0 {
 						r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 						var payload struct {

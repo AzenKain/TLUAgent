@@ -23,6 +23,8 @@ import {
 import {
   agentService,
 } from '@/services/agentService';
+import { PageHeader } from '@/components/common/PageHeader';
+import { RefreshButton } from '@/components/common/RefreshButton';
 import type {
   AgentPromptDTO,
   AgentSkillDTO,
@@ -33,6 +35,7 @@ import type {
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { Badge } from '@/components/common/Badge';
 import { Modal } from '@/components/common/Modal';
+import { ConfirmModal } from '@/components/common/ConfirmModal';
 
 export const AgentManagePage: React.FC = () => {
   const { t } = useTranslation();
@@ -312,7 +315,7 @@ export const AgentManagePage: React.FC = () => {
   );
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-7xl mx-auto pb-10">
       {/* Toast Notification */}
       {toastMessage && (
         <div
@@ -330,17 +333,21 @@ export const AgentManagePage: React.FC = () => {
       )}
 
       {/* Header */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="flex items-center gap-2.5 text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
-            <Bot className="h-7 w-7 text-indigo-600 dark:text-indigo-400" />
-            {t('agent_manage.page_title')}
-          </h1>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            {t('agent_manage.page_subtitle')}
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        icon={<Bot className="h-6 w-6" />}
+        title={t('agent_manage.page_title')}
+        subtitle={t('agent_manage.page_subtitle')}
+        actions={
+          <RefreshButton
+            onClick={() => {
+              queryClient.invalidateQueries({ queryKey: ['agent-prompts'] });
+              queryClient.invalidateQueries({ queryKey: ['agent-skills'] });
+              queryClient.invalidateQueries({ queryKey: ['agent-compactor-settings'] });
+            }}
+            isLoading={promptsLoading || skillsLoading || compactorLoading}
+          />
+        }
+      />
 
       {/* Tab Navigation */}
       <div className="flex border-b border-slate-200 dark:border-slate-800">
@@ -348,7 +355,7 @@ export const AgentManagePage: React.FC = () => {
           onClick={() => setActiveTab('soul')}
           className={`flex items-center gap-2 border-b-2 px-5 py-3 text-sm font-semibold transition-colors ${
             activeTab === 'soul'
-              ? 'border-indigo-600 text-indigo-600 dark:border-indigo-400 dark:text-indigo-400'
+              ? 'border-tlu-navy text-tlu-navy dark:border-tlu-blue dark:text-blue-400'
               : 'border-transparent text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100'
           }`}
         >
@@ -359,7 +366,7 @@ export const AgentManagePage: React.FC = () => {
           onClick={() => setActiveTab('rules')}
           className={`flex items-center gap-2 border-b-2 px-5 py-3 text-sm font-semibold transition-colors ${
             activeTab === 'rules'
-              ? 'border-indigo-600 text-indigo-600 dark:border-indigo-400 dark:text-indigo-400'
+              ? 'border-tlu-navy text-tlu-navy dark:border-tlu-blue dark:text-blue-400'
               : 'border-transparent text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100'
           }`}
         >
@@ -370,7 +377,7 @@ export const AgentManagePage: React.FC = () => {
           onClick={() => setActiveTab('skills')}
           className={`flex items-center gap-2 border-b-2 px-5 py-3 text-sm font-semibold transition-colors ${
             activeTab === 'skills'
-              ? 'border-indigo-600 text-indigo-600 dark:border-indigo-400 dark:text-indigo-400'
+              ? 'border-tlu-navy text-tlu-navy dark:border-tlu-blue dark:text-blue-400'
               : 'border-transparent text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100'
           }`}
         >
@@ -386,7 +393,7 @@ export const AgentManagePage: React.FC = () => {
           onClick={() => setActiveTab('preview')}
           className={`flex items-center gap-2 border-b-2 px-5 py-3 text-sm font-semibold transition-colors ${
             activeTab === 'preview'
-              ? 'border-indigo-600 text-indigo-600 dark:border-indigo-400 dark:text-indigo-400'
+              ? 'border-tlu-navy text-tlu-navy dark:border-tlu-blue dark:text-blue-400'
               : 'border-transparent text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100'
           }`}
         >
@@ -397,7 +404,7 @@ export const AgentManagePage: React.FC = () => {
           onClick={() => setActiveTab('compactor')}
           className={`flex items-center gap-2 border-b-2 px-5 py-3 text-sm font-semibold transition-colors ${
             activeTab === 'compactor'
-              ? 'border-indigo-600 text-indigo-600 dark:border-indigo-400 dark:text-indigo-400'
+              ? 'border-tlu-navy text-tlu-navy dark:border-tlu-blue dark:text-blue-400'
               : 'border-transparent text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100'
           }`}
         >
@@ -409,7 +416,7 @@ export const AgentManagePage: React.FC = () => {
       {/* Tab 1: Soul */}
       {activeTab === 'soul' && (
         <div className="space-y-4">
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-blue-900/30 dark:bg-[#111A35]">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">
@@ -438,7 +445,7 @@ export const AgentManagePage: React.FC = () => {
                       content: soulContent,
                     })
                   }
-                  className="flex items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-indigo-700 disabled:opacity-50"
+                  className="flex items-center gap-1.5 rounded-xl bg-tlu-navy px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-tlu-navy-light dark:bg-tlu-blue dark:hover:bg-blue-600 disabled:opacity-50"
                 >
                   <Save className="h-3.5 w-3.5" />
                   {updatePromptMutation.isPending ? t('common.saving') : t('agent_manage.btn_save_prompt')}
@@ -460,7 +467,7 @@ export const AgentManagePage: React.FC = () => {
                     type="text"
                     value={soulTitle}
                     onChange={(e) => setSoulTitle(e.target.value)}
-                    className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-sm text-slate-900 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                    className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-sm text-slate-900 focus:border-tlu-blue focus:ring-1 focus:ring-tlu-blue dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
                   />
                 </div>
                 <div>
@@ -471,7 +478,7 @@ export const AgentManagePage: React.FC = () => {
                     rows={18}
                     value={soulContent}
                     onChange={(e) => setSoulContent(e.target.value)}
-                    className="font-mono w-full rounded-xl border border-slate-300 bg-slate-50 p-4 text-xs text-slate-900 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
+                    className="font-mono w-full rounded-xl border border-slate-300 bg-slate-50 p-4 text-xs text-slate-900 focus:border-tlu-blue focus:ring-1 focus:ring-tlu-blue dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
                   />
                 </div>
               </div>
@@ -483,7 +490,7 @@ export const AgentManagePage: React.FC = () => {
       {/* Tab 2: Rules */}
       {activeTab === 'rules' && (
         <div className="space-y-4">
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-blue-900/30 dark:bg-[#111A35]">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">
@@ -512,7 +519,7 @@ export const AgentManagePage: React.FC = () => {
                       content: ruleContent,
                     })
                   }
-                  className="flex items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-indigo-700 disabled:opacity-50"
+                  className="flex items-center gap-1.5 rounded-xl bg-tlu-navy px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-tlu-navy-light dark:bg-tlu-blue dark:hover:bg-blue-600 disabled:opacity-50"
                 >
                   <Save className="h-3.5 w-3.5" />
                   {updatePromptMutation.isPending ? t('common.saving') : t('agent_manage.btn_save_prompt')}
@@ -534,7 +541,7 @@ export const AgentManagePage: React.FC = () => {
                     type="text"
                     value={ruleTitle}
                     onChange={(e) => setRuleTitle(e.target.value)}
-                    className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-sm text-slate-900 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                    className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-sm text-slate-900 focus:border-tlu-blue focus:ring-1 focus:ring-tlu-blue dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
                   />
                 </div>
                 <div>
@@ -545,7 +552,7 @@ export const AgentManagePage: React.FC = () => {
                     rows={18}
                     value={ruleContent}
                     onChange={(e) => setRuleContent(e.target.value)}
-                    className="font-mono w-full rounded-xl border border-slate-300 bg-slate-50 p-4 text-xs text-slate-900 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
+                    className="font-mono w-full rounded-xl border border-slate-300 bg-slate-50 p-4 text-xs text-slate-900 focus:border-tlu-blue focus:ring-1 focus:ring-tlu-blue dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
                   />
                 </div>
               </div>
@@ -565,13 +572,13 @@ export const AgentManagePage: React.FC = () => {
                 value={skillSearch}
                 onChange={(e) => setSkillSearch(e.target.value)}
                 placeholder={t('agent_manage.filter_skills_placeholder')}
-                className="w-full rounded-xl border border-slate-300 bg-white py-2 pl-9 pr-4 text-xs text-slate-900 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                className="w-full rounded-xl border border-slate-300 bg-white py-2 pl-9 pr-4 text-xs text-slate-900 focus:border-tlu-blue focus:ring-1 focus:ring-tlu-blue dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
               />
             </div>
             <button
               type="button"
               onClick={handleOpenAddSkill}
-              className="flex items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-indigo-700"
+              className="flex items-center gap-1.5 rounded-xl bg-tlu-navy px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-tlu-navy-light dark:bg-tlu-blue dark:hover:bg-blue-600"
             >
               <Plus className="h-4 w-4" />
               {t('agent_manage.btn_add_skill')}
@@ -583,7 +590,7 @@ export const AgentManagePage: React.FC = () => {
               <LoadingSpinner size="lg" />
             </div>
           ) : !filteredSkills || filteredSkills.length === 0 ? (
-            <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
+            <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500 dark:border-blue-900/30 dark:bg-[#111A35] dark:text-slate-400">
               {t('agent_manage.no_skills_found')}
             </div>
           ) : (
@@ -591,7 +598,7 @@ export const AgentManagePage: React.FC = () => {
               {filteredSkills.map((skill) => (
                 <div
                   key={skill.id}
-                  className="flex flex-col justify-between rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-slate-300 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-slate-700"
+                  className="flex flex-col justify-between rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-slate-300 dark:border-blue-900/30 dark:bg-[#111A35] dark:hover:border-blue-800"
                 >
                   <div className="space-y-3">
                     <div className="flex items-start justify-between gap-3">
@@ -604,7 +611,7 @@ export const AgentManagePage: React.FC = () => {
                             {skill.is_enabled ? t('agent_manage.skill_enabled') : t('agent_manage.skill_disabled')}
                           </Badge>
                         </div>
-                        <p className="font-mono mt-0.5 text-xs text-indigo-600 dark:text-indigo-400">
+                        <p className="font-mono mt-0.5 text-xs text-tlu-blue dark:text-blue-400">
                           {skill.id}
                         </p>
                       </div>
@@ -616,7 +623,7 @@ export const AgentManagePage: React.FC = () => {
                         title={skill.is_enabled ? t('agent_manage.skill_disabled') : t('agent_manage.skill_enabled')}
                       >
                         {skill.is_enabled ? (
-                          <ToggleRight className="h-7 w-7 text-indigo-600 dark:text-indigo-400" />
+                          <ToggleRight className="h-7 w-7 text-tlu-blue dark:text-blue-400" />
                         ) : (
                           <ToggleLeft className="h-7 w-7 text-slate-400" />
                         )}
@@ -633,7 +640,7 @@ export const AgentManagePage: React.FC = () => {
                         {t('agent_manage.skill_priority')}: {skill.priority}
                       </span>
                       {skill.tool_definition && (
-                        <span className="rounded-md bg-indigo-50 px-2 py-0.5 text-indigo-600 dark:bg-indigo-950/50 dark:text-indigo-400">
+                        <span className="rounded-md bg-blue-50 px-2 py-0.5 text-tlu-navy dark:bg-blue-950/50 dark:text-blue-300">
                           Tool Call
                         </span>
                       )}
@@ -652,7 +659,7 @@ export const AgentManagePage: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => handleOpenEditSkill(skill)}
-                      className="rounded-lg p-1.5 text-indigo-600 transition hover:bg-indigo-50 dark:text-indigo-400 dark:hover:bg-indigo-950/40"
+                      className="rounded-lg p-1.5 text-tlu-blue transition hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-950/40"
                       title={t('agent_manage.btn_edit_skill')}
                     >
                       <Edit2 className="h-4 w-4" />
@@ -660,7 +667,7 @@ export const AgentManagePage: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => setDeleteConfirmModal(skill.id)}
-                      className="rounded-lg p-1.5 text-rose-500 transition hover:bg-rose-50 dark:hover:bg-rose-950/40"
+                      className="rounded-lg p-1.5 text-tlu-red transition hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/40"
                       title={t('agent_manage.btn_delete_skill')}
                     >
                       <Trash2 className="h-4 w-4" />
@@ -676,7 +683,7 @@ export const AgentManagePage: React.FC = () => {
       {/* Tab 4: Preview */}
       {activeTab === 'preview' && (
         <div className="space-y-4">
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-blue-900/30 dark:bg-[#111A35]">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex flex-wrap items-center gap-4">
                 <div>
@@ -688,7 +695,7 @@ export const AgentManagePage: React.FC = () => {
                     value={previewCohort}
                     onChange={(e) => setPreviewCohort(e.target.value)}
                     placeholder={t('agent_manage.preview_cohort_placeholder')}
-                    className="w-40 rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                    className="w-40 rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 focus:border-tlu-blue focus:ring-1 focus:ring-tlu-blue dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
                   />
                 </div>
                 <div className="flex items-center gap-2 pt-5">
@@ -697,7 +704,7 @@ export const AgentManagePage: React.FC = () => {
                     id="sample-rag"
                     checked={previewSampleRAG}
                     onChange={(e) => setPreviewSampleRAG(e.target.checked)}
-                    className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                    className="h-4 w-4 rounded border-slate-300 text-tlu-blue focus:ring-tlu-blue"
                   />
                   <label htmlFor="sample-rag" className="text-xs text-slate-700 dark:text-slate-300">
                     {t('agent_manage.preview_sample_rag_label')}
@@ -717,7 +724,7 @@ export const AgentManagePage: React.FC = () => {
                 <button
                   type="button"
                   onClick={handleCopyPrompt}
-                  className="flex items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-indigo-700"
+                  className="flex items-center gap-1.5 rounded-xl bg-tlu-navy px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-tlu-navy-light dark:bg-tlu-blue dark:hover:bg-blue-600"
                 >
                   {copiedPrompt ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
                   {t('agent_manage.btn_copy_prompt')}
@@ -734,7 +741,7 @@ export const AgentManagePage: React.FC = () => {
                 <div className="mb-2 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
                   <span>System Prompt ({t('agent_manage.preview_char_count', { count: previewPromptText?.length || 0 })})</span>
                 </div>
-                <pre className="font-mono max-h-[600px] overflow-y-auto whitespace-pre-wrap rounded-xl border border-slate-200 bg-slate-50 p-4 text-xs leading-relaxed text-slate-900 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200">
+                <pre className="font-mono max-h-150 overflow-y-auto whitespace-pre-wrap rounded-xl border border-slate-200 bg-slate-50 p-4 text-xs leading-relaxed text-slate-900 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200">
                   {previewPromptText}
                 </pre>
               </div>
@@ -746,7 +753,7 @@ export const AgentManagePage: React.FC = () => {
       {/* Tab 5: Compactor Settings */}
       {activeTab === 'compactor' && (
         <div className="space-y-4">
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-blue-900/30 dark:bg-[#111A35]">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">
@@ -761,7 +768,7 @@ export const AgentManagePage: React.FC = () => {
                   type="button"
                   disabled={updateCompactorMutation.isPending}
                   onClick={() => updateCompactorMutation.mutate(compactorForm)}
-                  className="flex items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-indigo-700 disabled:opacity-50"
+                  className="flex items-center gap-1.5 rounded-xl bg-tlu-navy px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-tlu-navy-light dark:bg-tlu-blue dark:hover:bg-blue-600 disabled:opacity-50"
                 >
                   <Save className="h-3.5 w-3.5" />
                   {updateCompactorMutation.isPending ? t('common.saving') : t('agent_manage.compactor_save_btn')}
@@ -791,7 +798,7 @@ export const AgentManagePage: React.FC = () => {
                         max_context_tokens: Math.max(1000, parseInt(e.target.value, 10) || 0),
                       })
                     }
-                    className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-sm text-slate-900 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                    className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-sm text-slate-900 focus:border-tlu-blue focus:ring-1 focus:ring-tlu-blue dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
                   />
                   <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                     {t('agent_manage.compactor_max_tokens_help')}
@@ -814,7 +821,7 @@ export const AgentManagePage: React.FC = () => {
                         compact_threshold_ratio: parseFloat(e.target.value) || 0.85,
                       })
                     }
-                    className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-sm text-slate-900 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                    className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-sm text-slate-900 focus:border-tlu-blue focus:ring-1 focus:ring-tlu-blue dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
                   />
                   <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                     {t('agent_manage.compactor_threshold_help')}
@@ -837,7 +844,7 @@ export const AgentManagePage: React.FC = () => {
                         keep_recent_turns: Math.max(1, parseInt(e.target.value, 10) || 1),
                       })
                     }
-                    className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-sm text-slate-900 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                    className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-sm text-slate-900 focus:border-tlu-blue focus:ring-1 focus:ring-tlu-blue dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
                   />
                   <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                     {t('agent_manage.compactor_keep_turns_help')}
@@ -936,7 +943,7 @@ export const AgentManagePage: React.FC = () => {
                   id="skill-enabled"
                   checked={skillForm.is_enabled}
                   onChange={(e) => setSkillForm({ ...skillForm, is_enabled: e.target.checked })}
-                  className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                  className="h-4 w-4 rounded border-slate-300 text-tlu-blue focus:ring-tlu-blue"
                 />
                 <label htmlFor="skill-enabled" className="text-xs text-slate-700 dark:text-slate-300">
                   {t('agent_manage.skill_enabled')}
@@ -956,7 +963,7 @@ export const AgentManagePage: React.FC = () => {
             <button
               type="submit"
               disabled={createSkillMutation.isPending || updateSkillMutation.isPending}
-              className="rounded-xl bg-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-indigo-700 disabled:opacity-50"
+              className="rounded-xl bg-tlu-navy px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-tlu-navy-light dark:bg-tlu-blue dark:hover:bg-blue-600 disabled:opacity-50"
             >
               {t('common.save')}
             </button>
@@ -965,74 +972,44 @@ export const AgentManagePage: React.FC = () => {
       </Modal>
 
       {/* Confirmation Modal for Reset */}
-      <Modal
-        isOpen={!!resetConfirmModal}
+      <ConfirmModal
+        isOpen={Boolean(resetConfirmModal)}
         onClose={() => setResetConfirmModal(null)}
+        onConfirm={() => {
+          if (resetConfirmModal?.type === 'prompt') {
+            resetPromptMutation.mutate(resetConfirmModal.id);
+          } else if (resetConfirmModal?.type === 'skill') {
+            resetSkillMutation.mutate(resetConfirmModal.id);
+          }
+        }}
         title={t('agent_manage.confirm_reset_title')}
-      >
-        <div className="space-y-4">
-          <p className="text-sm text-slate-600 dark:text-slate-300">
-            {resetConfirmModal?.type === 'prompt'
-              ? t('agent_manage.confirm_reset_prompt_desc')
-              : t('agent_manage.confirm_reset_skill_desc')}
-          </p>
-          <div className="flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => setResetConfirmModal(null)}
-              className="rounded-xl border border-slate-300 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-            >
-              {t('common.cancel')}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                if (resetConfirmModal?.type === 'prompt') {
-                  resetPromptMutation.mutate(resetConfirmModal.id);
-                } else if (resetConfirmModal?.type === 'skill') {
-                  resetSkillMutation.mutate(resetConfirmModal.id);
-                }
-              }}
-              className="rounded-xl bg-amber-600 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-amber-700"
-            >
-              {t('agent_manage.btn_reset_default')}
-            </button>
-          </div>
-        </div>
-      </Modal>
+        message={
+          resetConfirmModal?.type === 'prompt'
+            ? t('agent_manage.confirm_reset_prompt_desc')
+            : t('agent_manage.confirm_reset_skill_desc')
+        }
+        variant="warning"
+        confirmText={t('agent_manage.btn_reset_default')}
+        cancelText={t('common.cancel')}
+        isLoading={resetPromptMutation.isPending || resetSkillMutation.isPending}
+      />
 
       {/* Confirmation Modal for Delete */}
-      <Modal
-        isOpen={!!deleteConfirmModal}
+      <ConfirmModal
+        isOpen={Boolean(deleteConfirmModal)}
         onClose={() => setDeleteConfirmModal(null)}
+        onConfirm={() => {
+          if (deleteConfirmModal) {
+            deleteSkillMutation.mutate(deleteConfirmModal);
+          }
+        }}
         title={t('agent_manage.confirm_delete_skill_title')}
-      >
-        <div className="space-y-4">
-          <p className="text-sm text-slate-600 dark:text-slate-300">
-            {t('agent_manage.confirm_delete_skill_desc')}
-          </p>
-          <div className="flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => setDeleteConfirmModal(null)}
-              className="rounded-xl border border-slate-300 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-            >
-              {t('common.cancel')}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                if (deleteConfirmModal) {
-                  deleteSkillMutation.mutate(deleteConfirmModal);
-                }
-              }}
-              className="rounded-xl bg-rose-600 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-rose-700"
-            >
-              {t('common.delete')}
-            </button>
-          </div>
-        </div>
-      </Modal>
+        message={t('agent_manage.confirm_delete_skill_desc')}
+        variant="danger"
+        confirmText={t('common.delete')}
+        cancelText={t('common.cancel')}
+        isLoading={deleteSkillMutation.isPending}
+      />
     </div>
   );
 };

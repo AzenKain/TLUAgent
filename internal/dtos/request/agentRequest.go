@@ -12,9 +12,9 @@ type CreateAgentSkillRequest struct {
 	Name           string `json:"name" validate:"required,min=2,max=128"`
 	Description    string `json:"description" validate:"required"`
 	Content        string `json:"content" validate:"required,min=1"`
-	ToolDefinition string `json:"tool_definition"`
-	IsEnabled      *bool  `json:"is_enabled"`
-	Priority       *int   `json:"priority"`
+	ToolDefinition string `json:"tool_definition" validate:"omitempty,max=65536"`
+	IsEnabled      *bool  `json:"is_enabled" validate:"omitempty"`
+	Priority       *int   `json:"priority" validate:"omitempty,gte=0,lte=1000"`
 }
 
 // UpdateAgentSkillRequest represents the payload to update an existing agent skill.
@@ -22,8 +22,8 @@ type UpdateAgentSkillRequest struct {
 	Name           string `json:"name" validate:"required,min=2,max=128"`
 	Description    string `json:"description" validate:"required"`
 	Content        string `json:"content" validate:"required,min=1"`
-	ToolDefinition string `json:"tool_definition"`
-	Priority       *int   `json:"priority"`
+	ToolDefinition string `json:"tool_definition" validate:"omitempty,max=65536"`
+	Priority       *int   `json:"priority" validate:"omitempty,gte=0,lte=1000"`
 }
 
 // ToggleAgentSkillRequest represents the payload to toggle a skill's enabled state.
@@ -33,7 +33,7 @@ type ToggleAgentSkillRequest struct {
 
 // PreviewAgentPromptRequest represents the payload to preview an assembled system prompt.
 type PreviewAgentPromptRequest struct {
-	StudentCohort    string `json:"student_cohort"`
+	StudentCohort    string `json:"student_cohort" validate:"omitempty,max=50"`
 	IncludeSampleRAG bool   `json:"include_sample_rag"`
 }
 

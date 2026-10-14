@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"time"
 
+	"tluagent-web/internal/dtos/response"
 	"tluagent-web/internal/gen/sqlc"
 )
 
@@ -92,6 +93,50 @@ func FromSQLCInquiry(row *sqlc.AdvisoryInquiry) *AdvisoryInquiry {
 		CreatedAt:         row.CreatedAt,
 		UpdatedAt:         row.UpdatedAt,
 	}
+}
+
+// ToResponse converts an AdvisoryInquiry domain model to a response DTO.
+func (i *AdvisoryInquiry) ToResponse() *response.InquiryResponse {
+	if i == nil {
+		return nil
+	}
+	return &response.InquiryResponse{
+		ID:                i.ID,
+		UserID:            i.UserID,
+		ConversationID:    i.ConversationID,
+		StudentName:       i.StudentName,
+		StudentCode:       i.StudentCode,
+		StudentClass:      i.StudentClass,
+		Question:          i.Question,
+		Context:           i.Context,
+		Status:            string(i.Status),
+		TeacherID:         i.TeacherID,
+		TeacherName:       i.TeacherName,
+		TeacherReply:      i.TeacherReply,
+		AnsweredAt:        i.AnsweredAt,
+		KnowledgeChunkID:  i.KnowledgeChunkID,
+		SupersededByDocID: i.SupersededByDocID,
+		IsExpired:         i.IsExpired,
+		ExpiredReason:     i.ExpiredReason,
+		ExpiredAt:         i.ExpiredAt,
+		CreatedAt:         i.CreatedAt,
+		UpdatedAt:         i.UpdatedAt,
+	}
+}
+
+// InquiriesToResponse converts a batch of AdvisoryInquiry to response DTOs.
+func InquiriesToResponse(items []*AdvisoryInquiry) []*response.InquiryResponse {
+	if items == nil {
+		return nil
+	}
+	out := make([]*response.InquiryResponse, 0, len(items))
+	for _, item := range items {
+		if item == nil {
+			continue
+		}
+		out = append(out, item.ToResponse())
+	}
+	return out
 }
 
 func NullString(s string) sql.NullString {

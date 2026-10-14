@@ -1,3 +1,11 @@
+---
+id: inquiry_escalation
+name: Chuyển tiếp Thắc mắc & Khiếu nại
+description: Nhận diện và đóng gói các tình huống học vụ phức tạp, khiếu nại điểm để chuyển tiếp đến Giảng viên / Cố vấn chuyên trách.
+priority: 20
+tool_definition: |
+  {"name":"escalate_inquiry","description":"Chuyển tiếp câu hỏi, thắc mắc vượt thẩm quyền hoặc khiếu nại điểm cho Cố vấn học tập / Phòng Đào tạo người thật giải quyết.","parameters":{"type":"object","properties":{"reason":{"type":"string","description":"Lý do cần chuyển tiếp thắc mắc."}}}}
+---
 # Kỹ Năng: Chuyển Tiếp Thắc Mắc & Khiếu Nại (inquiry_escalation)
 
 ## Mục Đích

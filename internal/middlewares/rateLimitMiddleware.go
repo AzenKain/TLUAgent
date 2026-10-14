@@ -3,6 +3,7 @@ package middlewares
 import (
 	"net"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -16,6 +17,7 @@ const maxTrackedClients = 10000
 type clientLimit struct {
 	count     int
 	resetTime time.Time
+	lastSeen  time.Time
 }
 
 type RateLimiter struct {
@@ -87,6 +89,26 @@ func (l *RateLimiter) purgeExpiredLocked(now time.Time) {
 	}
 }
 
+func (l *RateLimiter) evictOldestLocked(count int) {
+	if count <= 0 {
+		count = 1
+	}
+	type item struct {
+		key      string
+		lastSeen time.Time
+	}
+	items := make([]item, 0, len(l.clients))
+	for k, v := range l.clients {
+		items = append(items, item{key: k, lastSeen: v.lastSeen})
+	}
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].lastSeen.Before(items[j].lastSeen)
+	})
+	for i := 0; i < count && i < len(items); i++ {
+		delete(l.clients, items[i].key)
+	}
+}
+
 func (l *RateLimiter) Middleware() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -95,6 +117,7 @@ func (l *RateLimiter) Middleware() func(http.Handler) http.Handler {
 			now := time.Now()
 			entry, exists := l.clients[ip]
 			if exists && !now.After(entry.resetTime) {
+				entry.lastSeen = now
 				entry.count++
 				if entry.count > l.maxRequests {
 					l.mu.Unlock()
@@ -110,14 +133,17 @@ func (l *RateLimiter) Middleware() func(http.Handler) http.Handler {
 				l.purgeExpiredLocked(now)
 			}
 			if len(l.clients) >= maxTrackedClients {
-				l.mu.Unlock()
-				apperrors.HandleError(w, apperrors.New(apperrors.ErrTooManyRequests, "Too many requests, please slow down"))
-				return
+				evictCount := maxTrackedClients / 10
+				if evictCount < 1 {
+					evictCount = 1
+				}
+				l.evictOldestLocked(evictCount)
 			}
 
 			l.clients[ip] = &clientLimit{
 				count:     1,
 				resetTime: now.Add(l.window),
+				lastSeen:  now,
 			}
 			l.mu.Unlock()
 

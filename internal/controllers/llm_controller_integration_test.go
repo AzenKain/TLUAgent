@@ -47,7 +47,7 @@ func setupLLMTestServer(t *testing.T) (*http.ServeMux, *sql.DB, string) {
 	}
 
 	manager := llm.NewManager()
-	llmConfigSvc := services.NewLLMConfigService(llmRepo, manager)
+	llmConfigSvc := services.NewLLMConfigService(llmRepo, manager, settingsRepo)
 	authSvc := services.NewAuthService(userRepo, roleRepo, settingsRepo, txManager)
 
 	authCtrl := controllers.NewAuthController(authSvc)
@@ -369,6 +369,58 @@ func TestLLMController_Endpoints(t *testing.T) {
 
 		if delChainW.Code != http.StatusOK {
 			t.Fatalf("Failed to delete chain: %d, body: %s", delChainW.Code, delChainW.Body.String())
+		}
+	})
+
+	t.Run("Admin_VisionSettings_Lifecycle", func(t *testing.T) {
+		unauthReq := httptest.NewRequest(http.MethodGet, "/api/admin/llm/vision-settings", nil)
+		unauthW := httptest.NewRecorder()
+		mux.ServeHTTP(unauthW, unauthReq)
+		if unauthW.Code != http.StatusUnauthorized {
+			t.Fatalf("Expected 401 for unauthorized vision settings, got %d", unauthW.Code)
+		}
+
+		getReq := httptest.NewRequest(http.MethodGet, "/api/admin/llm/vision-settings", nil)
+		getReq.Header.Set("Authorization", "Bearer "+adminToken)
+		getW := httptest.NewRecorder()
+		mux.ServeHTTP(getW, getReq)
+		if getW.Code != http.StatusOK {
+			t.Fatalf("Expected 200 for vision settings, got %d: %s", getW.Code, getW.Body.String())
+		}
+
+		var initialResp response.CommonResponse
+		_ = json.Unmarshal(getW.Body.Bytes(), &initialResp)
+		initialData, _ := json.Marshal(initialResp.Data)
+		var initialSettings response.VisionSettingsResponse
+		_ = json.Unmarshal(initialData, &initialSettings)
+		if len(initialSettings.AvailableVisionModels) == 0 {
+			t.Fatalf("Expected at least 1 available vision model, got %d", len(initialSettings.AvailableVisionModels))
+		}
+
+		updateDto := request.UpdateVisionSettingsRequest{
+			VisionStrategy:      "fallback",
+			VisionFallbackModel: "google/gemini-2.5-flash",
+		}
+		upBody, _ := json.Marshal(updateDto)
+		upReq := httptest.NewRequest(http.MethodPut, "/api/admin/llm/vision-settings", bytes.NewReader(upBody))
+		upReq.Header.Set("Content-Type", "application/json")
+		upReq.Header.Set("Authorization", "Bearer "+adminToken)
+		upW := httptest.NewRecorder()
+		mux.ServeHTTP(upW, upReq)
+		if upW.Code != http.StatusOK {
+			t.Fatalf("Expected 200 for update vision settings, got %d: %s", upW.Code, upW.Body.String())
+		}
+
+		var updatedResp response.CommonResponse
+		_ = json.Unmarshal(upW.Body.Bytes(), &updatedResp)
+		updatedData, _ := json.Marshal(updatedResp.Data)
+		var updatedSettings response.VisionSettingsResponse
+		_ = json.Unmarshal(updatedData, &updatedSettings)
+		if updatedSettings.VisionFallbackModel != "google/gemini-2.5-flash" {
+			t.Fatalf("Expected fallback model google/gemini-2.5-flash, got %s", updatedSettings.VisionFallbackModel)
+		}
+		if updatedSettings.VisionStrategy != "fallback" {
+			t.Fatalf("Expected strategy fallback, got %s", updatedSettings.VisionStrategy)
 		}
 	})
 }

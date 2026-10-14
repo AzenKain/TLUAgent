@@ -31,8 +31,26 @@ func TestFormatStudentPromptContext(t *testing.T) {
 	if !strings.Contains(formatted, "Computer Science") {
 		t.Errorf("expected major in formatted output")
 	}
+	if !strings.Contains(formatted, "Khóa học: K34") {
+		t.Errorf("expected cohort year in formatted output")
+	}
 	if !strings.Contains(formatted, "evening") {
 		t.Errorf("expected preferences in formatted output")
+	}
+
+	emptyProfile := &StudentAcademicProfile{
+		StudentID: "B99999",
+		FullName:  "Le Van B",
+	}
+	emptyFormatted := FormatStudentPromptContext(emptyProfile)
+	if !strings.Contains(emptyFormatted, "Khóa học: CHƯA RÕ") {
+		t.Errorf("expected unknown cohort year message")
+	}
+	if !strings.Contains(emptyFormatted, "Ngành học: CHƯA RÕ") {
+		t.Errorf("expected unknown major message")
+	}
+	if !strings.Contains(emptyFormatted, "YÊU CẦU BẮT BUỘC") {
+		t.Errorf("expected mandatory action instruction")
 	}
 }
 

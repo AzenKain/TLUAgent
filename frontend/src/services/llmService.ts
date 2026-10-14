@@ -284,7 +284,28 @@ export const llmService = {
     const res = await apiClient.post<{ status: boolean; data: TestModelResponseDTO }>('/admin/llm/test', data);
     return res.data.data;
   },
+
+  async getVisionSettings(): Promise<VisionSettingsDTO> {
+    const res = await apiClient.get<{ status: boolean; data: VisionSettingsDTO }>('/admin/llm/vision-settings');
+    return res.data.data;
+  },
+
+  async updateVisionSettings(data: UpdateVisionSettingsDTO): Promise<VisionSettingsDTO> {
+    const res = await apiClient.put<{ status: boolean; data: VisionSettingsDTO }>('/admin/llm/vision-settings', data);
+    return res.data.data;
+  },
 };
+
+export interface VisionSettingsDTO {
+  vision_strategy: 'fallback' | 'degrade' | 'reject';
+  vision_fallback_model: string;
+  available_vision_models: string[];
+}
+
+export interface UpdateVisionSettingsDTO {
+  vision_strategy: 'fallback' | 'degrade' | 'reject';
+  vision_fallback_model: string;
+}
 
 export interface TestModelRequestDTO {
   model_id?: string;

@@ -50,7 +50,12 @@ func setupChatTestServer(t *testing.T) (*http.ServeMux, *sql.DB) {
 	}
 
 	authSvc := services.NewAuthService(userRepo, roleRepo, settingsRepo, txManager)
-	advisorySvc := services.NewAdvisoryService(ruleRepo, llm.NewManager(), userRepo, llmRepo)
+	advisorySvc := services.NewAdvisoryService(services.AdvisoryParams{
+		RuleRepo:   ruleRepo,
+		LLMManager: llm.NewManager(),
+		UserRepo:   userRepo,
+		LLMRepo:    llmRepo,
+	})
 	chatSessionSvc := services.NewChatSessionService(chatRepo, userRepo)
 	chatQuotaSvc := services.NewChatQuotaService(ramCache)
 

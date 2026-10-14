@@ -9,7 +9,7 @@ import (
 	_ "modernc.org/sqlite"
 
 	"tluagent-web/internal/dtos/request"
-	"tluagent-web/internal/models"
+	"tluagent-web/internal/dtos/response"
 	"tluagent-web/internal/repositories"
 	"tluagent-web/internal/services"
 	"tluagent-web/pkg/cache"
@@ -30,7 +30,8 @@ func TestAgentService_Flow(t *testing.T) {
 
 	ramCache := cache.NewTheineCache(10 << 20)
 	repo := repositories.NewAgentRepository(db, ramCache)
-	svc := services.NewAgentService(repo)
+	settingsRepo := repositories.NewSettingsRepository(db, ramCache)
+	svc := services.NewAgentService(repo, nil, settingsRepo)
 	ctx := context.Background()
 
 	if err := svc.SeedDefaultsIfEmpty(ctx); err != nil {
@@ -71,7 +72,7 @@ func TestAgentService_Flow(t *testing.T) {
 		StudentID: "A36001",
 		FullName:  "Test Student",
 	}
-	ragItems := []*models.RAGSearchResultItem{
+	ragItems := []*response.RAGSearchResultItemResponse{
 		{
 			DocTitle: "Doc 1",
 			Content:  "Content 1",
@@ -99,10 +100,6 @@ func TestAgentService_Flow(t *testing.T) {
 	if err != nil || !strings.Contains(preview, "K36") {
 		t.Fatalf("Failed to generate preview: %v", err)
 	}
-
-	settingsRepo := repositories.NewSettingsRepository(db, ramCache)
-	svc.SetSettingsRepository(settingsRepo)
-
 	defaultCfg, err := svc.GetCompactorSettings(ctx)
 	if err != nil || defaultCfg.MaxContextTokens != 250000 {
 		t.Fatalf("Expected default max context tokens 250000, got %v", defaultCfg)
@@ -120,6 +117,83 @@ func TestAgentService_Flow(t *testing.T) {
 	refetchedCfg, err := svc.GetCompactorSettings(ctx)
 	if err != nil || refetchedCfg.MaxContextTokens != 128000 {
 		t.Fatalf("Expected refetched tokens 128000, got %+v", refetchedCfg)
+	}
+}
+
+func TestAgentService_SocraticClarificationDirective(t *testing.T) {
+	db, err := sql.Open("sqlite", ":memory:?_pragma=foreign_keys(ON)")
+	if err != nil {
+		t.Fatalf("Failed to open test db: %v", err)
+	}
+	defer db.Close()
+
+	if err := database.ApplySchema(db); err != nil {
+		t.Fatalf("Failed to apply schema: %v", err)
+	}
+
+	ramCache := cache.NewTheineCache(10 << 20)
+	repo := repositories.NewAgentRepository(db, ramCache)
+	settingsRepo := repositories.NewSettingsRepository(db, ramCache)
+	svc := services.NewAgentService(repo, nil, settingsRepo)
+	ctx := context.Background()
+
+	if err := svc.SeedDefaultsIfEmpty(ctx); err != nil {
+		t.Fatalf("Failed to seed defaults: %v", err)
+	}
+
+	curriculumSkill, err := svc.GetSkill(ctx, "curriculum_advisory")
+	if err != nil || curriculumSkill == nil {
+		t.Fatalf("Expected curriculum_advisory skill to be seeded and present, got: %v", err)
+	}
+	if !curriculumSkill.IsEnabled {
+		t.Fatalf("Expected curriculum_advisory to be enabled by default")
+	}
+
+	promptStr, _, err := svc.BuildSystemPrompt(ctx, nil, nil)
+	if err != nil {
+		t.Fatalf("Failed to build system prompt: %v", err)
+	}
+
+	expectedSubstrings := []string{
+		"Mandatory Socratic Clarification & Anti-Assumption Protocol",
+		"Socratic Counter-Inquiry",
+		"curriculum_advisory",
+	}
+
+	for _, sub := range expectedSubstrings {
+		if !strings.Contains(promptStr, sub) {
+			t.Fatalf("Expected system prompt to contain %q, but not found", sub)
+		}
+	}
+
+	tools, err := svc.GetActiveToolDefinitions(ctx)
+	if err != nil {
+		t.Fatalf("Failed to get active tool definitions: %v", err)
+	}
+	if len(tools) < 5 {
+		t.Fatalf("Expected at least 5 tools from active skills, got %d", len(tools))
+	}
+}
+
+// TestSeedProductionDB ensures default prompts and skills can be cleanly synced to the database.
+func TestSeedProductionDB(t *testing.T) {
+	db, err := sql.Open("sqlite", "../../data/tluagent.db")
+	if err != nil {
+		t.Skip("skipping db test:", err)
+	}
+	defer db.Close()
+
+	if err := db.Ping(); err != nil {
+		t.Skip("skipping test: db not accessible:", err)
+	}
+
+	ramCache := cache.NewTheineCache(10 << 20)
+	repo := repositories.NewAgentRepository(db, ramCache)
+	settingsRepo := repositories.NewSettingsRepository(db, ramCache)
+	svc := services.NewAgentService(repo, nil, settingsRepo)
+
+	if err := svc.SeedDefaultsIfEmpty(context.Background()); err != nil {
+		t.Fatalf("failed to seed production db: %v", err)
 	}
 }
 

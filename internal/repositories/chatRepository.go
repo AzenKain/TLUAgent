@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strconv"
 	"strings"
 	"time"
 
@@ -143,23 +144,34 @@ func (r *chatRepository) GetConversationsByIDs(ctx context.Context, ids []string
 	}
 
 	if len(missingIDs) > 0 {
-		rows, err := r.q.GetConversationsByIDs(ctx, missingIDs)
+		sfgKey := "chat_convs:get_by_ids:" + strings.Join(missingIDs, ",")
+		v, err, _ := r.sfg.Do(sfgKey, func() (any, error) {
+			rows, err := r.q.GetConversationsByIDs(ctx, missingIDs)
+			if err != nil {
+				return nil, err
+			}
+			fetched := make([]*models.ChatConversationEntity, 0, len(rows))
+			for _, row := range rows {
+				convPtr := &models.ChatConversationEntity{
+					ID:        row.ID,
+					UserID:    row.UserID,
+					Title:     row.Title,
+					ModelID:   convert.NullStringToString(row.ModelID),
+					CreatedAt: row.CreatedAt.Format(time.RFC3339),
+					UpdatedAt: row.UpdatedAt.Format(time.RFC3339),
+				}
+				if r.c != nil && !r.inTx {
+					_ = r.c.Set(ctx, cache.BuildKey("chat_conv", "id", convPtr.ID), convPtr, constants.NormalCacheDuration)
+				}
+				fetched = append(fetched, convPtr)
+			}
+			return fetched, nil
+		})
 		if err != nil {
 			return nil, err
 		}
-		for _, row := range rows {
-			convPtr := &models.ChatConversationEntity{
-				ID:        row.ID,
-				UserID:    row.UserID,
-				Title:     row.Title,
-				ModelID:   convert.NullStringToString(row.ModelID),
-				CreatedAt: row.CreatedAt.Format(time.RFC3339),
-				UpdatedAt: row.UpdatedAt.Format(time.RFC3339),
-			}
-			resultMap[convPtr.ID] = convPtr
-			if r.c != nil && !r.inTx {
-				_ = r.c.Set(ctx, cache.BuildKey("chat_conv", "id", convPtr.ID), convPtr, constants.NormalCacheDuration)
-			}
+		for _, conv := range v.([]*models.ChatConversationEntity) {
+			resultMap[conv.ID] = conv
 		}
 	}
 
@@ -173,18 +185,58 @@ func (r *chatRepository) GetConversationsByIDs(ctx context.Context, ids []string
 }
 
 func (r *chatRepository) ListConversationsByUserID(ctx context.Context, userID string, limit, offset int) ([]*models.ChatConversationEntity, int, error) {
-	total, err := r.q.CountConversationsByUserID(ctx, userID)
-	if err != nil {
-		return nil, 0, err
+	countKey := cache.BuildKey("chat_convs", "user", userID, "count")
+	var total int64
+	if r.c != nil && !r.inTx {
+		_ = r.c.Get(ctx, countKey, &total)
 	}
 
-	ids, err := r.q.ListConversationIDsByUserID(ctx, sqlc.ListConversationIDsByUserIDParams{
-		UserID: userID,
-		Limit:  int64(limit),
-		Offset: int64(offset),
-	})
-	if err != nil {
-		return nil, 0, err
+	if total == 0 {
+		v, err, _ := r.sfg.Do(countKey, func() (any, error) {
+			cnt, err := r.q.CountConversationsByUserID(ctx, userID)
+			if err != nil {
+				return int64(0), err
+			}
+			if r.c != nil && !r.inTx {
+				_ = r.c.Set(ctx, countKey, cnt, constants.NormalCacheDuration)
+			}
+			return cnt, nil
+		})
+		if err != nil {
+			return nil, 0, err
+		}
+		total = v.(int64)
+	}
+
+	if total == 0 {
+		return []*models.ChatConversationEntity{}, 0, nil
+	}
+
+	idsKey := cache.BuildKey("chat_convs", "user", userID, "ids", strconv.Itoa(limit), strconv.Itoa(offset))
+	var ids []string
+	if r.c != nil && !r.inTx {
+		_ = r.c.Get(ctx, idsKey, &ids)
+	}
+
+	if len(ids) == 0 {
+		v, err, _ := r.sfg.Do(idsKey, func() (any, error) {
+			foundIDs, err := r.q.ListConversationIDsByUserID(ctx, sqlc.ListConversationIDsByUserIDParams{
+				UserID: userID,
+				Limit:  int64(limit),
+				Offset: int64(offset),
+			})
+			if err != nil {
+				return nil, err
+			}
+			if r.c != nil && !r.inTx {
+				_ = r.c.Set(ctx, idsKey, foundIDs, constants.NormalCacheDuration)
+			}
+			return foundIDs, nil
+		})
+		if err != nil {
+			return nil, 0, err
+		}
+		ids = v.([]string)
 	}
 
 	convs, err := r.GetConversationsByIDs(ctx, ids)
@@ -268,6 +320,11 @@ func (r *chatRepository) CreateMessage(ctx context.Context, msg *models.ChatMess
 		fb = sql.NullString{String: msg.Feedback, Valid: true}
 	}
 
+	var canEsc int64
+	if msg.CanEscalate {
+		canEsc = 1
+	}
+
 	created, err := r.q.CreateMessage(ctx, sqlc.CreateMessageParams{
 		ID:             msg.ID,
 		ConversationID: msg.ConversationID,
@@ -276,6 +333,7 @@ func (r *chatRepository) CreateMessage(ctx context.Context, msg *models.ChatMess
 		SourcesJson:    string(sourcesJSON),
 		ImagesJson:     string(imagesJSON),
 		Feedback:       fb,
+		CanEscalate:    canEsc,
 		CreatedAt:      now,
 	})
 	if err != nil {
@@ -311,6 +369,7 @@ func (r *chatRepository) ListMessagesByConversationID(ctx context.Context, convI
 				Sender:         row.Sender,
 				Content:        row.Content,
 				Feedback:       convert.NullStringToString(row.Feedback),
+				CanEscalate:    row.CanEscalate == 1,
 				CreatedAt:      row.CreatedAt.Format(time.RFC3339),
 			}
 			_ = jsonx.Unmarshal([]byte(row.SourcesJson), &m.Sources)
@@ -370,128 +429,152 @@ func escapeLikePattern(s string) string {
 	return b.String()
 }
 
+type adminConvListResult struct {
+	Summaries []*models.AdminConversationSummary `json:"summaries"`
+	Total     int                                `json:"total"`
+}
+
 func (r *chatRepository) ListAdminConversations(ctx context.Context, search, feedback, modelID string, limit, offset int) ([]*models.AdminConversationSummary, int, error) {
-	var searchPattern any = nil
-	if strings.TrimSpace(search) != "" {
-		searchPattern = "%" + escapeLikePattern(strings.TrimSpace(search)) + "%"
-	}
-	var modelIDArg any = nil
-	if strings.TrimSpace(modelID) != "" {
-		modelIDArg = strings.TrimSpace(modelID)
-	}
-
-	var total int64
-	var summaries []*models.AdminConversationSummary
-
-	switch feedback {
-	case "up":
-		cnt, err := r.q.CountAdminConversationsFeedbackUp(ctx, sqlc.CountAdminConversationsFeedbackUpParams{
-			SearchPattern: searchPattern,
-			ModelID:       modelIDArg,
-		})
-		if err != nil {
-			return nil, 0, err
-		}
-		total = cnt
-
-		rows, err := r.q.ListAdminConversationsFeedbackUp(ctx, sqlc.ListAdminConversationsFeedbackUpParams{
-			SearchPattern: searchPattern,
-			ModelID:       modelIDArg,
-			Limit:         int64(limit),
-			Offset:        int64(offset),
-		})
-		if err != nil {
-			return nil, 0, err
-		}
-		for _, row := range rows {
-			summaries = append(summaries, &models.AdminConversationSummary{
-				ID:                row.ID,
-				UserID:            row.UserID,
-				UserEmail:         row.UserEmail,
-				UserFullName:      row.UserFullName,
-				StudentCode:       row.StudentCode,
-				Title:             row.Title,
-				ModelID:           row.ModelID,
-				MessageCount:      int(row.MessageCount),
-				FeedbackUpCount:   int(row.FeedbackUpCount),
-				FeedbackDownCount: int(row.FeedbackDownCount),
-				CreatedAt:         row.CreatedAt.Format(time.RFC3339),
-				UpdatedAt:         row.UpdatedAt.Format(time.RFC3339),
-			})
-		}
-	case "down":
-		cnt, err := r.q.CountAdminConversationsFeedbackDown(ctx, sqlc.CountAdminConversationsFeedbackDownParams{
-			SearchPattern: searchPattern,
-			ModelID:       modelIDArg,
-		})
-		if err != nil {
-			return nil, 0, err
-		}
-		total = cnt
-
-		rows, err := r.q.ListAdminConversationsFeedbackDown(ctx, sqlc.ListAdminConversationsFeedbackDownParams{
-			SearchPattern: searchPattern,
-			ModelID:       modelIDArg,
-			Limit:         int64(limit),
-			Offset:        int64(offset),
-		})
-		if err != nil {
-			return nil, 0, err
-		}
-		for _, row := range rows {
-			summaries = append(summaries, &models.AdminConversationSummary{
-				ID:                row.ID,
-				UserID:            row.UserID,
-				UserEmail:         row.UserEmail,
-				UserFullName:      row.UserFullName,
-				StudentCode:       row.StudentCode,
-				Title:             row.Title,
-				ModelID:           row.ModelID,
-				MessageCount:      int(row.MessageCount),
-				FeedbackUpCount:   int(row.FeedbackUpCount),
-				FeedbackDownCount: int(row.FeedbackDownCount),
-				CreatedAt:         row.CreatedAt.Format(time.RFC3339),
-				UpdatedAt:         row.UpdatedAt.Format(time.RFC3339),
-			})
-		}
-	default:
-		cnt, err := r.q.CountAdminConversationsNoFeedback(ctx, sqlc.CountAdminConversationsNoFeedbackParams{
-			SearchPattern: searchPattern,
-			ModelID:       modelIDArg,
-		})
-		if err != nil {
-			return nil, 0, err
-		}
-		total = cnt
-
-		rows, err := r.q.ListAdminConversationsNoFeedback(ctx, sqlc.ListAdminConversationsNoFeedbackParams{
-			SearchPattern: searchPattern,
-			ModelID:       modelIDArg,
-			Limit:         int64(limit),
-			Offset:        int64(offset),
-		})
-		if err != nil {
-			return nil, 0, err
-		}
-		for _, row := range rows {
-			summaries = append(summaries, &models.AdminConversationSummary{
-				ID:                row.ID,
-				UserID:            row.UserID,
-				UserEmail:         row.UserEmail,
-				UserFullName:      row.UserFullName,
-				StudentCode:       row.StudentCode,
-				Title:             row.Title,
-				ModelID:           row.ModelID,
-				MessageCount:      int(row.MessageCount),
-				FeedbackUpCount:   int(row.FeedbackUpCount),
-				FeedbackDownCount: int(row.FeedbackDownCount),
-				CreatedAt:         row.CreatedAt.Format(time.RFC3339),
-				UpdatedAt:         row.UpdatedAt.Format(time.RFC3339),
-			})
+	key := cache.BuildKey("chat_admin", "list", feedback, search, modelID, strconv.Itoa(limit), strconv.Itoa(offset))
+	if r.c != nil && !r.inTx {
+		var cached adminConvListResult
+		if err := r.c.Get(ctx, key, &cached); err == nil {
+			return cached.Summaries, cached.Total, nil
 		}
 	}
 
-	return summaries, int(total), nil
+	v, err, _ := r.sfg.Do(key, func() (any, error) {
+		var searchPattern any = nil
+		if strings.TrimSpace(search) != "" {
+			searchPattern = "%" + escapeLikePattern(strings.TrimSpace(search)) + "%"
+		}
+		var modelIDArg any = nil
+		if strings.TrimSpace(modelID) != "" {
+			modelIDArg = strings.TrimSpace(modelID)
+		}
+
+		var total int64
+		var summaries []*models.AdminConversationSummary
+
+		switch feedback {
+		case "up":
+			cnt, err := r.q.CountAdminConversationsFeedbackUp(ctx, sqlc.CountAdminConversationsFeedbackUpParams{
+				SearchPattern: searchPattern,
+				ModelID:       modelIDArg,
+			})
+			if err != nil {
+				return nil, err
+			}
+			total = cnt
+
+			rows, err := r.q.ListAdminConversationsFeedbackUp(ctx, sqlc.ListAdminConversationsFeedbackUpParams{
+				SearchPattern: searchPattern,
+				ModelID:       modelIDArg,
+				Limit:         int64(limit),
+				Offset:        int64(offset),
+			})
+			if err != nil {
+				return nil, err
+			}
+			for _, row := range rows {
+				summaries = append(summaries, &models.AdminConversationSummary{
+					ID:                row.ID,
+					UserID:            row.UserID,
+					UserEmail:         row.UserEmail,
+					UserFullName:      row.UserFullName,
+					StudentCode:       row.StudentCode,
+					Title:             row.Title,
+					ModelID:           row.ModelID,
+					MessageCount:      int(row.MessageCount),
+					FeedbackUpCount:   int(row.FeedbackUpCount),
+					FeedbackDownCount: int(row.FeedbackDownCount),
+					CreatedAt:         row.CreatedAt.Format(time.RFC3339),
+					UpdatedAt:         row.UpdatedAt.Format(time.RFC3339),
+				})
+			}
+		case "down":
+			cnt, err := r.q.CountAdminConversationsFeedbackDown(ctx, sqlc.CountAdminConversationsFeedbackDownParams{
+				SearchPattern: searchPattern,
+				ModelID:       modelIDArg,
+			})
+			if err != nil {
+				return nil, err
+			}
+			total = cnt
+
+			rows, err := r.q.ListAdminConversationsFeedbackDown(ctx, sqlc.ListAdminConversationsFeedbackDownParams{
+				SearchPattern: searchPattern,
+				ModelID:       modelIDArg,
+				Limit:         int64(limit),
+				Offset:        int64(offset),
+			})
+			if err != nil {
+				return nil, err
+			}
+			for _, row := range rows {
+				summaries = append(summaries, &models.AdminConversationSummary{
+					ID:                row.ID,
+					UserID:            row.UserID,
+					UserEmail:         row.UserEmail,
+					UserFullName:      row.UserFullName,
+					StudentCode:       row.StudentCode,
+					Title:             row.Title,
+					ModelID:           row.ModelID,
+					MessageCount:      int(row.MessageCount),
+					FeedbackUpCount:   int(row.FeedbackUpCount),
+					FeedbackDownCount: int(row.FeedbackDownCount),
+					CreatedAt:         row.CreatedAt.Format(time.RFC3339),
+					UpdatedAt:         row.UpdatedAt.Format(time.RFC3339),
+				})
+			}
+		default:
+			cnt, err := r.q.CountAdminConversationsNoFeedback(ctx, sqlc.CountAdminConversationsNoFeedbackParams{
+				SearchPattern: searchPattern,
+				ModelID:       modelIDArg,
+			})
+			if err != nil {
+				return nil, err
+			}
+			total = cnt
+
+			rows, err := r.q.ListAdminConversationsNoFeedback(ctx, sqlc.ListAdminConversationsNoFeedbackParams{
+				SearchPattern: searchPattern,
+				ModelID:       modelIDArg,
+				Limit:         int64(limit),
+				Offset:        int64(offset),
+			})
+			if err != nil {
+				return nil, err
+			}
+			for _, row := range rows {
+				summaries = append(summaries, &models.AdminConversationSummary{
+					ID:                row.ID,
+					UserID:            row.UserID,
+					UserEmail:         row.UserEmail,
+					UserFullName:      row.UserFullName,
+					StudentCode:       row.StudentCode,
+					Title:             row.Title,
+					ModelID:           row.ModelID,
+					MessageCount:      int(row.MessageCount),
+					FeedbackUpCount:   int(row.FeedbackUpCount),
+					FeedbackDownCount: int(row.FeedbackDownCount),
+					CreatedAt:         row.CreatedAt.Format(time.RFC3339),
+					UpdatedAt:         row.UpdatedAt.Format(time.RFC3339),
+				})
+			}
+		}
+
+		res := adminConvListResult{Summaries: summaries, Total: int(total)}
+		if r.c != nil && !r.inTx {
+			_ = r.c.Set(ctx, key, res, constants.ListCacheDuration)
+		}
+		return res, nil
+	})
+	if err != nil {
+		return nil, 0, err
+	}
+	res := v.(adminConvListResult)
+	return res.Summaries, res.Total, nil
 }
 
 type adminStatsData struct {
@@ -542,6 +625,7 @@ func (r *chatRepository) InvalidateConversationCache(ctx context.Context, id, us
 		return
 	}
 	_ = r.c.Del(ctx, cache.BuildKey("chat_admin", "stats"))
+	_ = r.c.DelByPattern(ctx, "chat_admin*")
 	if id != "" {
 		_ = r.c.Del(ctx, cache.BuildKey("chat_conv", "id", id))
 		_ = r.c.Del(ctx, cache.BuildKey("chat_msgs", "conv", id))

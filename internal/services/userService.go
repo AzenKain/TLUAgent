@@ -39,6 +39,7 @@ type userService struct {
 	roleRepo     repositories.RoleRepository
 	settingsRepo repositories.SettingsRepository
 	txManager    database.TxManager
+	permCache    PermissionCache
 }
 
 func NewUserService(
@@ -46,12 +47,14 @@ func NewUserService(
 	roleRepo repositories.RoleRepository,
 	settingsRepo repositories.SettingsRepository,
 	txManager database.TxManager,
+	permCache PermissionCache,
 ) UserService {
 	return &userService{
 		userRepo:     userRepo,
 		roleRepo:     roleRepo,
 		settingsRepo: settingsRepo,
 		txManager:    txManager,
+		permCache:    permCache,
 	}
 }
 
@@ -64,6 +67,32 @@ func (u *userService) rootAdminID(ctx context.Context) string {
 		return ""
 	}
 	return strings.TrimSpace(id)
+}
+
+func (u *userService) validateRoleDelegation(ctx context.Context, claims *response.JWTClaims, roles []*models.RoleEntity) error {
+	rootID := u.rootAdminID(ctx)
+	isRoot := claims != nil && rootID != "" && claims.UId == rootID
+	if isRoot || (claims != nil && slices.Contains(claims.Roles, constants.RoleTypeAdmin)) {
+		return nil
+	}
+	for _, role := range roles {
+		rolePerms, err := u.roleRepo.GetRolePermissions(ctx, role.ID)
+		if err != nil {
+			return apperrors.New(apperrors.ErrInternalError, "Failed to inspect role permissions")
+		}
+		for _, rp := range rolePerms {
+			if rp.Effect == "allow" {
+				if u.permCache != nil && claims != nil {
+					if !u.permCache.CanRoles(claims.RoleIDs, claims.Roles, rp.PermissionKey, nil) {
+						return apperrors.New(apperrors.ErrForbidden, "Cannot grant role with unpossessed permission: "+rp.PermissionKey)
+					}
+				} else {
+					return apperrors.New(apperrors.ErrForbidden, "Cannot grant unpossessed permissions")
+				}
+			}
+		}
+	}
+	return nil
 }
 
 func (u *userService) markOwner(ctx context.Context, users ...*response.UserResponse) {
@@ -142,6 +171,9 @@ func (u *userService) CreateUser(ctx context.Context, claims *response.JWTClaims
 	}
 	if hasBanned {
 		return nil, apperrors.New(apperrors.ErrBadRequest, "Cannot create a user with the BANNED role directly")
+	}
+	if err := u.validateRoleDelegation(ctx, claims, roles); err != nil {
+		return nil, err
 	}
 
 	hashedPassword, err := crypto.HashPassword(dto.Password)
@@ -357,8 +389,14 @@ func (u *userService) ChangeRoleUser(ctx context.Context, userID string, claims 
 	if hasAdmin && !isRoot {
 		return nil, apperrors.New(apperrors.ErrForbidden, "Only the owner can grant the ADMIN role")
 	}
+	if err := u.validateRoleDelegation(ctx, claims, roles); err != nil {
+		return nil, err
+	}
 
 	isSelf := claims != nil && userID == claims.UId
+	if isSelf && !isRoot {
+		return nil, apperrors.New(apperrors.ErrForbidden, "Users cannot modify their own roles")
+	}
 	if isSelf && hasBanned {
 		return nil, apperrors.New(apperrors.ErrForbidden, "You cannot ban yourself")
 	}

@@ -18,6 +18,7 @@ type UserRepository interface {
 	GetByID(ctx context.Context, id string) (*models.UserEntity, error)
 	GetByIDWithoutDeleted(ctx context.Context, id string) (*models.UserEntity, error)
 	GetByEmail(ctx context.Context, email string) (*models.UserEntity, error)
+	GetByStudentCode(ctx context.Context, studentCode string) (*models.UserEntity, error)
 	GetAuthByEmail(ctx context.Context, email string) (*models.UserEntity, error)
 	GetAuthByID(ctx context.Context, id string) (*models.UserEntity, error)
 	CreateUser(ctx context.Context, params sqlc.CreateUserParams) (*models.UserEntity, error)
@@ -197,29 +198,77 @@ func (r *userRepository) GetByEmail(ctx context.Context, email string) (*models.
 	return v.(*models.UserEntity), nil
 }
 
-func (r *userRepository) GetAuthByEmail(ctx context.Context, email string) (*models.UserEntity, error) {
-	normalized := strings.ToLower(strings.TrimSpace(email))
-	row, err := r.q.GetUserByEmail(ctx, normalized)
+func (r *userRepository) GetByStudentCode(ctx context.Context, studentCode string) (*models.UserEntity, error) {
+	trimmed := strings.ToUpper(strings.TrimSpace(studentCode))
+	if trimmed == "" {
+		return nil, sql.ErrNoRows
+	}
+	key := cache.BuildKey("user", "code", trimmed)
+	if r.c != nil && !r.inTx {
+		var user models.UserEntity
+		if err := r.c.Get(ctx, key, &user); err == nil {
+			return &user, nil
+		}
+	}
+
+	v, err, _ := r.sfg.Do(key, func() (any, error) {
+		row, err := r.q.GetUserByStudentCode(ctx, sql.NullString{String: trimmed, Valid: true})
+		if err != nil {
+			return nil, err
+		}
+		userPtr := (&models.UserEntity{}).FromSqlc(row)
+		if err := r.hydrateRoles(ctx, userPtr); err != nil {
+			return nil, err
+		}
+		if r.c != nil && !r.inTx {
+			_ = r.c.Set(ctx, key, userPtr, constants.NormalCacheDuration)
+			_ = r.c.Set(ctx, cache.BuildKey("user", "id", userPtr.ID), userPtr, constants.NormalCacheDuration)
+		}
+		return userPtr, nil
+	})
 	if err != nil {
 		return nil, err
 	}
-	user := (&models.UserEntity{}).FromSqlc(row)
-	if err := r.hydrateRoles(ctx, user); err != nil {
+	return v.(*models.UserEntity), nil
+}
+
+func (r *userRepository) GetAuthByEmail(ctx context.Context, email string) (*models.UserEntity, error) {
+	normalized := strings.ToLower(strings.TrimSpace(email))
+	key := "auth_user:email:" + normalized
+	v, err, _ := r.sfg.Do(key, func() (any, error) {
+		row, err := r.q.GetUserByEmail(ctx, normalized)
+		if err != nil {
+			return nil, err
+		}
+		user := (&models.UserEntity{}).FromSqlc(row)
+		if err := r.hydrateRoles(ctx, user); err != nil {
+			return nil, err
+		}
+		return user, nil
+	})
+	if err != nil {
 		return nil, err
 	}
-	return user, nil
+	return v.(*models.UserEntity), nil
 }
 
 func (r *userRepository) GetAuthByID(ctx context.Context, id string) (*models.UserEntity, error) {
-	row, err := r.q.GetUserByID(ctx, id)
+	key := "auth_user:id:" + id
+	v, err, _ := r.sfg.Do(key, func() (any, error) {
+		row, err := r.q.GetUserByID(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		user := (&models.UserEntity{}).FromSqlc(row)
+		if err := r.hydrateRoles(ctx, user); err != nil {
+			return nil, err
+		}
+		return user, nil
+	})
 	if err != nil {
 		return nil, err
 	}
-	user := (&models.UserEntity{}).FromSqlc(row)
-	if err := r.hydrateRoles(ctx, user); err != nil {
-		return nil, err
-	}
-	return user, nil
+	return v.(*models.UserEntity), nil
 }
 
 func (r *userRepository) CreateUser(ctx context.Context, params sqlc.CreateUserParams) (*models.UserEntity, error) {
@@ -277,10 +326,14 @@ func (r *userRepository) UpdateRefreshToken(ctx context.Context, id string, refr
 	if refreshToken != nil && *refreshToken != "" {
 		ns = sql.NullString{String: *refreshToken, Valid: true}
 	}
-	return r.q.UpdateUserRefreshToken(ctx, sqlc.UpdateUserRefreshTokenParams{
+	err := r.q.UpdateUserRefreshToken(ctx, sqlc.UpdateUserRefreshTokenParams{
 		RefreshToken: ns,
 		ID:           id,
 	})
+	if err == nil {
+		r.InvalidateUserCache(ctx, id, "")
+	}
+	return err
 }
 
 func (r *userRepository) RotateRefreshToken(ctx context.Context, id string, currentRefreshToken, newRefreshToken string) (bool, error) {
@@ -291,6 +344,9 @@ func (r *userRepository) RotateRefreshToken(ctx context.Context, id string, curr
 	})
 	if err != nil {
 		return false, err
+	}
+	if rows > 0 {
+		r.InvalidateUserCache(ctx, id, "")
 	}
 	return rows > 0, nil
 }
@@ -397,17 +453,28 @@ func (r *userRepository) GetByIDs(ctx context.Context, ids []string) ([]*models.
 	}
 
 	if len(missingIDs) > 0 {
-		rows, err := r.q.GetUsersByIDs(ctx, missingIDs)
+		sfgKey := "users:get_by_ids:" + strings.Join(missingIDs, ",")
+		v, err, _ := r.sfg.Do(sfgKey, func() (any, error) {
+			rows, err := r.q.GetUsersByIDs(ctx, missingIDs)
+			if err != nil {
+				return nil, err
+			}
+			fetched := make([]*models.UserEntity, 0, len(rows))
+			for _, row := range rows {
+				user := (&models.UserEntity{}).FromSqlc(row)
+				_ = r.hydrateRoles(ctx, user)
+				if r.c != nil && !r.inTx {
+					_ = r.c.Set(ctx, cache.BuildKey("user", "id", user.ID), user, constants.NormalCacheDuration)
+				}
+				fetched = append(fetched, user)
+			}
+			return fetched, nil
+		})
 		if err != nil {
 			return nil, err
 		}
-		for _, row := range rows {
-			user := (&models.UserEntity{}).FromSqlc(row)
-			_ = r.hydrateRoles(ctx, user)
+		for _, user := range v.([]*models.UserEntity) {
 			resultMap[user.ID] = user
-			if r.c != nil && !r.inTx {
-				_ = r.c.Set(ctx, cache.BuildKey("user", "id", user.ID), user, constants.NormalCacheDuration)
-			}
 		}
 	}
 
@@ -421,10 +488,28 @@ func (r *userRepository) GetByIDs(ctx context.Context, ids []string) ([]*models.
 }
 
 func (r *userRepository) Search(ctx context.Context, params sqlc.SearchUserIDsParams) ([]*models.UserEntity, error) {
-	ids, err := r.q.SearchUserIDs(ctx, params)
+	key := cache.BuildKey("user_search_ids", fmt.Sprintf("%v", params.RoleID), fmt.Sprintf("%v", params.SearchText), fmt.Sprintf("%v", params.IsDeleted), fmt.Sprintf("%d", params.Limit), fmt.Sprintf("%d", params.Offset))
+	if r.c != nil && !r.inTx {
+		var ids []string
+		if err := r.c.Get(ctx, key, &ids); err == nil && len(ids) > 0 {
+			return r.GetByIDs(ctx, ids)
+		}
+	}
+
+	v, err, _ := r.sfg.Do(key, func() (any, error) {
+		ids, err := r.q.SearchUserIDs(ctx, params)
+		if err != nil {
+			return nil, err
+		}
+		if r.c != nil && !r.inTx {
+			_ = r.c.Set(ctx, key, ids, constants.ListCacheDuration)
+		}
+		return ids, nil
+	})
 	if err != nil {
 		return nil, err
 	}
+	ids := v.([]string)
 	return r.GetByIDs(ctx, ids)
 }
 
@@ -470,6 +555,8 @@ func (r *userRepository) InvalidateUserCache(ctx context.Context, id, email stri
 	_ = r.c.DelByPattern(context.Background(), constants.CacheKeyUserSearch)
 	_ = r.c.DelByPattern(context.Background(), constants.CacheKeyUserCount)
 	_ = r.c.DelByPattern(context.Background(), "user_count*")
+	_ = r.c.DelByPattern(context.Background(), "user_search_ids*")
+	_ = r.c.DelByPattern(context.Background(), "user:code:*")
 }
 
 func apperrorsIsNotFound(err error) bool {

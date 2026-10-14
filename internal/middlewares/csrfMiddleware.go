@@ -8,6 +8,7 @@ import (
 	"tluagent-web/pkg/apperrors"
 )
 
+// CSRFProtection enforces double-submit cookie CSRF validation for mutating requests using cookie authentication.
 func CSRFProtection() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -17,15 +18,15 @@ func CSRFProtection() func(http.Handler) http.Handler {
 				return
 			}
 
-			// If request uses Bearer token in header, CSRF via ambient cookie isn't applicable
 			if auth := r.Header.Get("Authorization"); strings.HasPrefix(auth, "Bearer ") {
 				next.ServeHTTP(w, r)
 				return
 			}
 
-			// If no cookie authentication is used, skip CSRF
-			cookieToken, err := r.Cookie("access_token")
-			if err != nil || cookieToken.Value == "" {
+			accessCookie, errAccess := r.Cookie("access_token")
+			refreshCookie, errRefresh := r.Cookie("refresh_token")
+			hasCookieAuth := (errAccess == nil && accessCookie.Value != "") || (errRefresh == nil && refreshCookie.Value != "")
+			if !hasCookieAuth {
 				next.ServeHTTP(w, r)
 				return
 			}

@@ -17,14 +17,20 @@ import {
   CheckCircle2,
   AlertTriangle,
   User as UserIcon,
+  Users,
 } from 'lucide-react';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { Badge } from '@/components/common/Badge';
 import { Modal } from '@/components/common/Modal';
+import { ConfirmModal } from '@/components/common/ConfirmModal';
+import { PasswordStrengthMeter } from '@/components/common/PasswordStrengthMeter';
+import { PageHeader } from '@/components/common/PageHeader';
+import { RefreshButton } from '@/components/common/RefreshButton';
+import { getApiErrorMessage } from '@/utils/apiError';
 import type { User } from '@/types';
 
 const inputControlClass =
-  'w-full min-h-11 px-3 py-2.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 text-base focus:ring-2 focus:ring-indigo-500 focus:outline-hidden';
+  'w-full min-h-11 px-3 py-2.5 rounded-lg border border-slate-200 dark:border-blue-900/40 bg-white dark:bg-[#111A35] text-slate-900 dark:text-slate-100 text-base focus:ring-2 focus:ring-tlu-blue focus:border-tlu-blue focus:outline-hidden';
 
 const modalErrorClass =
   'p-3 rounded-lg bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 text-xs flex items-start gap-2';
@@ -33,7 +39,7 @@ const modalSecondaryButtonClass =
   'min-h-11 w-full sm:w-auto px-4 py-2.5 text-sm font-medium rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition';
 
 const modalPrimaryButtonClass =
-  'min-h-11 w-full sm:w-auto px-4 py-2.5 text-sm font-semibold rounded-lg text-white transition disabled:opacity-50';
+  'min-h-11 w-full sm:w-auto px-4 py-2.5 text-sm font-semibold rounded-lg text-white transition disabled:opacity-50 bg-tlu-navy hover:bg-tlu-navy-light dark:bg-tlu-blue dark:hover:bg-blue-600 shadow-md shadow-blue-900/20';
 
 interface UserRowActionsProps {
   user: User;
@@ -99,7 +105,7 @@ const UserRowActions: React.FC<UserRowActionsProps> = ({
           onClick={() => onEdit(user)}
           title={t('common.edit')}
           aria-label={t('common.edit')}
-          className={`${iconButtonClass} text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/40`}
+          className={`${iconButtonClass} text-slate-500 hover:text-tlu-blue hover:bg-blue-50 dark:hover:bg-blue-950/40`}
         >
           <Edit2 className="w-4 h-4" />
         </button>
@@ -119,7 +125,7 @@ const UserRowActions: React.FC<UserRowActionsProps> = ({
           onClick={() => onResetPass(user)}
           title={t('users.modal_reset_title', { name: user.full_name })}
           aria-label={t('users.modal_reset_title', { name: user.full_name })}
-          className={`${iconButtonClass} text-slate-500 hover:text-violet-600 hover:bg-violet-50 dark:hover:bg-violet-950/40`}
+          className={`${iconButtonClass} text-slate-500 hover:text-tlu-blue hover:bg-blue-50 dark:hover:bg-blue-950/40`}
         >
           <KeyRound className="w-4 h-4" />
         </button>
@@ -145,7 +151,7 @@ const UserAvatar: React.FC<{ user: User; sizeClass?: string }> = ({
   sizeClass = 'h-9 w-9',
 }) => (
   <div
-    className={`${sizeClass} rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-xs uppercase border border-indigo-200 dark:border-indigo-800 shrink-0 overflow-hidden`}
+    className={`${sizeClass} rounded-full bg-blue-100 dark:bg-blue-950 text-tlu-navy dark:text-blue-400 flex items-center justify-center font-bold text-xs uppercase border border-blue-200 dark:border-blue-900/60 shrink-0 overflow-hidden`}
   >
     {user.avatar_url ? (
       <img src={user.avatar_url} alt="" className="w-full h-full rounded-full object-cover" />
@@ -199,6 +205,7 @@ export const UsersListPage: React.FC = () => {
     editForm,
     selectedRoleIds,
     newPassword,
+    resetPassConfirm,
     modalError,
     toastMessage,
     setSearch,
@@ -208,6 +215,7 @@ export const UsersListPage: React.FC = () => {
     openCreateModal,
     closeCreateModal,
     setCreateForm,
+    toggleCreateRoleId,
     openEditModal,
     closeEditModal,
     setEditForm,
@@ -217,6 +225,7 @@ export const UsersListPage: React.FC = () => {
     openResetPassModal,
     closeResetPassModal,
     setNewPassword,
+    setResetPassConfirm,
     setModalError,
     showToast,
   } = useUserManageStore(
@@ -234,6 +243,7 @@ export const UsersListPage: React.FC = () => {
       editForm: s.editForm,
       selectedRoleIds: s.selectedRoleIds,
       newPassword: s.newPassword,
+      resetPassConfirm: s.resetPassConfirm,
       modalError: s.modalError,
       toastMessage: s.toastMessage,
       setSearch: s.setSearch,
@@ -243,6 +253,7 @@ export const UsersListPage: React.FC = () => {
       openCreateModal: s.openCreateModal,
       closeCreateModal: s.closeCreateModal,
       setCreateForm: s.setCreateForm,
+      toggleCreateRoleId: s.toggleCreateRoleId,
       openEditModal: s.openEditModal,
       closeEditModal: s.closeEditModal,
       setEditForm: s.setEditForm,
@@ -252,6 +263,7 @@ export const UsersListPage: React.FC = () => {
       openResetPassModal: s.openResetPassModal,
       closeResetPassModal: s.closeResetPassModal,
       setNewPassword: s.setNewPassword,
+      setResetPassConfirm: s.setResetPassConfirm,
       setModalError: s.setModalError,
       showToast: s.showToast,
     }))
@@ -261,6 +273,8 @@ export const UsersListPage: React.FC = () => {
     users,
     pagination,
     isLoading,
+    isFetching,
+    refetch,
     createUser,
     isCreating,
     updateUser,
@@ -286,14 +300,26 @@ export const UsersListPage: React.FC = () => {
   const handleCreateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setModalError('');
+    if (createForm.password.length < 10) {
+      setModalError(t('users.password_min_length_error'));
+      return;
+    }
+    if (createForm.password !== createForm.confirm_password) {
+      setModalError(t('users.password_mismatch'));
+      return;
+    }
     try {
-      await createUser(createForm);
+      await createUser({
+        email: createForm.email,
+        password: createForm.password,
+        full_name: createForm.full_name,
+        student_code: createForm.student_code.trim() ? createForm.student_code.trim() : undefined,
+        role_ids: createForm.role_ids.length > 0 ? createForm.role_ids : undefined,
+      });
       closeCreateModal();
       showToast(t('users.toast_created'));
     } catch (err: unknown) {
-      const errorMsg =
-        (err as { response?: { data?: { message?: string } } })?.response?.data?.message ||
-        t('users.error_create_failed');
+      const errorMsg = getApiErrorMessage(err, t('users.error_create_failed'));
       setModalError(errorMsg);
     }
   };
@@ -307,9 +333,7 @@ export const UsersListPage: React.FC = () => {
       closeEditModal();
       showToast(t('users.toast_updated'));
     } catch (err: unknown) {
-      const errorMsg =
-        (err as { response?: { data?: { message?: string } } })?.response?.data?.message ||
-        t('users.error_update_failed');
+      const errorMsg = getApiErrorMessage(err, t('users.error_update_failed'));
       setModalError(errorMsg);
     }
   };
@@ -323,9 +347,7 @@ export const UsersListPage: React.FC = () => {
       closeRoleModal();
       showToast(t('users.toast_role_updated'));
     } catch (err: unknown) {
-      const errorMsg =
-        (err as { response?: { data?: { message?: string } } })?.response?.data?.message ||
-        t('users.error_role_failed');
+      const errorMsg = getApiErrorMessage(err, t('users.error_role_failed'));
       setModalError(errorMsg);
     }
   };
@@ -334,28 +356,40 @@ export const UsersListPage: React.FC = () => {
     e.preventDefault();
     if (!selectedUser) return;
     setModalError('');
+    if (newPassword.length < 10) {
+      setModalError(t('users.password_min_length_error'));
+      return;
+    }
+    if (newPassword !== resetPassConfirm) {
+      setModalError(t('users.password_mismatch'));
+      return;
+    }
     try {
       await resetPassword({ id: selectedUser.id, data: { new_password: newPassword } });
       closeResetPassModal();
       showToast(t('users.toast_password_reset'));
     } catch (err: unknown) {
-      const errorMsg =
-        (err as { response?: { data?: { message?: string } } })?.response?.data?.message ||
-        t('users.error_reset_failed');
+      const errorMsg = getApiErrorMessage(err, t('users.error_reset_failed'));
       setModalError(errorMsg);
     }
   };
 
+  const [deletingUser, setDeletingUser] = React.useState<User | null>(null);
+  const [actionError, setActionError] = React.useState<string | null>(null);
+
   const handleDelete = async (u: User) => {
-    if (!window.confirm(t('users.confirm_delete', { name: u.full_name }))) return;
+    setDeletingUser(u);
+  };
+
+  const confirmDelete = async () => {
+    if (!deletingUser) return;
     try {
-      await deleteUser(u.id);
+      await deleteUser(deletingUser.id);
       showToast(t('users.toast_deleted'));
+      setDeletingUser(null);
     } catch (err: unknown) {
-      const errorMsg =
-        (err as { response?: { data?: { message?: string } } })?.response?.data?.message ||
-        t('users.error_delete_failed');
-      alert(errorMsg);
+      const errorMsg = getApiErrorMessage(err, t('users.error_delete_failed'));
+      setActionError(errorMsg);
     }
   };
 
@@ -364,10 +398,8 @@ export const UsersListPage: React.FC = () => {
       await restoreUser(u.id);
       showToast(t('users.toast_restored'));
     } catch (err: unknown) {
-      const errorMsg =
-        (err as { response?: { data?: { message?: string } } })?.response?.data?.message ||
-        t('users.error_restore_failed');
-      alert(errorMsg);
+      const errorMsg = getApiErrorMessage(err, t('users.error_restore_failed'));
+      setActionError(errorMsg);
     }
   };
 
@@ -389,37 +421,39 @@ export const UsersListPage: React.FC = () => {
   );
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
+    <div className="space-y-6 max-w-7xl mx-auto pb-10">
       {toastMessage && (
         <div className="fixed top-20 inset-x-4 sm:inset-x-auto sm:right-6 z-50 bg-emerald-600 text-white px-4 py-3 rounded-xl shadow-lg flex items-center gap-2 text-sm font-medium animate-in fade-in slide-in-from-top-3 duration-200">
           <CheckCircle2 className="w-4 h-4 shrink-0" />
-          <span className="min-w-0 break-words">{toastMessage}</span>
+          <span className="min-w-0 wrap-break-word">{toastMessage}</span>
         </div>
       )}
 
-      <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="text-lg sm:text-xl lg:text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100 truncate">
-            {t('users.title')}
-          </h2>
-          <p className="hidden sm:block text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1 truncate">
-            {t('users.subtitle')}
-          </p>
-        </div>
+      <PageHeader
+        icon={<Users className="h-6 w-6" />}
+        title={t('users.title')}
+        subtitle={t('users.subtitle')}
+        actions={
+          <div className="flex items-center gap-2">
+            <RefreshButton
+              onClick={() => refetch()}
+              isLoading={isFetching}
+            />
+            {canManageUsers && (
+              <button
+                onClick={openCreateModal}
+                aria-label={t('users.create_button')}
+                className="inline-flex items-center justify-center gap-2 px-4 min-h-10 rounded-xl bg-tlu-navy hover:bg-tlu-navy-light dark:bg-tlu-blue dark:hover:bg-blue-600 text-white font-semibold text-xs sm:text-sm shadow-xs transition shrink-0 cursor-pointer"
+              >
+                <UserPlus className="w-4 h-4 shrink-0" />
+                <span>{t('users.create_button')}</span>
+              </button>
+            )}
+          </div>
+        }
+      />
 
-        {canManageUsers && (
-          <button
-            onClick={openCreateModal}
-            aria-label={t('users.create_button')}
-            className="inline-flex items-center justify-center gap-2 px-3.5 sm:px-4 min-h-11 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm shadow-md shadow-indigo-600/20 transition shrink-0"
-          >
-            <UserPlus className="w-4 h-4 shrink-0" />
-            <span className="hidden sm:inline">{t('users.create_button')}</span>
-          </button>
-        )}
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-xs">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 bg-white dark:bg-[#111A35] p-4 rounded-xl border border-slate-200 dark:border-blue-900/30 shadow-xs">
         <div className="relative">
           <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
           <input
@@ -466,7 +500,7 @@ export const UsersListPage: React.FC = () => {
         ) : (
           <>
             <div className="hidden md:block overflow-x-auto">
-              <table className="w-full min-w-[960px] text-left text-sm">
+              <table className="w-full min-w-240 text-left text-sm">
                 <thead className="bg-slate-50 dark:bg-slate-950/60 text-slate-500 dark:text-slate-400 text-xs uppercase tracking-wider border-b border-slate-200 dark:border-slate-800 font-semibold">
                   <tr>
                     <th className="px-6 py-3.5 whitespace-nowrap">{t('users.col_user')}</th>
@@ -493,19 +527,19 @@ export const UsersListPage: React.FC = () => {
                             <UserAvatar user={u} />
                             <div className="min-w-0">
                               <div className="font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
-                                <span className="min-w-0 truncate max-w-[220px]">{u.full_name}</span>
+                                <span className="min-w-0 truncate max-w-55">{u.full_name}</span>
                                 {u.is_owner && (
                                   <span className="shrink-0 text-[10px] bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 px-1 rounded font-bold">
                                     {t('common.owner')}
                                   </span>
                                 )}
                                 {isCurrent && (
-                                  <span className="shrink-0 text-[10px] bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30 px-1 rounded font-bold">
+                                  <span className="shrink-0 text-[10px] bg-blue-500/15 text-tlu-blue dark:text-blue-400 border border-blue-500/30 px-1 rounded font-bold">
                                     {t('common.you')}
                                   </span>
                                 )}
                               </div>
-                              <div className="text-xs text-slate-500 dark:text-slate-400 truncate max-w-[240px]">
+                              <div className="text-xs text-slate-500 dark:text-slate-400 truncate max-w-60">
                                 {u.email}
                               </div>
                             </div>
@@ -565,7 +599,7 @@ export const UsersListPage: React.FC = () => {
                             </span>
                           )}
                           {isCurrent && (
-                            <span className="shrink-0 text-[10px] bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30 px-1 rounded font-bold">
+                            <span className="shrink-0 text-[10px] bg-blue-500/15 text-tlu-blue dark:text-blue-400 border border-blue-500/30 px-1 rounded font-bold">
                               {t('common.you')}
                             </span>
                           )}
@@ -646,7 +680,7 @@ export const UsersListPage: React.FC = () => {
           {modalError && (
             <div className={modalErrorClass}>
               <AlertTriangle className="w-4 h-4 shrink-0" />
-              <span className="min-w-0 break-words">{modalError}</span>
+              <span className="min-w-0 wrap-break-word">{modalError}</span>
             </div>
           )}
 
@@ -672,9 +706,26 @@ export const UsersListPage: React.FC = () => {
               id="create-user-password"
               type="password"
               required
-              minLength={6}
+              minLength={10}
               value={createForm.password}
               onChange={(e) => setCreateForm({ password: e.target.value })}
+              className={inputControlClass}
+            />
+            <PasswordStrengthMeter password={createForm.password} />
+          </div>
+
+          <div>
+            <label htmlFor="create-user-confirm-password" className="block text-xs font-semibold mb-1">
+              {t('users.modal_confirm_password')}
+            </label>
+            <input
+              id="create-user-confirm-password"
+              type="password"
+              required
+              minLength={10}
+              value={createForm.confirm_password}
+              onChange={(e) => setCreateForm({ confirm_password: e.target.value })}
+              placeholder={t('users.modal_confirm_password_placeholder')}
               className={inputControlClass}
             />
           </div>
@@ -708,18 +759,33 @@ export const UsersListPage: React.FC = () => {
 
           <div>
             <div className="block text-xs font-semibold mb-1.5">{t('users.modal_assign_roles')}</div>
-            <div className="space-y-1 border border-slate-100 dark:border-slate-800 p-3 rounded-lg max-h-44 sm:max-h-36 overflow-y-auto">
-              {roles.map((r) => (
-                <label key={r.id} className="flex items-center gap-2.5 min-h-11 text-xs cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={createForm.role_ids.includes(r.id)}
-                    onChange={() => toggleRoleId(r.id)}
-                    className="h-4 w-4 shrink-0 rounded accent-indigo-600"
-                  />
-                  <span className="min-w-0 break-words">{r.name}</span>
-                </label>
-              ))}
+            <div className="space-y-1.5 border border-slate-100 dark:border-slate-800 p-3 rounded-lg max-h-48 sm:max-h-40 overflow-y-auto">
+              {roles.map((r) => {
+                const isChecked = createForm.role_ids.includes(r.id);
+                return (
+                  <label
+                    key={r.id}
+                    className={`flex items-center gap-2.5 p-2 rounded-lg text-xs cursor-pointer transition-colors ${
+                      isChecked
+                        ? 'bg-blue-50/70 dark:bg-blue-950/40 text-tlu-navy dark:text-blue-200 font-medium'
+                        : 'hover:bg-slate-50 dark:hover:bg-slate-850 text-slate-700 dark:text-slate-300'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      onChange={() => toggleCreateRoleId(r.id)}
+                      className="h-4 w-4 shrink-0 rounded accent-tlu-blue"
+                    />
+                    <span className="min-w-0 wrap-break-word">{r.name}</span>
+                    {r.description && (
+                      <span className="text-[11px] text-slate-400 dark:text-slate-500 font-normal">
+                        ({r.description})
+                      </span>
+                    )}
+                  </label>
+                );
+              })}
             </div>
           </div>
 
@@ -727,7 +793,7 @@ export const UsersListPage: React.FC = () => {
             <button type="button" onClick={closeCreateModal} className={modalSecondaryButtonClass}>
               {t('common.cancel')}
             </button>
-            <button type="submit" disabled={isCreating} className={`${modalPrimaryButtonClass} bg-indigo-600 hover:bg-indigo-700`}>
+            <button type="submit" disabled={isCreating} className={modalPrimaryButtonClass}>
               {isCreating ? t('common.loading') : t('users.create_button')}
             </button>
           </div>
@@ -743,7 +809,7 @@ export const UsersListPage: React.FC = () => {
           {modalError && (
             <div className={modalErrorClass}>
               <AlertTriangle className="w-4 h-4 shrink-0" />
-              <span className="min-w-0 break-words">{modalError}</span>
+              <span className="min-w-0 wrap-break-word">{modalError}</span>
             </div>
           )}
 
@@ -778,7 +844,7 @@ export const UsersListPage: React.FC = () => {
             <button type="button" onClick={closeEditModal} className={modalSecondaryButtonClass}>
               {t('common.cancel')}
             </button>
-            <button type="submit" disabled={isUpdating} className={`${modalPrimaryButtonClass} bg-indigo-600 hover:bg-indigo-700`}>
+            <button type="submit" disabled={isUpdating} className={modalPrimaryButtonClass}>
               {isUpdating ? t('common.saving') : t('common.save')}
             </button>
           </div>
@@ -794,7 +860,7 @@ export const UsersListPage: React.FC = () => {
           {modalError && (
             <div className={modalErrorClass}>
               <AlertTriangle className="w-4 h-4 shrink-0" />
-              <span className="min-w-0 break-words">{modalError}</span>
+              <span className="min-w-0 wrap-break-word">{modalError}</span>
             </div>
           )}
 
@@ -805,10 +871,10 @@ export const UsersListPage: React.FC = () => {
                   type="checkbox"
                   checked={selectedRoleIds.includes(r.id)}
                   onChange={() => toggleRoleId(r.id)}
-                  className="h-4 w-4 shrink-0 rounded accent-indigo-600"
+                  className="h-4 w-4 shrink-0 rounded accent-tlu-blue"
                 />
                 <span className="font-medium text-slate-800 dark:text-slate-200 shrink-0">{r.name}</span>
-                <span className="text-[11px] text-slate-400 min-w-0 break-words">({r.description})</span>
+                <span className="text-[11px] text-slate-400 min-w-0 wrap-break-word">({r.description})</span>
               </label>
             ))}
           </div>
@@ -820,7 +886,7 @@ export const UsersListPage: React.FC = () => {
             <button
               type="submit"
               disabled={isChangingRole || selectedRoleIds.length === 0}
-              className={`${modalPrimaryButtonClass} bg-indigo-600 hover:bg-indigo-700`}
+              className={modalPrimaryButtonClass}
             >
               {isChangingRole ? t('common.saving') : t('common.save')}
             </button>
@@ -837,7 +903,7 @@ export const UsersListPage: React.FC = () => {
           {modalError && (
             <div className={modalErrorClass}>
               <AlertTriangle className="w-4 h-4 shrink-0" />
-              <span className="min-w-0 break-words">{modalError}</span>
+              <span className="min-w-0 wrap-break-word">{modalError}</span>
             </div>
           )}
 
@@ -849,10 +915,27 @@ export const UsersListPage: React.FC = () => {
               id="reset-user-password"
               type="password"
               required
-              minLength={6}
+              minLength={10}
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
               placeholder={t('users.new_password_placeholder')}
+              className={inputControlClass}
+            />
+            <PasswordStrengthMeter password={newPassword} />
+          </div>
+
+          <div>
+            <label htmlFor="reset-user-confirm-password" className="block text-xs font-semibold mb-1">
+              {t('users.confirm_new_password_label')}
+            </label>
+            <input
+              id="reset-user-confirm-password"
+              type="password"
+              required
+              minLength={10}
+              value={resetPassConfirm}
+              onChange={(e) => setResetPassConfirm(e.target.value)}
+              placeholder={t('users.confirm_new_password_placeholder')}
               className={inputControlClass}
             />
           </div>
@@ -864,13 +947,32 @@ export const UsersListPage: React.FC = () => {
             <button
               type="submit"
               disabled={isResettingPassword}
-              className={`${modalPrimaryButtonClass} bg-violet-600 hover:bg-violet-700`}
+              className={modalPrimaryButtonClass}
             >
               {isResettingPassword ? t('common.loading') : t('users.confirm_reset_action')}
             </button>
           </div>
         </form>
       </Modal>
+
+      <ConfirmModal
+        isOpen={Boolean(deletingUser)}
+        onClose={() => setDeletingUser(null)}
+        onConfirm={confirmDelete}
+        title={t('common.delete')}
+        message={deletingUser ? t('users.confirm_delete', { name: deletingUser.full_name }) : ''}
+        variant="danger"
+        isLoading={isDeleting}
+      />
+
+      <ConfirmModal
+        isOpen={Boolean(actionError)}
+        onClose={() => setActionError(null)}
+        title={t('common.error')}
+        message={actionError || ''}
+        variant="warning"
+        confirmText={t('common.close')}
+      />
     </div>
   );
 };

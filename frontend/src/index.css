@@ -1,9 +1,26 @@
 @import "tailwindcss";
 
+@theme {
+  --color-tlu-navy: #050c56;
+  --color-tlu-navy-deep: #000066;
+  --color-tlu-navy-light: #0d1b7a;
+  --color-tlu-red: #ea2212;
+  --color-tlu-red-crimson: #8d0000;
+  --color-tlu-blue: #1d53e6;
+  --color-tlu-cyan: #3ac2d8;
+}
+
 :root {
   --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   font-family: var(--sans);
   color-scheme: light dark;
+
+  /* Semantic TLU Design Tokens */
+  --tlu-primary: #1d53e6;
+  --tlu-navy: #050c56;
+  --tlu-red: #ea2212;
+  --tlu-red-dark: #8d0000;
+  --tlu-cyan: #3ac2d8;
 }
 
 body {
@@ -12,11 +29,14 @@ body {
   min-height: 100vh;
   background-color: #f8fafc;
   color: #0f172a;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 @media (prefers-color-scheme: dark) {
   body {
-    background-color: #0b0f19;
+    background-color: #0b1021;
     color: #f1f5f9;
   }
 }
@@ -25,6 +45,25 @@ body {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+}
+
+/* Custom scrollbars matching university theme */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.25);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.45);
 }
 
 select {
@@ -38,6 +77,6 @@ select option {
 
 select option:checked,
 select option:hover {
-  background-color: #1e1b4b;
+  background-color: #050c56;
   color: #ffffff;
 }

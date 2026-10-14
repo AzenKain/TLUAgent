@@ -11,7 +11,7 @@ import (
 	"tluagent-web/pkg/jsonx"
 )
 
-const internalServerErrorMessage = "Internal server error"
+const internalServerErrorMessage = "Đã xảy ra lỗi hệ thống. Vui lòng thử lại sau."
 
 // HandleError converts a domain error into an HTTP status and JSON response,
 // masking non-domain errors so internal details never reach the client.
@@ -43,7 +43,7 @@ func HandleError(w http.ResponseWriter, err error) {
 	case hasIntentionalMessage:
 		message = appErr.Message
 	case errors.Is(err, sql.ErrNoRows) && !errors.Is(err, ErrNotFound):
-		message = "Not found"
+		message = "Không tìm thấy dữ liệu"
 	case code == http.StatusInternalServerError:
 		log.Error().Err(err).Msg("Unhandled error masked as internal server error")
 	}

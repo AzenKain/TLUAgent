@@ -31,7 +31,7 @@ func TestMemoryService_Flow(t *testing.T) {
 	ramCache := cache.NewTheineCache(10 << 20)
 	userRepo := repositories.NewUserRepository(db, ramCache)
 	memRepo := repositories.NewMemoryRepository(db, ramCache)
-	svc := services.NewMemoryService(memRepo, userRepo)
+	svc := services.NewMemoryService(memRepo, userRepo, nil)
 	ctx := context.Background()
 
 	testUserID := "student-uuid-456"
@@ -116,3 +116,49 @@ func TestMemoryService_Flow(t *testing.T) {
 		t.Fatalf("Expected 0 memories after deletion, got: %d", len(memoriesAfterDel))
 	}
 }
+
+// TestMemoryService_NoCohortGuessingFromStudentCode ensures student code never guesses cohort.
+func TestMemoryService_NoCohortGuessingFromStudentCode(t *testing.T) {
+	db, err := sql.Open("sqlite", ":memory:?_pragma=foreign_keys(ON)")
+	if err != nil {
+		t.Fatalf("Failed to open test db: %v", err)
+	}
+	defer db.Close()
+
+	if err := database.ApplySchema(db); err != nil {
+		t.Fatalf("Failed to apply schema: %v", err)
+	}
+
+	ramCache := cache.NewTheineCache(10 << 20)
+	userRepo := repositories.NewUserRepository(db, ramCache)
+	memRepo := repositories.NewMemoryRepository(db, ramCache)
+	svc := services.NewMemoryService(memRepo, userRepo, nil)
+	ctx := context.Background()
+
+	testUserID := "student-uuid-heuristic-check"
+	_, err = userRepo.CreateUser(ctx, sqlc.CreateUserParams{
+		ID:           testUserID,
+		Email:        "student_a36@thanglong.edu.vn",
+		FullName:     sql.NullString{String: "Nguyen Thi A", Valid: true},
+		StudentCode:  sql.NullString{String: "A36777", Valid: true},
+		AuthProvider: "local",
+	})
+	if err != nil {
+		t.Fatalf("Failed to create test user: %v", err)
+	}
+
+	prof, err := svc.GetStudentProfile(ctx, testUserID)
+	if err != nil {
+		t.Fatalf("Failed to get student profile: %v", err)
+	}
+	if prof == nil {
+		t.Fatalf("Expected non-nil student profile")
+	}
+	if prof.Cohort != "" {
+		t.Fatalf("Expected empty cohort without guessing, got: %q", prof.Cohort)
+	}
+	if prof.Major != "" {
+		t.Fatalf("Expected empty major without guessing, got: %q", prof.Major)
+	}
+}
+

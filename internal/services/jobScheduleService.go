@@ -16,6 +16,7 @@ import (
 	"tluagent-web/internal/models"
 	"tluagent-web/internal/repositories"
 	"tluagent-web/pkg/apperrors"
+	"tluagent-web/pkg/constants"
 )
 
 type JobScheduleService interface {
@@ -164,48 +165,39 @@ func (s *jobScheduleService) SeedDefaultSchedulesIfEmpty(ctx context.Context) er
 		TaskType string
 		Interval int64
 		Payload  string
+		Enabled  int64
 	}{
 		{
 			ID:       "sched-crawl-notices",
-			Name:     "Tự động cào Thông báo mới (TLU Notices Crawler)",
-			TaskType: "crawl_notices",
+			Name:     "TLU Notices Crawler (Recent Announcements)",
+			TaskType: constants.JobTypeCrawlNotices,
 			Interval: 120,
-			Payload:  `{"limit": 20}`,
+			Payload:  `{"max_time_days": 7, "max_pages": 5}`,
+			Enabled:  1,
 		},
 		{
 			ID:       "sched-crawl-news",
-			Name:     "Tự động cào Tin tức học vụ (TLU News Crawler)",
-			TaskType: "crawl_news",
+			Name:     "TLU Academic News Crawler",
+			TaskType: constants.JobTypeCrawlNews,
 			Interval: 240,
-			Payload:  `{"limit": 10}`,
+			Payload:  `{"max_time_days": 14, "max_pages": 5}`,
+			Enabled:  1,
 		},
 		{
 			ID:       "sched-crawl-static",
-			Name:     "Cập nhật các trang tĩnh & Sổ tay sinh viên (Static Pages Crawler)",
-			TaskType: "crawl_static_pages",
+			Name:     "TLU Static Pages & Student Handbook Crawler",
+			TaskType: constants.JobTypeCrawlStaticPages,
 			Interval: 1440,
 			Payload:  `{}`,
-		},
-		{
-			ID:       "sched-pipeline-clean",
-			Name:     "Làm sạch văn bản HTML & PDF sang Markdown (Document Clean Pipeline)",
-			TaskType: "pipeline_clean_docs",
-			Interval: 60,
-			Payload:  `{}`,
-		},
-		{
-			ID:       "sched-vectorize",
-			Name:     "Tạo Vector Embedding & Nạp Đồ Thị Tri Thức (Knowledge Vectorizer)",
-			TaskType: "vectorize_knowledge",
-			Interval: 120,
-			Payload:  `{}`,
+			Enabled:  1,
 		},
 		{
 			ID:       "sched-supersede-check",
-			Name:     "Rà soát xung đột bãi bỏ quy chế (Multi-Agent Supersession Conflict Detector)",
-			TaskType: "supersede_check",
+			Name:     "Regulatory Supersession Conflict Audit",
+			TaskType: constants.JobTypeSupersedeCheck,
 			Interval: 180,
 			Payload:  `{}`,
+			Enabled:  0,
 		},
 	}
 
@@ -217,7 +209,7 @@ func (s *jobScheduleService) SeedDefaultSchedulesIfEmpty(ctx context.Context) er
 			TaskType:        def.TaskType,
 			PayloadJson:     schedulePayload(def.Payload),
 			IntervalMinutes: def.Interval,
-			Enabled:         1,
+			Enabled:         def.Enabled,
 			NextRunAt:       now.Add(time.Duration(def.Interval) * time.Minute),
 		})
 		if err != nil {
@@ -281,6 +273,24 @@ func (s *jobScheduleService) runDue() {
 		if err != nil || !claimed {
 			continue
 		}
+
+		if isCrawlerType(schedule.TaskType) || schedule.TaskType == constants.JobTypeSupersedeCheck {
+			runningJobs, _, errList := s.jobs.repo.ListJobs(ctx, constants.JobStatusRunning, "", 10, 0)
+			hasActiveCrawler := false
+			if errList == nil {
+				for _, rj := range runningJobs {
+					if isCrawlerType(rj.Type) {
+						hasActiveCrawler = true
+						break
+					}
+				}
+			}
+			if hasActiveCrawler {
+				_ = s.repo.ReleaseClaim(ctx, schedule.ID, jobID, time.Now().Add(10*time.Minute))
+				continue
+			}
+		}
+
 		payload := ""
 		if schedule.PayloadJSON != nil {
 			payload = *schedule.PayloadJSON

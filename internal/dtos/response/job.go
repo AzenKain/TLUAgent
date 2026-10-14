@@ -35,3 +35,9 @@ type JobTaskResponse struct {
 	Type        string `json:"type"`
 	Description string `json:"description"`
 }
+
+// JobListResponse is a paginated envelope of background jobs.
+type JobListResponse struct {
+	Items []*JobResponse `json:"items"`
+	Total int64          `json:"total"`
+}

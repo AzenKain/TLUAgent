@@ -3,6 +3,7 @@ package models
 import (
 	"time"
 
+	"tluagent-web/internal/dtos/response"
 	"tluagent-web/internal/gen/sqlc"
 )
 
@@ -35,4 +36,36 @@ func FromSQLCNotification(row *sqlc.UserNotification) *UserNotification {
 		IsRead:    row.IsRead == 1,
 		CreatedAt: row.CreatedAt,
 	}
+}
+
+// ToResponse converts a UserNotification domain model to a response DTO.
+func (n *UserNotification) ToResponse() *response.NotificationResponse {
+	if n == nil {
+		return nil
+	}
+	return &response.NotificationResponse{
+		ID:        n.ID,
+		UserID:    n.UserID,
+		InquiryID: n.InquiryID,
+		Title:     n.Title,
+		Content:   n.Content,
+		Type:      n.Type,
+		IsRead:    n.IsRead,
+		CreatedAt: n.CreatedAt,
+	}
+}
+
+// NotificationsToResponse converts a batch of UserNotification to response DTOs.
+func NotificationsToResponse(items []*UserNotification) []*response.NotificationResponse {
+	if items == nil {
+		return nil
+	}
+	out := make([]*response.NotificationResponse, 0, len(items))
+	for _, item := range items {
+		if item == nil {
+			continue
+		}
+		out = append(out, item.ToResponse())
+	}
+	return out
 }

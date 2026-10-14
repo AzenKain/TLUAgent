@@ -43,9 +43,9 @@ func (c *JobController) ListJobs(w http.ResponseWriter, r *http.Request) {
 
 	writeJSONResponse(w, http.StatusOK, response.CommonResponse{
 		Status: true,
-		Data: map[string]any{
-			"items": jobs,
-			"total": total,
+		Data: &response.JobListResponse{
+			Items: jobs,
+			Total: total,
 		},
 	})
 }

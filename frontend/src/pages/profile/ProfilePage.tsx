@@ -4,10 +4,13 @@ import { userService } from '@/services/userService';
 import { useMutation } from '@tanstack/react-query';
 import { User, Lock, Save, KeyRound, CheckCircle2, AlertTriangle, Trash2 } from 'lucide-react';
 import { Badge } from '@/components/common/Badge';
-import { Modal } from '@/components/common/Modal';
+import { ConfirmModal } from '@/components/common/ConfirmModal';
+import { PasswordStrengthMeter } from '@/components/common/PasswordStrengthMeter';
+import { getApiErrorMessage } from '@/utils/apiError';
 import { useTranslation } from 'react-i18next';
 import { useShallow } from 'zustand/react/shallow';
 import { useProfileStore } from '@/stores/profileStore';
+import { PageHeader } from '@/components/common/PageHeader';
 
 export const ProfilePage: React.FC = () => {
   const { user, refreshMe } = useAuth();
@@ -69,9 +72,7 @@ export const ProfilePage: React.FC = () => {
       setTimeout(() => setProfileMsg({ text: '', type: '' }), 3000);
     },
     onError: (err: unknown) => {
-      const msg =
-        (err as { response?: { data?: { message?: string } } })?.response?.data?.message ||
-        t('profile.error_profile_failed');
+      const msg = getApiErrorMessage(err, t('profile.error_profile_failed'));
       setProfileMsg({
         text: msg,
         type: 'error',
@@ -91,9 +92,7 @@ export const ProfilePage: React.FC = () => {
       setTimeout(() => setPasswordMsg({ text: '', type: '' }), 3000);
     },
     onError: (err: unknown) => {
-      const msg =
-        (err as { response?: { data?: { message?: string } } })?.response?.data?.message ||
-        t('profile.error_password_failed');
+      const msg = getApiErrorMessage(err, t('profile.error_password_failed'));
       setPasswordMsg({
         text: msg,
         type: 'error',
@@ -116,9 +115,7 @@ export const ProfilePage: React.FC = () => {
       setTimeout(() => setProfileMsg({ text: '', type: '' }), 4000);
     },
     onError: (err: unknown) => {
-      const msg =
-        (err as { response?: { data?: { message?: string } } })?.response?.data?.message ||
-        t('profile.error_clear_failed');
+      const msg = getApiErrorMessage(err, t('profile.error_clear_failed'));
       setProfileMsg({
         text: msg,
         type: 'error',
@@ -133,6 +130,10 @@ export const ProfilePage: React.FC = () => {
 
   const handlePasswordSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (newPassword.length < 10) {
+      setPasswordMsg({ text: t('profile.password_min_length_error'), type: 'error' });
+      return;
+    }
     if (newPassword !== confirmPassword) {
       setPasswordMsg({ text: t('profile.password_mismatch'), type: 'error' });
       return;
@@ -141,21 +142,18 @@ export const ProfilePage: React.FC = () => {
   };
 
   return (
-    <div className="min-w-0 w-full space-y-8 max-w-4xl mx-auto">
-      <div>
-        <h2 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
-          {t('profile.title')}
-        </h2>
-        <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-          {t('profile.subtitle')}
-        </p>
-      </div>
+    <div className="space-y-6 max-w-7xl mx-auto pb-10">
+      <PageHeader
+        icon={<User className="h-6 w-6" />}
+        title={t('profile.title')}
+        subtitle={t('profile.subtitle')}
+      />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Profile Details Form */}
-        <div className="p-4 sm:p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs">
-          <div className="flex items-center gap-3 mb-6 pb-4 border-b border-slate-100 dark:border-slate-800">
-            <div className="p-2.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400">
+        <div className="p-4 sm:p-6 rounded-2xl bg-white dark:bg-[#111A35] border border-slate-200 dark:border-blue-900/30 shadow-xs">
+          <div className="flex items-center gap-3 mb-6 pb-4 border-b border-slate-100 dark:border-blue-900/30">
+            <div className="p-2.5 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-tlu-navy dark:text-blue-400">
               <User className="w-5 h-5" />
             </div>
             <div>
@@ -192,7 +190,7 @@ export const ProfilePage: React.FC = () => {
                 type="text"
                 disabled
                 value={user?.email || ''}
-                className="w-full px-3 py-2.5 sm:py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800/50 text-slate-500 text-base sm:text-xs cursor-not-allowed"
+                className="w-full px-3 py-2.5 sm:py-2 rounded-xl border border-slate-200 dark:border-blue-900/40 bg-slate-100 dark:bg-slate-800/50 text-slate-500 text-base sm:text-xs cursor-not-allowed"
               />
             </div>
 
@@ -205,7 +203,7 @@ export const ProfilePage: React.FC = () => {
                 required
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
-                className="w-full px-3 py-2.5 sm:py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 text-base sm:text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-hidden"
+                className="w-full px-3 py-2.5 sm:py-2 rounded-xl border border-slate-200 dark:border-blue-900/40 bg-white dark:bg-[#111A35] text-slate-900 dark:text-slate-100 text-base sm:text-xs focus:ring-2 focus:ring-tlu-blue focus:border-tlu-blue focus:outline-hidden"
               />
             </div>
 
@@ -217,7 +215,7 @@ export const ProfilePage: React.FC = () => {
                 type="text"
                 value={studentCode}
                 onChange={(e) => setStudentCode(e.target.value)}
-                className="w-full px-3 py-2.5 sm:py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 text-base sm:text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-hidden"
+                className="w-full px-3 py-2.5 sm:py-2 rounded-xl border border-slate-200 dark:border-blue-900/40 bg-white dark:bg-[#111A35] text-slate-900 dark:text-slate-100 text-base sm:text-xs focus:ring-2 focus:ring-tlu-blue focus:border-tlu-blue focus:outline-hidden"
               />
             </div>
 
@@ -237,7 +235,7 @@ export const ProfilePage: React.FC = () => {
             <button
               type="submit"
               disabled={updateProfileMutation.isPending}
-              className="w-full min-h-11 py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-medium text-xs flex items-center justify-center gap-2 shadow-sm transition disabled:opacity-50 mt-4"
+              className="w-full min-h-11 py-2.5 px-4 rounded-xl bg-tlu-navy hover:bg-tlu-navy-light dark:bg-tlu-blue dark:hover:bg-blue-600 text-white font-medium text-xs flex items-center justify-center gap-2 shadow-md shadow-blue-900/20 transition disabled:opacity-50 mt-4"
             >
               <Save className="w-4 h-4" />
               <span>{updateProfileMutation.isPending ? t('common.saving') : t('common.save')}</span>
@@ -246,9 +244,9 @@ export const ProfilePage: React.FC = () => {
         </div>
 
         {/* Change Password Form */}
-        <div className="p-4 sm:p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs">
-          <div className="flex items-center gap-3 mb-6 pb-4 border-b border-slate-100 dark:border-slate-800">
-            <div className="p-2.5 rounded-xl bg-violet-50 dark:bg-violet-950/60 text-violet-600 dark:text-violet-400">
+        <div className="p-4 sm:p-6 rounded-2xl bg-white dark:bg-[#111A35] border border-slate-200 dark:border-blue-900/30 shadow-xs">
+          <div className="flex items-center gap-3 mb-6 pb-4 border-b border-slate-100 dark:border-blue-900/30">
+            <div className="p-2.5 rounded-xl bg-red-50 dark:bg-red-950/40 text-tlu-red dark:text-red-400">
               <Lock className="w-5 h-5" />
             </div>
             <div>
@@ -287,7 +285,7 @@ export const ProfilePage: React.FC = () => {
                 value={oldPassword}
                 onChange={(e) => setOldPassword(e.target.value)}
                 placeholder="••••••••"
-                className="w-full px-3 py-2.5 sm:py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 text-base sm:text-xs focus:ring-2 focus:ring-violet-500 focus:outline-hidden"
+                className="w-full px-3 py-2.5 sm:py-2 rounded-xl border border-slate-200 dark:border-blue-900/40 bg-white dark:bg-[#111A35] text-slate-900 dark:text-slate-100 text-base sm:text-xs focus:ring-2 focus:ring-tlu-blue focus:border-tlu-blue focus:outline-hidden"
               />
             </div>
 
@@ -298,12 +296,13 @@ export const ProfilePage: React.FC = () => {
               <input
                 type="password"
                 required
-                minLength={6}
+                minLength={10}
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
                 placeholder="••••••••"
-                className="w-full px-3 py-2.5 sm:py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 text-base sm:text-xs focus:ring-2 focus:ring-violet-500 focus:outline-hidden"
+                className="w-full px-3 py-2.5 sm:py-2 rounded-xl border border-slate-200 dark:border-blue-900/40 bg-white dark:bg-[#111A35] text-slate-900 dark:text-slate-100 text-base sm:text-xs focus:ring-2 focus:ring-tlu-blue focus:border-tlu-blue focus:outline-hidden"
               />
+              <PasswordStrengthMeter password={newPassword} />
             </div>
 
             <div>
@@ -313,18 +312,18 @@ export const ProfilePage: React.FC = () => {
               <input
                 type="password"
                 required
-                minLength={6}
+                minLength={10}
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 placeholder="••••••••"
-                className="w-full px-3 py-2.5 sm:py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 text-base sm:text-xs focus:ring-2 focus:ring-violet-500 focus:outline-hidden"
+                className="w-full px-3 py-2.5 sm:py-2 rounded-xl border border-slate-200 dark:border-blue-900/40 bg-white dark:bg-[#111A35] text-slate-900 dark:text-slate-100 text-base sm:text-xs focus:ring-2 focus:ring-tlu-blue focus:border-tlu-blue focus:outline-hidden"
               />
             </div>
 
             <button
               type="submit"
               disabled={changePasswordMutation.isPending}
-              className="w-full min-h-11 py-2.5 px-4 rounded-xl bg-violet-600 hover:bg-violet-700 text-white font-medium text-xs flex items-center justify-center gap-2 shadow-sm transition disabled:opacity-50 mt-4"
+              className="w-full min-h-11 py-2.5 px-4 rounded-xl bg-tlu-navy hover:bg-tlu-navy-light dark:bg-tlu-blue dark:hover:bg-blue-600 text-white font-medium text-xs flex items-center justify-center gap-2 shadow-md shadow-blue-900/20 transition disabled:opacity-50 mt-4"
             >
               <KeyRound className="w-4 h-4" />
               <span>
@@ -377,36 +376,20 @@ export const ProfilePage: React.FC = () => {
       </div>
 
       {/* Confirmation Modal */}
-      <Modal
+      <ConfirmModal
         isOpen={isClearModalOpen}
         onClose={() => setIsClearModalOpen(false)}
+        onConfirm={() => {
+          setIsClearModalOpen(false);
+          clearDataMutation.mutate();
+        }}
         title={t('profile.confirm_clear_title')}
-      >
-        <div className="space-y-4">
-          <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
-            {t('profile.confirm_clear_desc')}
-          </p>
-          <div className="flex justify-end gap-2 pt-2">
-            <button
-              type="button"
-              onClick={() => setIsClearModalOpen(false)}
-              className="px-4 py-2 rounded-xl text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
-            >
-              {t('common.cancel')}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setIsClearModalOpen(false);
-                clearDataMutation.mutate();
-              }}
-              className="px-4 py-2 rounded-xl text-xs font-medium bg-rose-600 hover:bg-rose-700 text-white transition shadow-xs"
-            >
-              {t('common.confirm')}
-            </button>
-          </div>
-        </div>
-      </Modal>
+        message={t('profile.confirm_clear_desc')}
+        variant="danger"
+        confirmText={t('profile.btn_clear_data')}
+        cancelText={t('common.cancel')}
+        isLoading={clearDataMutation.isPending}
+      />
     </div>
   );
 };

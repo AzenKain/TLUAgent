@@ -16,7 +16,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onMenuClick }) => {
   const { t } = useTranslation();
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center justify-between gap-2 border-b border-slate-200 bg-white/80 px-3 backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/80 sm:px-4 md:px-6">
+    <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center justify-between gap-2 border-b border-slate-200 bg-white/90 px-3 backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/90 sm:px-4 md:px-6">
       <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
         <button
           type="button"
@@ -27,7 +27,13 @@ export const Navbar: React.FC<NavbarProps> = ({ onMenuClick }) => {
         >
           <Menu className="h-5 w-5" />
         </button>
-        <span className="hidden truncate text-sm font-medium text-slate-500 dark:text-slate-400 md:block">
+        <div className="flex items-center gap-2 lg:hidden">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white p-1 border border-slate-200 shadow-xs">
+            <img src="/logo.png" alt="TLU Logo" className="h-full w-full object-contain" />
+          </div>
+          <span className="font-extrabold text-sm text-tlu-navy dark:text-blue-400">TLU<span className="text-tlu-red">Agent</span></span>
+        </div>
+        <span className="hidden truncate text-sm font-semibold text-slate-700 dark:text-slate-300 lg:block">
           {t('common.system_title')}
         </span>
       </div>
@@ -41,7 +47,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onMenuClick }) => {
             to="/profile"
             className="flex items-center gap-3 rounded-lg p-1.5 transition hover:bg-slate-100 dark:hover:bg-slate-800 sm:px-2"
           >
-            <div className="flex h-8 w-8 items-center justify-center rounded-full border border-indigo-200 bg-indigo-100 text-xs font-bold uppercase text-indigo-600 dark:border-indigo-800 dark:bg-indigo-950/80 dark:text-indigo-400">
+            <div className="flex h-8 w-8 items-center justify-center rounded-full border border-blue-200 bg-blue-100 text-xs font-bold uppercase text-tlu-navy dark:border-blue-900/60 dark:bg-blue-950/80 dark:text-blue-300">
               {user.avatar_url ? (
                 <img src={user.avatar_url} alt="" className="h-full w-full rounded-full object-cover" />
               ) : (

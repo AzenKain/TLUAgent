@@ -1,12 +1,13 @@
 import React from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { Navigate } from 'react-router-dom';
-import { GraduationCap, Lock, Mail, AlertCircle, ArrowRight } from 'lucide-react';
+import { Lock, Mail, AlertCircle, ArrowRight } from 'lucide-react';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { useTranslation } from 'react-i18next';
 import { LanguageSwitcher } from '@/components/common/LanguageSwitcher';
 import { useShallow } from 'zustand/react/shallow';
 import { useAuthFormStore } from '@/stores/authFormStore';
+import { getApiErrorMessage } from '@/utils/apiError';
 
 export const LoginPage: React.FC = () => {
   const { login, isLoggingIn, isAuthenticated, setupStatus, isSetupLoading } = useAuth();
@@ -53,9 +54,7 @@ export const LoginPage: React.FC = () => {
     try {
       await login({ email, password });
     } catch (err: unknown) {
-      const msg =
-        (err as { response?: { data?: { message?: string } } })?.response?.data?.message ||
-        t('auth.login_error_default');
+      const msg = getApiErrorMessage(err, t('auth.login_error_default'));
       setErrorMsg(msg);
     }
   };
@@ -66,15 +65,18 @@ export const LoginPage: React.FC = () => {
         <LanguageSwitcher />
       </div>
 
-      <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 p-5 sm:p-8">
+      <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl shadow-xl border border-slate-200/90 dark:border-slate-800 p-6 sm:p-9 relative overflow-hidden">
+        {/* Subtle top accent bar in TLU Red & Navy */}
+        <div className="absolute top-0 left-0 right-0 h-1.5 bg-linear-to-r from-tlu-navy via-tlu-blue to-tlu-red" />
+
         <div className="text-center mb-8">
-          <div className="w-14 h-14 mx-auto rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-lg shadow-indigo-600/30 mb-4">
-            <GraduationCap className="w-8 h-8" />
+          <div className="w-24 h-24 mx-auto rounded-2xl bg-white p-2 border border-slate-200/80 shadow-md mb-4 flex items-center justify-center">
+            <img src="/logo.png" alt="Thang Long University Logo" className="w-full h-full object-contain" />
           </div>
           <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">
             {t('auth.login_title')}
           </h2>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+          <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1.5">
             {t('auth.login_sub')}
           </p>
         </div>
@@ -99,7 +101,7 @@ export const LoginPage: React.FC = () => {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder={t('auth.login_email_placeholder')}
-                className="w-full pl-11 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 text-base sm:text-sm focus:outline-hidden focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+                className="w-full pl-11 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 text-base sm:text-sm focus:outline-hidden focus:ring-2 focus:ring-tlu-blue focus:border-transparent transition"
               />
             </div>
           </div>
@@ -116,7 +118,7 @@ export const LoginPage: React.FC = () => {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
-                className="w-full pl-11 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 text-base sm:text-sm focus:outline-hidden focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+                className="w-full pl-11 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 text-base sm:text-sm focus:outline-hidden focus:ring-2 focus:ring-tlu-blue focus:border-transparent transition"
               />
             </div>
           </div>
@@ -124,7 +126,7 @@ export const LoginPage: React.FC = () => {
           <button
             type="submit"
             disabled={isLoggingIn}
-            className="w-full min-h-11 py-3 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm shadow-lg shadow-indigo-600/30 flex items-center justify-center gap-2 transition disabled:opacity-50 mt-2"
+            className="w-full min-h-11 py-3 px-4 rounded-xl bg-tlu-navy hover:bg-tlu-navy-deep active:bg-[#0a1172] text-white font-semibold text-sm shadow-md shadow-blue-950/20 flex items-center justify-center gap-2 transition disabled:opacity-50 mt-3"
           >
             {isLoggingIn ? (
               <>
@@ -139,6 +141,12 @@ export const LoginPage: React.FC = () => {
             )}
           </button>
         </form>
+
+        <div className="mt-8 pt-4 border-t border-slate-100 dark:border-slate-800 text-center">
+          <p className="text-[11px] font-medium text-slate-400 tracking-wide uppercase">
+            {t('common.university_name')} &bull; Academic AI Portal
+          </p>
+        </div>
       </div>
     </div>
   );

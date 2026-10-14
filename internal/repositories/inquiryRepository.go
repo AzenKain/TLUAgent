@@ -65,6 +65,7 @@ func (r *inquiryRepository) InvalidateInquiryCache(ctx context.Context, id, user
 		cache.BuildKey("inquiries", "list"),
 	}
 	_ = r.c.Del(ctx, keys...)
+	_ = r.c.DelByPattern(ctx, "inquiries:*")
 }
 
 func (r *inquiryRepository) CreateInquiry(ctx context.Context, inq *models.AdvisoryInquiry) (*models.AdvisoryInquiry, error) {
@@ -201,13 +202,30 @@ func (r *inquiryRepository) ListInquiriesByUserID(ctx context.Context, userID st
 		}
 	}
 
-	ids, err := r.q.ListInquiryIDsByUserID(ctx, sqlc.ListInquiryIDsByUserIDParams{
-		UserID: userID,
-		Limit:  int64(limit),
-		Offset: int64(offset),
-	})
-	if err != nil {
-		return nil, 0, err
+	idsKey := cache.BuildKey("inquiries", "user_ids", userID, fmt.Sprintf("%d", limit), fmt.Sprintf("%d", offset))
+	var ids []string
+	if r.c != nil && !r.inTx {
+		_ = r.c.Get(ctx, idsKey, &ids)
+	}
+	if len(ids) == 0 && total > 0 {
+		v, err, _ := r.sfg.Do(idsKey, func() (any, error) {
+			foundIDs, err := r.q.ListInquiryIDsByUserID(ctx, sqlc.ListInquiryIDsByUserIDParams{
+				UserID: userID,
+				Limit:  int64(limit),
+				Offset: int64(offset),
+			})
+			if err != nil {
+				return nil, err
+			}
+			if r.c != nil && !r.inTx {
+				_ = r.c.Set(ctx, idsKey, foundIDs, constants.NormalCacheDuration)
+			}
+			return foundIDs, nil
+		})
+		if err != nil {
+			return nil, 0, err
+		}
+		ids = v.([]string)
 	}
 
 	items, err := r.GetInquiriesByIDs(ctx, ids)
@@ -222,19 +240,53 @@ func (r *inquiryRepository) ListInquiries(ctx context.Context, status, search st
 		Status: models.NullString(status),
 		Search: models.NullString(search),
 	}
-	total, err := r.q.CountInquiries(ctx, countParams)
-	if err != nil {
-		return nil, 0, err
+	countKey := cache.BuildKey("inquiries", "count", status, search)
+	var total int64
+	if r.c != nil && !r.inTx {
+		_ = r.c.Get(ctx, countKey, &total)
+	}
+	if total == 0 {
+		v, err, _ := r.sfg.Do(countKey, func() (any, error) {
+			cnt, err := r.q.CountInquiries(ctx, countParams)
+			if err != nil {
+				return int64(0), err
+			}
+			if r.c != nil && !r.inTx {
+				_ = r.c.Set(ctx, countKey, cnt, constants.NormalCacheDuration)
+			}
+			return cnt, nil
+		})
+		if err != nil {
+			return nil, 0, err
+		}
+		total = v.(int64)
 	}
 
-	ids, err := r.q.ListInquiryIDs(ctx, sqlc.ListInquiryIDsParams{
-		Status: models.NullString(status),
-		Search: models.NullString(search),
-		Limit:  int64(limit),
-		Offset: int64(offset),
-	})
-	if err != nil {
-		return nil, 0, err
+	idsKey := cache.BuildKey("inquiries", "ids", status, search, fmt.Sprintf("%d", limit), fmt.Sprintf("%d", offset))
+	var ids []string
+	if r.c != nil && !r.inTx {
+		_ = r.c.Get(ctx, idsKey, &ids)
+	}
+	if len(ids) == 0 && total > 0 {
+		v, err, _ := r.sfg.Do(idsKey, func() (any, error) {
+			foundIDs, err := r.q.ListInquiryIDs(ctx, sqlc.ListInquiryIDsParams{
+				Status: models.NullString(status),
+				Search: models.NullString(search),
+				Limit:  int64(limit),
+				Offset: int64(offset),
+			})
+			if err != nil {
+				return nil, err
+			}
+			if r.c != nil && !r.inTx {
+				_ = r.c.Set(ctx, idsKey, foundIDs, constants.NormalCacheDuration)
+			}
+			return foundIDs, nil
+		})
+		if err != nil {
+			return nil, 0, err
+		}
+		ids = v.([]string)
 	}
 
 	items, err := r.GetInquiriesByIDs(ctx, ids)

@@ -39,6 +39,7 @@ func setupTestChatDB(t *testing.T) *sql.DB {
 		sources_json TEXT NOT NULL DEFAULT '[]',
 		images_json TEXT NOT NULL DEFAULT '[]',
 		feedback TEXT CHECK(feedback IN ('up', 'down', NULL)),
+		can_escalate INTEGER NOT NULL DEFAULT 0,
 		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 	);
 	INSERT INTO users (id, email, full_name, student_code) VALUES ('u1', 'sv1@thanglong.edu.vn', 'Nguyen Van A', 'A12345');
@@ -96,6 +97,7 @@ func TestChatRepository_ConversationsAndMessages(t *testing.T) {
 		Sender:         "assistant",
 		Content:        "According to the training regulations you must register at least 14 credits.",
 		Sources:        []string{"Training Regulations 2024"},
+		CanEscalate:    true,
 	}
 	err = repo.CreateMessage(ctx, botMsg)
 	require.NoError(t, err)
@@ -106,6 +108,7 @@ func TestChatRepository_ConversationsAndMessages(t *testing.T) {
 	require.Equal(t, "user", messages[0].Sender)
 	require.Equal(t, "assistant", messages[1].Sender)
 	require.Equal(t, []string{"Training Regulations 2024"}, messages[1].Sources)
+	require.True(t, messages[1].CanEscalate)
 
 	err = repo.UpdateMessageFeedback(ctx, "msg-2", "u1", "up")
 	require.NoError(t, err)

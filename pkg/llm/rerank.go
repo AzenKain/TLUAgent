@@ -12,20 +12,17 @@ import (
 	"time"
 )
 
-// RerankResult represents a ranked document with relevance score.
 type RerankResult struct {
 	Index          int     `json:"index"`
 	RelevanceScore float64 `json:"relevance_score"`
 	Document       string  `json:"document,omitempty"`
 }
 
-// Reranker re-scores and re-ranks candidate documents against a query.
 type Reranker interface {
 	Rerank(ctx context.Context, query string, documents []string, topN *int) ([]RerankResult, error)
 	Model() string
 }
 
-// OpenRouterReranker connects to OpenRouter /api/v1/rerank (e.g. cohere/rerank-4-pro).
 type OpenRouterReranker struct {
 	endpoint   string
 	apiKey     string
@@ -33,28 +30,12 @@ type OpenRouterReranker struct {
 	httpClient *http.Client
 }
 
-// NewOpenRouterReranker creates an OpenRouter reranker instance.
 func NewOpenRouterReranker(baseURL, apiKey, model string, allowPrivate ...bool) *OpenRouterReranker {
 	allowPriv := false
 	if len(allowPrivate) > 0 && allowPrivate[0] {
 		allowPriv = true
 	}
-	if baseURL == "" {
-		baseURL = "https://openrouter.ai/api/v1"
-	}
-	baseURL = strings.TrimRight(baseURL, "/")
-	endpoint := baseURL
-	if !strings.HasSuffix(endpoint, "/rerank") {
-		if strings.HasSuffix(endpoint, "/v1") {
-			endpoint += "/rerank"
-		} else {
-			endpoint += "/v1/rerank"
-		}
-	}
-
-	if model == "" {
-		model = "cohere/rerank-4-pro"
-	}
+	endpoint := ResolveOpenRouterRerankEndpoint(baseURL)
 
 	return &OpenRouterReranker{
 		endpoint:   endpoint,
@@ -119,9 +100,9 @@ func (r *OpenRouterReranker) Rerank(ctx context.Context, query string, documents
 		return nil, fmt.Errorf("failed to create rerank HTTP request: %w", err)
 	}
 
-	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set(HeaderContentType, MIMEApplicationJSON)
 	if r.apiKey != "" {
-		httpReq.Header.Set("Authorization", "Bearer "+r.apiKey)
+		httpReq.Header.Set(HeaderAuthorization, AuthBearerPrefix+r.apiKey)
 	}
 
 	resp, err := r.httpClient.Do(httpReq)

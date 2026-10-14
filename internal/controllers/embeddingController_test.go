@@ -12,7 +12,6 @@ import (
 	"tluagent-web/internal/dtos/request"
 	"tluagent-web/internal/dtos/response"
 	"tluagent-web/pkg/embedding"
-	"tluagent-web/pkg/llm"
 )
 
 type fakeEmbeddingService struct {
@@ -81,8 +80,6 @@ func (f *fakeEmbeddingService) DeleteModel(ctx context.Context, modelID string) 
 	f.deletedModelID = modelID
 	return f.deleteErr
 }
-
-func (f *fakeEmbeddingService) SetLLMManager(_ *llm.Manager) {}
 
 func (f *fakeEmbeddingService) SyncActiveEmbedder(_ context.Context) error { return nil }
 

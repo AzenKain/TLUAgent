@@ -53,7 +53,7 @@ func (s *chatQuotaService) Allow(ctx context.Context, identity string) error {
 		count = 0
 	}
 	if count >= limit {
-		return apperrors.New(apperrors.ErrTooManyRequests, "Daily chat quota exceeded. Please try again tomorrow or sign in with a full account.")
+		return apperrors.New(apperrors.ErrTooManyRequests, "daily chat quota exceeded; please try again tomorrow or sign in with a full account")
 	}
 	count++
 	return s.cache.Set(ctx, key, count, ttl)

@@ -12,6 +12,8 @@ import (
 
 	"github.com/rs/zerolog/log"
 
+	"os"
+	"tluagent-web/internal/agent"
 	"tluagent-web/internal/controllers"
 	"tluagent-web/internal/middlewares"
 	"tluagent-web/internal/repositories"
@@ -20,8 +22,10 @@ import (
 	"tluagent-web/pkg/cache"
 	"tluagent-web/pkg/config"
 	"tluagent-web/pkg/database"
+	"tluagent-web/pkg/embedding"
+	"tluagent-web/pkg/guardrail"
 	"tluagent-web/pkg/llm"
-	"tluagent-web/pkg/supersede"
+	"tluagent-web/pkg/tuition"
 	"tluagent-web/pkg/worker"
 )
 
@@ -57,10 +61,19 @@ func NewServer(addr string) *Server {
 	chatRepo := repositories.NewChatRepository(db, ramCache)
 	ragRepo := repositories.NewRAGRepository(db, ramCache)
 	agentRepo := repositories.NewAgentRepository(db, ramCache)
+	memoryRepo := repositories.NewMemoryRepository(db, ramCache)
+	inquiryRepo := repositories.NewInquiryRepository(db, ramCache)
+	notificationRepo := repositories.NewNotificationRepository(db, ramCache)
+	curriculumRepo := repositories.NewCurriculumRepository(db, ramCache)
+	transcriptRepo := repositories.NewTranscriptRepository(db, ramCache)
+	tluclawRepo := repositories.NewTLUClawRepository(db, ramCache)
+	jobRepo := repositories.NewJobRepository(db, ramCache)
+	jobScheduleRepo := repositories.NewJobScheduleRepository(db, ramCache)
 
 	llmManager := llm.NewManager()
-	llmConfigSvc := services.NewLLMConfigService(llmRepo, llmManager)
-	llmConfigSvc.SetSettingsRepository(settingsRepo)
+	tuitionClient := tuition.NewClient(10 * time.Second)
+
+	llmConfigSvc := services.NewLLMConfigService(llmRepo, llmManager, settingsRepo)
 	if err := llmConfigSvc.SeedDefaultProvidersIfEmpty(context.Background()); err != nil {
 		log.Warn().Err(err).Msg("Failed to seed default LLM providers")
 	}
@@ -68,47 +81,95 @@ func NewServer(addr string) *Server {
 		log.Warn().Err(err).Msg("Failed initial LLM manager synchronization")
 	}
 
-	agentSvc := services.NewAgentService(agentRepo)
-	if err := agentSvc.SeedDefaultsIfEmpty(context.Background()); err != nil {
-		log.Warn().Err(err).Msg("Failed to seed default agent prompts and skills")
-	}
-
 	permCache := services.NewPermissionCache(roleRepo)
 	if err := permCache.Reload(context.Background()); err != nil {
 		log.Warn().Err(err).Msg("Failed initial permission cache load")
 	}
 
-	memoryRepo := repositories.NewMemoryRepository(db, ramCache)
-	memorySvc := services.NewMemoryService(memoryRepo, userRepo)
-	memorySvc.SetLLMManager(llmManager)
-
-	inquiryRepo := repositories.NewInquiryRepository(db, ramCache)
-	notificationRepo := repositories.NewNotificationRepository(db, ramCache)
-	inquirySvc := services.NewInquiryService(inquiryRepo, ragRepo, userRepo, notificationRepo)
-	inquirySvc.SetLLMManager(llmManager)
+	memorySvc := services.NewMemoryService(memoryRepo, userRepo, llmManager)
+	inquirySvc := services.NewInquiryService(inquiryRepo, ragRepo, userRepo, notificationRepo, llmManager)
 	notifSvc := services.NewNotificationService(notificationRepo)
+	ragSvc := services.NewRAGService(ragRepo, ramCache, llmManager, inquirySvc)
 
-	ragSvc := services.NewRAGService(ragRepo)
-	ragSvc.SetLLMManager(llmManager)
-	ragSvc.SetInquiryService(inquirySvc)
-	agentSvc.SetRAGService(ragSvc)
-	agentSvc.SetSettingsRepository(settingsRepo)
+	agentSvc := services.NewAgentService(agentRepo, ragSvc, settingsRepo)
+	if err := agentSvc.SeedDefaultsIfEmpty(context.Background()); err != nil {
+		log.Warn().Err(err).Msg("Failed to seed default agent prompts and skills")
+	}
+
 	roleSvc := services.NewRoleService(roleRepo, permCache, txManager)
 	authSvc := services.NewAuthService(userRepo, roleRepo, settingsRepo, txManager)
-	userSvc := services.NewUserService(userRepo, roleRepo, settingsRepo, txManager)
-	advisorySvc := services.NewAdvisoryService(ruleRepo, llmManager, userRepo, llmRepo)
-	advisorySvc.SetRAGService(ragSvc)
-	advisorySvc.SetAgentService(agentSvc)
-	advisorySvc.SetMemoryService(memorySvc)
-	advisorySvc.SetChatRepository(chatRepo)
-	advisorySvc.SetSettingsRepository(settingsRepo)
-	advisorySvc.SetRamCache(ramCache)
+	userSvc := services.NewUserService(userRepo, roleRepo, settingsRepo, txManager, permCache)
+	curriculumSvc := services.NewCurriculumService(curriculumRepo)
+	roadmapOptimizer := services.NewRoadmapOptimizer(curriculumRepo)
+	transcriptSvc := services.NewTranscriptService(transcriptRepo, memoryRepo, llmManager)
+
+	advisorySvc := services.NewAdvisoryService(services.AdvisoryParams{
+		RuleRepo:         ruleRepo,
+		LLMManager:       llmManager,
+		UserRepo:         userRepo,
+		LLMRepo:          llmRepo,
+		RAGService:       ragSvc,
+		AgentService:     agentSvc,
+		MemoryService:    memorySvc,
+		ChatRepo:         chatRepo,
+		SettingsRepo:     settingsRepo,
+		TuitionClient:    tuitionClient,
+		RamCache:         ramCache,
+		CurriculumSvc:    curriculumSvc,
+		TranscriptSvc:    transcriptSvc,
+		RoadmapOptimizer: roadmapOptimizer,
+	})
+
 	chatSessionSvc := services.NewChatSessionService(chatRepo, userRepo)
 	chatQuotaSvc := services.NewChatQuotaService(ramCache)
 	streamLimiter := services.NewStreamLimiter(
 		config.GetIntConfigWithDefault("CHAT_MAX_STREAMS", 50),
 		config.GetIntConfigWithDefault("CHAT_MAX_STREAMS_PER_CLIENT", 2),
 	)
+
+	jobQueue := worker.NewQueue(4)
+	dissectionEngine := services.NewRegulatoryDissectionEngine(services.EngineParams{
+		DB:             db,
+		RAGRepo:        ragRepo,
+		CurriculumRepo: curriculumRepo,
+		InquiryRepo: inquiryRepo,
+		NotifRepo:   notificationRepo,
+		UserRepo:    userRepo,
+		LLMManager:  llmManager,
+	})
+	detector := services.NewDetector(db, llmManager)
+	detector.SetEngine(dissectionEngine)
+	jobSvc := services.NewJobService(jobRepo, jobQueue, llmManager, ragSvc, detector)
+	jobQueue.Start()
+	_ = jobSvc.Recover(context.Background())
+	jobScheduleSvc := services.NewJobScheduleService(jobScheduleRepo, jobSvc)
+	if err := jobScheduleSvc.SeedDefaultSchedulesIfEmpty(context.Background()); err != nil {
+		log.Warn().Err(err).Msg("Failed to seed default job schedules")
+	}
+	jobScheduleSvc.Start()
+
+	tluclawSvc := services.NewTLUClawService(services.TLUClawParams{
+		TLUClawRepo:      tluclawRepo,
+		CurriculumRepo:   curriculumRepo,
+		RAGRepo:          ragRepo,
+		RAGService:       ragSvc,
+		RAMCache:         ramCache,
+		LLMManager:       llmManager,
+		SkillLoader:      agent.NewDBSkillLoader(agentRepo),
+		MemoryService:    memorySvc,
+		UserRepo:         userRepo,
+		RoleRepo:         roleRepo,
+		TranscriptRepo:   transcriptRepo,
+		InquiryRepo:      inquiryRepo,
+		LLMConfigSvc:     llmConfigSvc,
+		MemoryRepo:       memoryRepo,
+		NotifRepo:        notificationRepo,
+		JobService:       jobSvc,
+		TuitionClient:    tuitionClient,
+		RoleService:      roleSvc,
+		SettingsRepo:     settingsRepo,
+		DissectionEngine: dissectionEngine,
+	})
 
 	healthCtrl := controllers.NewHealthController()
 	authCtrl := controllers.NewAuthController(authSvc)
@@ -117,32 +178,39 @@ func NewServer(addr string) *Server {
 	chatCtrl := controllers.NewChatController(advisorySvc, chatSessionSvc, streamLimiter)
 	adminChatCtrl := controllers.NewAdminChatController(chatSessionSvc)
 	llmCtrl := controllers.NewLLMController(llmConfigSvc)
-	ragCtrl := controllers.NewRAGController(ragSvc, ragRepo)
+	ragCtrl := controllers.NewRAGController(ragSvc)
 	agentCtrl := controllers.NewAgentController(agentSvc)
 	memoryCtrl := controllers.NewMemoryController(memorySvc)
 	inquiryCtrl := controllers.NewInquiryController(inquirySvc)
 	notifCtrl := controllers.NewNotificationController(notifSvc)
-
-	jobRepo := repositories.NewJobRepository(db, ramCache)
-	jobScheduleRepo := repositories.NewJobScheduleRepository(db, ramCache)
-	jobQueue := worker.NewQueue(4)
-	detector := supersede.NewDetector(db, llmManager)
-	jobSvc := services.NewJobService(jobRepo, jobQueue, llmManager, ragSvc, detector)
-	_ = jobSvc.Recover(context.Background())
-	jobScheduleSvc := services.NewJobScheduleService(jobScheduleRepo, jobSvc)
-	if err := jobScheduleSvc.SeedDefaultSchedulesIfEmpty(context.Background()); err != nil {
-		log.Warn().Err(err).Msg("Failed to seed default job schedules")
-	}
-	jobScheduleSvc.Start()
+	curriculumCtrl := controllers.NewCurriculumController(curriculumSvc, roadmapOptimizer, transcriptSvc, userRepo, memorySvc)
+	transcriptCtrl := controllers.NewTranscriptController(transcriptSvc)
+	tluclawCtrl := controllers.NewTLUClawController(tluclawSvc)
 	jobCtrl := controllers.NewJobController(jobSvc, jobScheduleSvc)
 
 	embeddingRoot := filepath.Join(config.GetConfigWithDefault("DATA_DIR", "./data"), "onnx")
-	embeddingSvc := services.NewEmbeddingService(settingsRepo, embeddingRoot)
-	embeddingSvc.SetLLMManager(llmManager)
+	embeddingSvc := services.NewEmbeddingService(settingsRepo, embeddingRoot, llmManager)
 	if err := embeddingSvc.SyncActiveEmbedder(context.Background()); err != nil {
 		log.Warn().Err(err).Msg("Failed initial active ONNX embedder synchronization")
 	}
 	embeddingCtrl := controllers.NewEmbeddingController(embeddingSvc)
+
+	bgeM3Dir := filepath.Join(embeddingRoot, "bge-m3")
+	if _, err := os.Stat(bgeM3Dir); err == nil {
+		if manifest, err := embedding.LoadManifest(bgeM3Dir); err == nil {
+			if modelPath, err := embedding.FindModelFile(bgeM3Dir); err == nil {
+				if libPath, err := embedding.CurrentRuntimeLibraryPath(embeddingRoot); err == nil {
+					if onnxEmbedder, err := embedding.NewOnnxEmbedder(bgeM3Dir, manifest, modelPath, libPath); err == nil {
+						guardrail.SetGlobalClassifier(guardrail.NewBGEM3Classifier(onnxEmbedder))
+						log.Info().Msg("Initialized BGE-M3 dual-anchor semantic classifier for guardrail")
+					}
+				}
+			}
+		}
+	}
+	if guardrail.GetGlobalClassifier() == nil && llmManager.Embedder() != nil {
+		guardrail.SetGlobalClassifier(guardrail.NewBGEM3Classifier(llmManager.Embedder()))
+	}
 
 	mux := http.NewServeMux()
 	routes.RegisterAPIRoutes(mux, healthCtrl, chatCtrl, adminChatCtrl, userRepo, permCache, chatQuotaSvc)
@@ -155,6 +223,9 @@ func NewServer(addr string) *Server {
 	routes.RegisterAgentRoutes(mux, agentCtrl, userRepo, permCache)
 	routes.RegisterMemoryRoutes(mux, memoryCtrl, userRepo, permCache)
 	routes.RegisterInquiryRoutes(mux, inquiryCtrl, notifCtrl, userRepo, permCache)
+	routes.RegisterCurriculumRoutes(mux, curriculumCtrl, userRepo, permCache)
+	routes.RegisterTranscriptRoutes(mux, transcriptCtrl, userRepo, permCache)
+	routes.RegisterTLUClawRoutes(mux, tluclawCtrl, userRepo, permCache)
 	routes.RegisterJobRoutes(mux, jobCtrl, userRepo, permCache)
 	routes.RegisterSPARoutes(mux, embeddedDist)
 
@@ -174,11 +245,12 @@ func NewServer(addr string) *Server {
 	)
 
 	srv := &http.Server{
-		Addr:         addr,
-		Handler:      handler,
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 30 * time.Second,
-		IdleTimeout:  60 * time.Second,
+		Addr:              addr,
+		Handler:           handler,
+		ReadHeaderTimeout: 15 * time.Second,
+		ReadTimeout:       60 * time.Second,
+		WriteTimeout:      5 * time.Minute,
+		IdleTimeout:       120 * time.Second,
 	}
 
 	return &Server{

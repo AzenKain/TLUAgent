@@ -27,7 +27,10 @@ import {
 import { useRoles } from '@/hooks/useRoles';
 import { useRoleManageStore } from '@/stores/roleManageStore';
 import { Modal } from '@/components/common/Modal';
+import { ConfirmModal } from '@/components/common/ConfirmModal';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
+import { PageHeader } from '@/components/common/PageHeader';
+import { RefreshButton } from '@/components/common/RefreshButton';
 import type { PermissionAssignment, Permission } from '@/types';
 
 interface PermCategory {
@@ -392,38 +395,27 @@ export const RolesListPage: React.FC = () => {
   const isSaving = isCreatingRole || isUpdatingRole || isDeletingRole || isUpdatingPermissions;
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto pb-12">
-      <div className="flex min-w-0 flex-col gap-4 border-b border-slate-200 pb-4 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-0">
-          <h2 className="break-words text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
-            {t('roles.title')}
-          </h2>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            {t('roles.subtitle')}
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <button
-            onClick={handleRefresh}
-            disabled={isFetchingRoles || isFetchingPermissions}
-            aria-label={t('roles.refresh')}
-            title={t('roles.refresh')}
-            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 shadow-xs transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
-          >
-            <RefreshCw
-              className={`h-4 w-4 ${isFetchingRoles || isFetchingPermissions ? 'animate-spin' : ''}`}
+    <div className="space-y-6 max-w-7xl mx-auto pb-10">
+      <PageHeader
+        icon={<Shield className="h-6 w-6" />}
+        title={t('roles.title')}
+        subtitle={t('roles.subtitle')}
+        actions={
+          <div className="flex items-center gap-2">
+            <RefreshButton
+              onClick={handleRefresh}
+              isLoading={isFetchingRoles || isFetchingPermissions}
             />
-          </button>
-          <button
-            onClick={openCreate}
-            className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-indigo-600/20 transition hover:bg-indigo-700"
-          >
-            <Plus className="h-4 w-4" />
-            <span>{t('roles.create_button')}</span>
-          </button>
-        </div>
-      </div>
+            <button
+              onClick={openCreate}
+              className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-xl bg-tlu-navy hover:bg-tlu-navy-light dark:bg-tlu-blue dark:hover:bg-blue-600 px-4 py-2 text-xs sm:text-sm font-semibold text-white shadow-xs transition cursor-pointer"
+            >
+              <Plus className="h-4 w-4" />
+              <span>{t('roles.create_button')}</span>
+            </button>
+          </div>
+        }
+      />
 
       <div className="flex flex-col lg:flex-row gap-6 items-start">
         <div className="w-full lg:w-88 xl:w-96 shrink-0 space-y-4">
@@ -451,7 +443,7 @@ export const RolesListPage: React.FC = () => {
                     onClick={() => setSelectedRole(r)}
                     className={`flex flex-col gap-2 rounded-xl border p-4 transition-all cursor-pointer sm:flex-row sm:items-center sm:justify-between sm:gap-3 ${
                       isSelected
-                        ? 'bg-indigo-50/60 dark:bg-indigo-950/30 border-indigo-500/80 dark:border-indigo-500/80 shadow-xs ring-1 ring-indigo-500/50'
+                        ? 'bg-blue-50/60 dark:bg-blue-950/40 border-tlu-blue dark:border-tlu-blue shadow-xs ring-1 ring-tlu-blue/50'
                         : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
                     }`}
                   >
@@ -462,11 +454,11 @@ export const RolesListPage: React.FC = () => {
                           <Shield
                             className={`h-4 w-4 shrink-0 ${
                               isSelected
-                                ? 'text-indigo-600 dark:text-indigo-400'
+                                ? 'text-tlu-blue dark:text-blue-400'
                                 : 'text-slate-400 dark:text-slate-500'
                             }`}
                           />
-                          <span className="break-words font-bold text-sm text-slate-900 dark:text-slate-100">
+                          <span className="wrap-break-word font-bold text-sm text-slate-900 dark:text-slate-100">
                             {r.name}
                           </span>
                           <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
@@ -552,7 +544,7 @@ export const RolesListPage: React.FC = () => {
               <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <h3 className="break-words text-xl font-bold text-slate-900 dark:text-slate-100">
+                    <h3 className="wrap-break-word text-xl font-bold text-slate-900 dark:text-slate-100">
                       {selectedRole.name}
                     </h3>
                     {selectedRole.is_admin && (
@@ -566,7 +558,7 @@ export const RolesListPage: React.FC = () => {
                       </span>
                     )}
                   </div>
-                  <p className="break-words text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  <p className="wrap-break-word text-xs text-slate-500 dark:text-slate-400 mt-1">
                     {selectedRole.description || t('roles.no_desc')}
                   </p>
                 </div>
@@ -587,7 +579,7 @@ export const RolesListPage: React.FC = () => {
                       type="button"
                       onClick={handleSavePermissions}
                       disabled={isSaving}
-                      className="inline-flex min-h-11 items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow-md shadow-indigo-600/20 transition hover:bg-indigo-700 disabled:opacity-50 lg:min-h-0 lg:px-3.5"
+                      className="inline-flex min-h-11 items-center gap-1.5 rounded-xl bg-tlu-navy hover:bg-tlu-navy-light dark:bg-tlu-blue dark:hover:bg-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-md shadow-blue-900/20 transition disabled:opacity-50 lg:min-h-0 lg:px-3.5"
                     >
                       {isUpdatingPermissions ? (
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -608,7 +600,7 @@ export const RolesListPage: React.FC = () => {
                   <h4 className="font-bold text-base text-slate-900 dark:text-slate-100">
                     {t('roles.role_admin_title')}
                   </h4>
-                  <p className="break-words text-xs text-slate-500 dark:text-slate-400 max-w-md leading-relaxed">
+                  <p className="wrap-break-word text-xs text-slate-500 dark:text-slate-400 max-w-md leading-relaxed">
                     {t('roles.role_admin_desc')}
                   </p>
                 </div>
@@ -620,7 +612,7 @@ export const RolesListPage: React.FC = () => {
                   <h4 className="font-bold text-base text-slate-900 dark:text-slate-100">
                     {t('roles.role_banned_title')}
                   </h4>
-                  <p className="break-words text-xs text-slate-500 dark:text-slate-400 max-w-md leading-relaxed">
+                  <p className="wrap-break-word text-xs text-slate-500 dark:text-slate-400 max-w-md leading-relaxed">
                     {t('roles.role_banned_desc')}
                   </p>
                 </div>
@@ -631,7 +623,7 @@ export const RolesListPage: React.FC = () => {
                       <span className="font-bold text-xs uppercase tracking-wider text-slate-700 dark:text-slate-300">
                         {t('roles.permissions_count', { count: permissions.length })}
                       </span>
-                      <span className="px-2 py-0.5 rounded-full text-[11px] font-mono bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 font-semibold">
+                      <span className="px-2 py-0.5 rounded-full text-[11px] font-mono bg-blue-100 dark:bg-blue-950/60 text-tlu-navy dark:text-blue-300 font-semibold">
                         {t('roles.assigned_count', { count: assignments.length })}
                       </span>
                     </div>
@@ -644,7 +636,7 @@ export const RolesListPage: React.FC = () => {
                           value={permSearch}
                           onChange={(e) => setPermSearch(e.target.value)}
                           placeholder={t('roles.search_permissions')}
-                          className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-10 text-base text-slate-900 focus:outline-hidden focus:ring-1 focus:ring-indigo-500 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 lg:h-9 lg:pl-8 lg:pr-7 lg:text-xs"
+                          className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-10 text-base text-slate-900 focus:outline-hidden focus:ring-1 focus:ring-tlu-blue dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 lg:h-9 lg:pl-8 lg:pr-7 lg:text-xs"
                         />
                         {permSearch && (
                           <button
@@ -738,7 +730,7 @@ export const RolesListPage: React.FC = () => {
                                       isExpanded ? 'rotate-0' : '-rotate-90'
                                     }`}
                                   />
-                                  <IconComponent className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                                  <IconComponent className="w-4 h-4 text-tlu-blue dark:text-blue-400 shrink-0" />
                                   <span className="font-semibold text-xs uppercase tracking-wide text-slate-700 dark:text-slate-300 group-hover:text-slate-900 dark:group-hover:text-slate-100 truncate">
                                     {t(category.nameKey)}
                                   </span>
@@ -747,7 +739,7 @@ export const RolesListPage: React.FC = () => {
                                   <span
                                     className={`text-[11px] font-mono px-2 py-0.5 rounded-full font-semibold ${
                                       assignedCount > 0
-                                        ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950/80 dark:text-indigo-300'
+                                        ? 'bg-blue-100 text-tlu-navy dark:bg-blue-950/80 dark:text-blue-300'
                                         : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
                                     }`}
                                   >
@@ -772,12 +764,12 @@ export const RolesListPage: React.FC = () => {
                                             type="checkbox"
                                             checked={assigned}
                                             onChange={() => handleTogglePermission(perm.key)}
-                                            className="w-5 h-5 rounded text-indigo-600 border-slate-300 dark:border-slate-700 mt-0.5 shrink-0 lg:h-4 lg:w-4"
+                                            className="w-5 h-5 rounded text-tlu-blue border-slate-300 dark:border-slate-700 mt-0.5 shrink-0 lg:h-4 lg:w-4"
                                           />
                                           <div className="min-w-0 flex-1">
                                             <div className="flex items-baseline gap-2 flex-wrap">
                                               <span
-                                                className={`text-xs leading-snug break-words ${
+                                                className={`text-xs leading-snug wrap-break-word ${
                                                   assigned
                                                     ? 'font-bold text-slate-900 dark:text-slate-100'
                                                     : 'font-medium text-slate-700 dark:text-slate-300'
@@ -855,11 +847,11 @@ export const RolesListPage: React.FC = () => {
       </div>
 
       {hasChanges && canModify && (
-        <div className="fixed inset-x-4 bottom-4 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border border-indigo-500/40 shadow-2xl rounded-2xl p-3 flex items-center justify-between gap-3 animate-in slide-in-from-bottom duration-200 lg:hidden">
+        <div className="fixed inset-x-4 bottom-4 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border border-tlu-blue/40 shadow-2xl rounded-2xl p-3 flex items-center justify-between gap-3 animate-in slide-in-from-bottom duration-200 lg:hidden">
           <div className="flex items-center gap-2 min-w-0">
             <span className="relative flex h-2.5 w-2.5 shrink-0">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-500 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-indigo-600"></span>
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-tlu-blue opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-tlu-blue"></span>
             </span>
             <span className="text-xs font-semibold truncate text-slate-900 dark:text-slate-100">
               {t('roles.unsaved_changes')}
@@ -869,7 +861,7 @@ export const RolesListPage: React.FC = () => {
             type="button"
             onClick={handleSavePermissions}
             disabled={isSaving}
-            className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-1.5 text-xs font-semibold text-white shadow-md shadow-indigo-600/20 transition hover:bg-indigo-700 disabled:opacity-50"
+            className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-xl bg-tlu-blue px-4 py-1.5 text-xs font-semibold text-white shadow-md shadow-blue-900/20 transition hover:bg-tlu-navy-light dark:hover:bg-blue-600 disabled:opacity-50"
           >
             {isUpdatingPermissions ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -937,7 +929,7 @@ export const RolesListPage: React.FC = () => {
               id="role_auto_assign"
               checked={form.auto_assign}
               onChange={(e) => setForm({ ...form, auto_assign: e.target.checked })}
-              className="w-5 h-5 rounded text-indigo-600 border-slate-300 dark:border-slate-700 mt-0.5 lg:h-4 lg:w-4"
+              className="w-5 h-5 rounded text-tlu-blue border-slate-300 dark:border-slate-700 mt-0.5 lg:h-4 lg:w-4"
             />
             <label htmlFor="role_auto_assign" className="text-xs cursor-pointer select-none">
               <span className="font-semibold text-slate-800 dark:text-slate-200 block">
@@ -960,7 +952,7 @@ export const RolesListPage: React.FC = () => {
             <button
               type="submit"
               disabled={isSaving}
-              className="min-h-11 flex-1 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow-md shadow-indigo-600/20 transition hover:bg-indigo-700 disabled:opacity-50 sm:flex-none lg:min-h-0"
+              className="min-h-11 flex-1 rounded-xl bg-tlu-navy hover:bg-tlu-navy-light dark:bg-tlu-blue dark:hover:bg-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-md shadow-blue-900/20 transition disabled:opacity-50 sm:flex-none lg:min-h-0"
             >
               {isSaving ? (
                 <Loader2 className="w-4 h-4 animate-spin mx-auto" />
@@ -974,51 +966,26 @@ export const RolesListPage: React.FC = () => {
         </form>
       </Modal>
 
-      {roleToDelete && (
-        <Modal
-          isOpen={Boolean(roleToDelete)}
-          onClose={() => setRoleToDelete(null)}
-          title={t('roles.delete_role_title')}
-        >
-          <div className="space-y-4">
-            <div className="flex items-start gap-3">
-              <div className="p-2 rounded-xl bg-rose-100 text-rose-600 dark:bg-rose-950/60 dark:text-rose-400 shrink-0">
-                <AlertCircle className="w-5 h-5" />
-              </div>
-              <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed pt-0.5 break-words">
-                {t('roles.delete_role_confirm', { name: roleToDelete.name })}
-              </p>
-            </div>
-
-            <div className="flex justify-end gap-2 pt-4 border-t border-slate-100 dark:border-slate-800">
-              <button
-                type="button"
-                onClick={() => setRoleToDelete(null)}
-                className="min-h-11 flex-1 rounded-xl px-4 py-2 text-xs font-medium text-slate-600 transition hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 sm:flex-none lg:min-h-0"
-              >
-                {t('common.cancel')}
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmDelete}
-                disabled={isDeletingRole}
-                className="min-h-11 flex-1 rounded-xl bg-rose-600 px-4 py-2 text-xs font-semibold text-white shadow-md shadow-rose-600/20 transition hover:bg-rose-700 disabled:opacity-50 sm:flex-none lg:min-h-0"
-              >
-                {isDeletingRole ? (
-                  <Loader2 className="w-4 h-4 animate-spin mx-auto" />
-                ) : (
-                  t('common.delete')
-                )}
-              </button>
-            </div>
-          </div>
-        </Modal>
-      )}
+      <ConfirmModal
+        isOpen={Boolean(roleToDelete)}
+        onClose={() => setRoleToDelete(null)}
+        onConfirm={handleConfirmDelete}
+        title={t('roles.delete_role_title')}
+        message={
+          roleToDelete
+            ? t('roles.delete_role_confirm', { name: roleToDelete.name })
+            : ''
+        }
+        variant="danger"
+        confirmText={t('common.delete')}
+        cancelText={t('common.cancel')}
+        isLoading={isDeletingRole}
+      />
 
       {toastMessage && (
         <div className="fixed inset-x-4 bottom-24 z-50 flex items-center gap-2 rounded-xl bg-slate-900 text-white dark:bg-white dark:text-slate-900 px-4 py-3 shadow-lg text-xs font-medium border border-slate-700 dark:border-slate-200 animate-in fade-in slide-in-from-bottom-2 duration-200 sm:inset-x-auto sm:right-5 sm:max-w-sm lg:bottom-5">
           <CheckCircle2 className="w-4 h-4 text-emerald-400 dark:text-emerald-600 shrink-0" />
-          <span className="break-words">{toastMessage}</span>
+          <span className="wrap-break-word">{toastMessage}</span>
         </div>
       )}
     </div>

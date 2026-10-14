@@ -31,7 +31,7 @@ func TestHandleError_MasksUnknownErrors(t *testing.T) {
 		t.Fatalf("Expected 500 for unknown error, got %d", rec.Code)
 	}
 	resp := decodeErrorResponse(t, rec)
-	if resp.Message != "Internal server error" {
+	if resp.Message != "Đã xảy ra lỗi hệ thống. Vui lòng thử lại sau." {
 		t.Fatalf("Expected masked message, got %q", resp.Message)
 	}
 	if strings.Contains(rec.Body.String(), "secret_internal_column") {
@@ -60,7 +60,7 @@ func TestHandleError_RawNoRowsMapsToNotFound(t *testing.T) {
 		t.Fatalf("Expected 404 for sql.ErrNoRows, got %d", rec.Code)
 	}
 	resp := decodeErrorResponse(t, rec)
-	if resp.Message != "Not found" {
+	if resp.Message != "Không tìm thấy dữ liệu" {
 		t.Fatalf("Expected generic not found message, got %q", resp.Message)
 	}
 }

@@ -30,7 +30,7 @@ func newTestEmbeddingService(t *testing.T) (services.EmbeddingService, string) {
 	}
 	settingsRepo := repositories.NewSettingsRepository(db, cache.NewRamCache())
 	rootDir := t.TempDir()
-	return services.NewEmbeddingService(settingsRepo, rootDir), rootDir
+	return services.NewEmbeddingService(settingsRepo, rootDir, nil), rootDir
 }
 
 func writeTestModel(t *testing.T, rootDir string, modelID string, manifest embedding.Manifest, validateOK bool) {
@@ -85,8 +85,8 @@ func TestEmbeddingService_DefaultSettings(t *testing.T) {
 	if settings.Provider != "onnx" {
 		t.Fatalf("expected default provider onnx, got %s", settings.Provider)
 	}
-	if settings.ActiveOnnxModelID == nil || *settings.ActiveOnnxModelID != "paraphrase-multilingual-minilm-l12-v2" {
-		t.Fatalf("expected default model id paraphrase-multilingual-minilm-l12-v2, got %v", settings.ActiveOnnxModelID)
+	if settings.ActiveOnnxModelID == nil || *settings.ActiveOnnxModelID != "bge-m3" {
+		t.Fatalf("expected default model id bge-m3, got %v", settings.ActiveOnnxModelID)
 	}
 	if settings.Runtime.OS == "" || settings.Runtime.Arch == "" {
 		t.Fatalf("runtime info must be populated: %+v", settings.Runtime)

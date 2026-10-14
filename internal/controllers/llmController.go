@@ -5,7 +5,6 @@ import (
 
 	"tluagent-web/internal/dtos/request"
 	"tluagent-web/internal/dtos/response"
-	"tluagent-web/internal/middlewares"
 	"tluagent-web/internal/services"
 	"tluagent-web/pkg/apperrors"
 	"tluagent-web/pkg/validator"
@@ -318,7 +317,7 @@ func (c *LLMController) GetActiveChatModels(w http.ResponseWriter, r *http.Reque
 }
 
 func isAuthenticatedCaller(r *http.Request) bool {
-	claims := middlewares.GetUserClaims(r.Context())
+	claims := getUserClaims(r)
 	return claims != nil && claims.UId != "" && claims.UId != "0"
 }
 
@@ -568,3 +567,47 @@ func (c *LLMController) TestModel(w http.ResponseWriter, r *http.Request) {
 		Data:   res,
 	})
 }
+
+// GetVisionSettings retrieves current vision strategy and fallback model.
+func (c *LLMController) GetVisionSettings(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := requestContext(r, defaultRequestTimeout)
+	defer cancel()
+
+	settings, err := c.svc.GetVisionSettings(ctx)
+	if err != nil {
+		apperrors.HandleError(w, err)
+		return
+	}
+
+	writeJSONResponse(w, http.StatusOK, response.CommonResponse{
+		Status: true,
+		Data:   settings,
+	})
+}
+
+// UpdateVisionSettings updates vision strategy and fallback model.
+func (c *LLMController) UpdateVisionSettings(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := requestContext(r, defaultRequestTimeout)
+	defer cancel()
+
+	var dto request.UpdateVisionSettingsRequest
+	if err := validator.ValidateBodyDto(r, &dto); err != nil {
+		writeJSONResponse(w, http.StatusBadRequest, response.CommonResponse{
+			Status: false,
+			Errors: err,
+		})
+		return
+	}
+
+	res, err := c.svc.UpdateVisionSettings(ctx, dto)
+	if err != nil {
+		apperrors.HandleError(w, err)
+		return
+	}
+
+	writeJSONResponse(w, http.StatusOK, response.CommonResponse{
+		Status: true,
+		Data:   res,
+	})
+}
+

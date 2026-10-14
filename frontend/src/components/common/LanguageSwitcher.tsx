@@ -54,12 +54,12 @@ export const LanguageSwitcher: React.FC<{ className?: string }> = ({ className =
         title={t('common.language')}
         aria-label={t('common.language')}
       >
-        <Globe className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+        <Globe className="w-4 h-4 text-tlu-navy dark:text-tlu-blue" />
         <span className="uppercase">{language}</span>
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 mt-1.5 w-36 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-lg py-1.5 z-50 animate-in fade-in zoom-in-95 duration-100">
+        <div className="absolute right-0 mt-1.5 w-36 bg-white dark:bg-[#111A35] border border-slate-200 dark:border-blue-900/40 rounded-xl shadow-lg py-1.5 z-50 animate-in fade-in zoom-in-95 duration-100">
           {LANGUAGES.map((lang) => {
             const isSelected = language === lang.code;
             return (
@@ -69,8 +69,8 @@ export const LanguageSwitcher: React.FC<{ className?: string }> = ({ className =
                 onClick={() => handleSelectLanguage(lang.code)}
                 className={`flex min-h-11 w-full items-center justify-between px-3 py-2 text-left text-xs transition ${
                   isSelected
-                    ? 'font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50/60 dark:bg-indigo-950/40'
-                    : 'text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+                    ? 'font-bold text-tlu-navy dark:text-blue-400 bg-blue-50/70 dark:bg-blue-950/40'
+                    : 'text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-blue-950/20'
                 }`}
               >
                 <span className="flex items-center gap-2">

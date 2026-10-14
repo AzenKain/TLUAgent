@@ -10,7 +10,6 @@ import (
 	"time"
 )
 
-// ChainType defines the workload classification for an execution chain.
 type ChainType string
 
 const (
@@ -19,7 +18,6 @@ const (
 	ChainTypeEmbedding ChainType = "embedding"
 )
 
-// ChainNode represents an individual provider and model step within an execution chain.
 type ChainNode struct {
 	ID           string
 	Name         string
@@ -33,7 +31,6 @@ type ChainNode struct {
 	Embedder     Embedder
 }
 
-// LLMChain encapsulates an ordered fallback pipeline with circuit breaker isolation.
 type LLMChain struct {
 	mu               sync.RWMutex
 	ID               string

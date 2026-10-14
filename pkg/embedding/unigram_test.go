@@ -12,7 +12,7 @@ import (
 func TestUnigramTokenizer_Accuracy(t *testing.T) {
 	tokPath := filepath.Join("..", "..", "..", "scratch", "onnx", "tokenizer.json")
 	if _, err := os.Stat(tokPath); err != nil {
-		tokPath = filepath.Join("..", "..", "data", "onnx", "paraphrase-multilingual-minilm-l12-v2", "tokenizer.json")
+		tokPath = filepath.Join("..", "..", "data", "onnx", "bge-m3", "tokenizer.json")
 		if _, err := os.Stat(tokPath); err != nil {
 			t.Skipf("Skipping TestUnigramTokenizer_Accuracy: %s not found", tokPath)
 		}

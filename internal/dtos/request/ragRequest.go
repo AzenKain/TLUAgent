@@ -3,27 +3,27 @@ package request
 // RAGSearchRequest encapsulates HTTP request parameters for hybrid search.
 type RAGSearchRequest struct {
 	Query         string  `json:"query" validate:"required,min=1,max=4000"`
-	StudentCohort string  `json:"student_cohort,omitempty"`
-	Domain        string  `json:"domain,omitempty"`
+	StudentCohort string  `json:"student_cohort,omitempty" validate:"omitempty,max=50"`
+	Domain        string  `json:"domain,omitempty" validate:"omitempty,max=100"`
 	TopK          int     `json:"top_k,omitempty" validate:"omitempty,min=1,max=50"`
-	MinScore      float32 `json:"min_score,omitempty"`
+	MinScore      float32 `json:"min_score,omitempty" validate:"omitempty,gte=0,lte=1"`
 }
 
 // UpdateDocumentStatusRequest encapsulates input for document status modifications.
 type UpdateDocumentStatusRequest struct {
 	Status         string `json:"status" validate:"required,oneof=ACTIVE SUPERSEDED DEPRECATED ARCHIVED"`
-	SupersededByID string `json:"superseded_by_id,omitempty"`
-	Reason         string `json:"reason,omitempty"`
+	SupersededByID string `json:"superseded_by_id,omitempty" validate:"omitempty,max=128"`
+	Reason         string `json:"reason,omitempty" validate:"omitempty,max=1000"`
 }
 
 // KGEdgeRequest encapsulates input for creating or updating a knowledge graph relationship.
 type KGEdgeRequest struct {
-	ID           string  `json:"id,omitempty"`
-	SourceNodeID string  `json:"source_node_id" validate:"required"`
-	TargetNodeID string  `json:"target_node_id" validate:"required"`
-	RelationType string  `json:"relation_type" validate:"required"`
-	Weight       float64 `json:"weight,omitempty"`
-	Status       string  `json:"status,omitempty"`
+	ID           string  `json:"id,omitempty" validate:"omitempty,max=128"`
+	SourceNodeID string  `json:"source_node_id" validate:"required,max=256"`
+	TargetNodeID string  `json:"target_node_id" validate:"required,max=256"`
+	RelationType string  `json:"relation_type" validate:"required,max=100"`
+	Weight       float64 `json:"weight,omitempty" validate:"omitempty,gte=0,lte=100"`
+	Status       string  `json:"status,omitempty" validate:"omitempty,max=50"`
 }
 
 // ListDocumentsDto encapsulates query parameters for document filtering.

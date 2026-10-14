@@ -127,6 +127,9 @@ func isServerURL(value string) bool {
 }
 
 func isImageURL(value string) bool {
+	if strings.HasPrefix(value, "data:image/") {
+		return true
+	}
 	if strings.HasPrefix(value, "/public/") {
 		switch strings.ToLower(path.Ext(value)) {
 		case ".jpg", ".jpeg", ".png", ".gif", ".webp":

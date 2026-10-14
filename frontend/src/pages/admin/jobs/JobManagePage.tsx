@@ -2,14 +2,17 @@ import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  RefreshCw,
   Play,
   Plus,
   Trash2,
   Eye,
+  Pencil,
   Sliders,
   Calendar,
   Layers,
+  Activity,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import {
   jobService,
@@ -20,6 +23,17 @@ import {
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { Badge } from '@/components/common/Badge';
 import { Modal } from '@/components/common/Modal';
+import { ConfirmModal } from '@/components/common/ConfirmModal';
+import { PageHeader } from '@/components/common/PageHeader';
+import { RefreshButton } from '@/components/common/RefreshButton';
+
+const isCrawlerType = (type: string): boolean => type === 'crawl_notices' || type === 'crawl_news';
+
+const getProgressPercent = (job: JobDTO): number => {
+  if (job.status?.toUpperCase() === 'COMPLETED') return 100;
+  if (!job.total || job.total <= 0) return 0;
+  return Math.min(100, Math.max(0, Math.round((job.progress / job.total) * 100)));
+};
 
 export const JobManagePage: React.FC = () => {
   const { t } = useTranslation();
@@ -33,9 +47,13 @@ export const JobManagePage: React.FC = () => {
 
   const [inspectModalOpen, setInspectModalOpen] = useState(false);
   const [selectedJob, setSelectedJob] = useState<JobDTO | null>(null);
+  const [deletingScheduleId, setDeletingScheduleId] = useState<string | null>(null);
 
   const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
   const [editingSchedule, setEditingSchedule] = useState<JobScheduleDTO | null>(null);
+  const [scheduleMaxTimeDays, setScheduleMaxTimeDays] = useState(7);
+  const [scheduleMaxPages, setScheduleMaxPages] = useState(5);
+  const [scheduleShowAdvanced, setScheduleShowAdvanced] = useState(false);
   const [scheduleForm, setScheduleForm] = useState<UpsertJobScheduleDTO>({
     name: '',
     job_type: 'crawl_notices',
@@ -48,13 +66,15 @@ export const JobManagePage: React.FC = () => {
   const [triggerModalOpen, setTriggerModalOpen] = useState(false);
   const [triggerType, setTriggerType] = useState('crawl_notices');
   const [triggerPayload, setTriggerPayload] = useState('{}');
+  const [triggerMaxTimeDays, setTriggerMaxTimeDays] = useState(7);
+  const [triggerMaxPages, setTriggerMaxPages] = useState(5);
+  const [triggerShowAdvanced, setTriggerShowAdvanced] = useState(false);
 
   const availableJobTypes = [
     { value: 'crawl_notices', labelKey: 'jobs.type_crawl_notices' },
     { value: 'crawl_news', labelKey: 'jobs.type_crawl_news' },
     { value: 'crawl_static_pages', labelKey: 'jobs.type_crawl_static_pages' },
-    { value: 'pipeline_clean_docs', labelKey: 'jobs.type_pipeline_clean_docs' },
-    { value: 'vectorize_knowledge', labelKey: 'jobs.type_vectorize_knowledge' },
+    { value: 'clean_corpus', labelKey: 'jobs.type_clean_corpus' },
     { value: 'supersede_check', labelKey: 'jobs.type_supersede_check' },
   ];
 
@@ -158,12 +178,17 @@ export const JobManagePage: React.FC = () => {
 
   const handleOpenCreateSchedule = () => {
     setEditingSchedule(null);
+    const defaultType = 'crawl_notices';
+    const defaultPayload = JSON.stringify({ max_time_days: 7, max_pages: 5 }, null, 2);
+    setScheduleMaxTimeDays(7);
+    setScheduleMaxPages(5);
+    setScheduleShowAdvanced(false);
     setScheduleForm({
       name: '',
-      job_type: 'crawl_notices',
+      job_type: defaultType,
       cron_expr: '',
       interval_sec: 3600,
-      payload_json: '{}',
+      payload_json: defaultPayload,
       is_active: true,
     });
     setScheduleModalOpen(true);
@@ -171,9 +196,26 @@ export const JobManagePage: React.FC = () => {
 
   const handleOpenEditSchedule = (s: JobScheduleDTO) => {
     setEditingSchedule(s);
+    const targetType = s.task_type || s.job_type;
+    let parsedDays = targetType === 'crawl_news' ? 14 : 7;
+    let parsedPages = 5;
+    if (s.payload_json) {
+      try {
+        const p = JSON.parse(s.payload_json);
+        if (typeof p.max_time_days === 'number') parsedDays = p.max_time_days;
+        else if (typeof p.max_time === 'number') parsedDays = p.max_time;
+        if (typeof p.max_pages === 'number') parsedPages = p.max_pages;
+        else if (typeof p.limit === 'number') parsedPages = p.limit;
+      } catch {
+        // ignore
+      }
+    }
+    setScheduleMaxTimeDays(parsedDays);
+    setScheduleMaxPages(parsedPages);
+    setScheduleShowAdvanced(false);
     setScheduleForm({
       name: s.name,
-      job_type: s.task_type || s.job_type,
+      job_type: targetType,
       cron_expr: s.cron_expr || '',
       interval_sec: s.interval_sec || (s.interval_minutes ? s.interval_minutes * 60 : 3600),
       payload_json: s.payload_json || '{}',
@@ -182,8 +224,87 @@ export const JobManagePage: React.FC = () => {
     setScheduleModalOpen(true);
   };
 
+  const handleScheduleTypeChange = (type: string) => {
+    let newPayload = scheduleForm.payload_json;
+    if (isCrawlerType(type)) {
+      const days = type === 'crawl_news' ? 14 : 7;
+      setScheduleMaxTimeDays(days);
+      setScheduleMaxPages(5);
+      newPayload = JSON.stringify({ max_time_days: days, max_pages: 5 }, null, 2);
+    }
+    setScheduleForm({ ...scheduleForm, job_type: type, payload_json: newPayload });
+  };
+
+  const handleScheduleScopeChange = (days: number, pages: number) => {
+    setScheduleMaxTimeDays(days);
+    setScheduleMaxPages(pages);
+    const newPayload = JSON.stringify({ max_time_days: days, max_pages: pages }, null, 2);
+    setScheduleForm({ ...scheduleForm, payload_json: newPayload });
+  };
+
+  const handleSchedulePayloadTextChange = (val: string) => {
+    setScheduleForm({ ...scheduleForm, payload_json: val });
+    try {
+      const parsed = JSON.parse(val);
+      if (typeof parsed.max_time_days === 'number') setScheduleMaxTimeDays(parsed.max_time_days);
+      else if (typeof parsed.max_time === 'number') setScheduleMaxTimeDays(parsed.max_time);
+      if (typeof parsed.max_pages === 'number') setScheduleMaxPages(parsed.max_pages);
+      else if (typeof parsed.limit === 'number') setScheduleMaxPages(parsed.limit);
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleOpenTrigger = (type: string = 'crawl_notices') => {
+    setTriggerType(type);
+    if (isCrawlerType(type)) {
+      const days = type === 'crawl_news' ? 14 : 7;
+      setTriggerMaxTimeDays(days);
+      setTriggerMaxPages(5);
+      setTriggerPayload(JSON.stringify({ max_time_days: days, max_pages: 5 }, null, 2));
+    } else {
+      setTriggerMaxTimeDays(0);
+      setTriggerMaxPages(0);
+      setTriggerPayload('{}');
+    }
+    setTriggerShowAdvanced(false);
+    setTriggerModalOpen(true);
+  };
+
+  const handleTriggerTypeChange = (type: string) => {
+    setTriggerType(type);
+    if (isCrawlerType(type)) {
+      const days = type === 'crawl_news' ? 14 : 7;
+      setTriggerMaxTimeDays(days);
+      setTriggerMaxPages(5);
+      setTriggerPayload(JSON.stringify({ max_time_days: days, max_pages: 5 }, null, 2));
+    } else {
+      setTriggerPayload('{}');
+    }
+  };
+
+  const handleTriggerScopeChange = (days: number, pages: number) => {
+    setTriggerMaxTimeDays(days);
+    setTriggerMaxPages(pages);
+    const newPayload = JSON.stringify({ max_time_days: days, max_pages: pages }, null, 2);
+    setTriggerPayload(newPayload);
+  };
+
+  const handleTriggerPayloadTextChange = (val: string) => {
+    setTriggerPayload(val);
+    try {
+      const parsed = JSON.parse(val);
+      if (typeof parsed.max_time_days === 'number') setTriggerMaxTimeDays(parsed.max_time_days);
+      else if (typeof parsed.max_time === 'number') setTriggerMaxTimeDays(parsed.max_time);
+      if (typeof parsed.max_pages === 'number') setTriggerMaxPages(parsed.max_pages);
+      else if (typeof parsed.limit === 'number') setTriggerMaxPages(parsed.limit);
+    } catch {
+      // ignore
+    }
+  };
+
   const getStatusBadge = (status: string) => {
-    switch (status) {
+    switch (status?.toUpperCase()) {
       case 'COMPLETED':
         return <Badge variant="success">{t('jobs.status_completed')}</Badge>;
       case 'RUNNING':
@@ -198,7 +319,7 @@ export const JobManagePage: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-7xl mx-auto pb-10">
       {toastMessage && (
         <div
           className={`fixed bottom-6 right-6 z-50 rounded-xl px-5 py-3 shadow-xl backdrop-blur-md transition-all ${
@@ -211,38 +332,36 @@ export const JobManagePage: React.FC = () => {
         </div>
       )}
 
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-100">{t('jobs.title')}</h1>
-          <p className="mt-1 text-sm text-slate-400">{t('jobs.sub')}</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => {
-              if (activeTab === 'jobs') refetchJobs();
-              if (activeTab === 'schedules') refetchSchedules();
-            }}
-            className="flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-800/80 px-4 py-2.5 text-sm font-medium text-slate-300 transition-colors hover:bg-slate-700/80 hover:text-white"
-          >
-            <RefreshCw className="h-4 w-4" />
-            <span>{t('common.loading')}</span>
-          </button>
-          <button
-            onClick={() => setTriggerModalOpen(true)}
-            className="flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-indigo-600/20 transition-all hover:bg-indigo-500"
-          >
-            <Play className="h-4 w-4" />
-            <span>{t('jobs.trigger_task')}</span>
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        icon={<Activity className="h-6 w-6" />}
+        title={t('jobs.title')}
+        subtitle={t('jobs.sub')}
+        actions={
+          <div className="flex items-center gap-2">
+            <RefreshButton
+              onClick={() => {
+                if (activeTab === 'jobs') void refetchJobs();
+                if (activeTab === 'schedules') void refetchSchedules();
+              }}
+              isLoading={isJobsLoading || isSchedulesLoading}
+            />
+            <button
+              onClick={() => handleOpenTrigger('crawl_notices')}
+              className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-tlu-navy px-4 py-2 text-xs sm:text-sm font-semibold text-white shadow-xs hover:bg-tlu-navy-light dark:bg-tlu-blue dark:hover:bg-blue-600 transition cursor-pointer"
+            >
+              <Play className="h-4 w-4" />
+              <span>{t('jobs.trigger_task')}</span>
+            </button>
+          </div>
+        }
+      />
 
       <div className="flex border-b border-slate-800">
         <button
           onClick={() => setActiveTab('jobs')}
           className={`flex items-center gap-2 border-b-2 px-5 py-3 text-sm font-medium transition-colors ${
             activeTab === 'jobs'
-              ? 'border-indigo-500 text-indigo-400'
+              ? 'border-tlu-navy text-tlu-navy dark:border-tlu-blue dark:text-blue-400'
               : 'border-transparent text-slate-400 hover:text-slate-200'
           }`}
         >
@@ -253,7 +372,7 @@ export const JobManagePage: React.FC = () => {
           onClick={() => setActiveTab('schedules')}
           className={`flex items-center gap-2 border-b-2 px-5 py-3 text-sm font-medium transition-colors ${
             activeTab === 'schedules'
-              ? 'border-indigo-500 text-indigo-400'
+              ? 'border-tlu-navy text-tlu-navy dark:border-tlu-blue dark:text-blue-400'
               : 'border-transparent text-slate-400 hover:text-slate-200'
           }`}
         >
@@ -264,7 +383,7 @@ export const JobManagePage: React.FC = () => {
           onClick={() => setActiveTab('tasks')}
           className={`flex items-center gap-2 border-b-2 px-5 py-3 text-sm font-medium transition-colors ${
             activeTab === 'tasks'
-              ? 'border-indigo-500 text-indigo-400'
+              ? 'border-tlu-navy text-tlu-navy dark:border-tlu-blue dark:text-blue-400'
               : 'border-transparent text-slate-400 hover:text-slate-200'
           }`}
         >
@@ -282,7 +401,7 @@ export const JobManagePage: React.FC = () => {
                 setStatusFilter(e.target.value);
                 setPage(1);
               }}
-              className="rounded-xl border border-slate-700 bg-slate-800/80 px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="rounded-xl border border-slate-700 bg-slate-800/80 px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-tlu-blue"
             >
               <option value="">{t('jobs.all_statuses')}</option>
               <option value="PENDING">{t('jobs.status_pending')}</option>
@@ -297,7 +416,7 @@ export const JobManagePage: React.FC = () => {
                 setTypeFilter(e.target.value);
                 setPage(1);
               }}
-              className="rounded-xl border border-slate-700 bg-slate-800/80 px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="rounded-xl border border-slate-700 bg-slate-800/80 px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-tlu-blue"
             >
               <option value="">{t('jobs.all_types')}</option>
               {availableJobTypes.map((opt) => (
@@ -308,7 +427,7 @@ export const JobManagePage: React.FC = () => {
             </select>
           </div>
 
-          <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/60 shadow-xl backdrop-blur-sm">
+          <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/60 shadow-xl backdrop-blur-sm dark:border-blue-900/30 dark:bg-[#111A35]">
             {isJobsLoading ? (
               <div className="flex h-64 items-center justify-center">
                 <LoadingSpinner size="lg" />
@@ -334,18 +453,25 @@ export const JobManagePage: React.FC = () => {
                   <tbody className="divide-y divide-slate-800/60">
                     {jobsData.items.map((job) => (
                       <tr key={job.id} className="transition-colors hover:bg-slate-800/30">
-                        <td className="px-6 py-4 font-mono text-xs text-indigo-400">{job.id}</td>
+                        <td className="px-6 py-4 font-mono text-xs text-tlu-blue dark:text-blue-400">{job.id}</td>
                         <td className="px-6 py-4 font-medium text-slate-200">{getJobTypeLabel(job.type)}</td>
                         <td className="px-6 py-4">{getStatusBadge(job.status)}</td>
                         <td className="px-6 py-4">
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2.5">
                             <div className="h-2 w-24 overflow-hidden rounded-full bg-slate-800">
                               <div
-                                className="h-full bg-indigo-500 transition-all duration-300"
-                                style={{ width: `${Math.min(100, Math.max(0, job.progress))}%` }}
+                                className="h-full bg-tlu-blue transition-all duration-300"
+                                style={{ width: `${getProgressPercent(job)}%` }}
                               />
                             </div>
-                            <span className="text-xs text-slate-400">{job.progress}%</span>
+                            <div className="flex items-baseline gap-1.5">
+                              <span className="text-xs font-medium text-slate-300">{getProgressPercent(job)}%</span>
+                              {job.total !== undefined && job.total > 0 && (
+                                <span className="text-[11px] text-slate-500 font-mono">
+                                  ({job.progress}/{job.total})
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </td>
                         <td className="px-6 py-4 text-xs text-slate-400">
@@ -360,7 +486,7 @@ export const JobManagePage: React.FC = () => {
                             className="inline-flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-800/60 px-2.5 py-1.5 text-xs font-medium text-slate-300 transition-colors hover:bg-slate-700 hover:text-white"
                           >
                             <Eye className="h-3.5 w-3.5" />
-                            <span>{t('common.edit')}</span>
+                            <span>{t('common.view')}</span>
                           </button>
                         </td>
                       </tr>
@@ -378,14 +504,14 @@ export const JobManagePage: React.FC = () => {
           <div className="flex justify-end">
             <button
               onClick={handleOpenCreateSchedule}
-              className="flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-indigo-600/20 transition-all hover:bg-indigo-500"
+              className="flex items-center gap-2 rounded-xl bg-tlu-navy px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-blue-900/20 transition-all hover:bg-tlu-navy-light dark:bg-tlu-blue dark:hover:bg-blue-600"
             >
               <Plus className="h-4 w-4" />
               <span>{t('jobs.create_schedule')}</span>
             </button>
           </div>
 
-          <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/60 shadow-xl backdrop-blur-sm">
+          <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/60 shadow-xl backdrop-blur-sm dark:border-blue-900/30 dark:bg-[#111A35]">
             {isSchedulesLoading ? (
               <div className="flex h-64 items-center justify-center">
                 <LoadingSpinner size="lg" />
@@ -413,7 +539,7 @@ export const JobManagePage: React.FC = () => {
                     {schedulesData.map((s) => (
                       <tr key={s.id} className="transition-colors hover:bg-slate-800/30">
                         <td className="px-6 py-4 font-medium text-slate-200">{s.name}</td>
-                        <td className="px-6 py-4 font-mono text-xs text-indigo-400">
+                        <td className="px-6 py-4 font-mono text-xs text-tlu-blue dark:text-blue-400">
                           {getJobTypeLabel(s.task_type || s.job_type)}
                         </td>
                         <td className="px-6 py-4 text-xs text-slate-300">
@@ -436,7 +562,7 @@ export const JobManagePage: React.FC = () => {
                           <div className="flex items-center justify-end gap-2">
                             <button
                               onClick={() => runScheduleNowMutation.mutate(s.id)}
-                              className="inline-flex items-center gap-1 rounded-lg border border-indigo-700/60 bg-indigo-900/30 px-2.5 py-1.5 text-xs font-medium text-indigo-300 transition-colors hover:bg-indigo-800/50 hover:text-white"
+                              className="inline-flex items-center gap-1 rounded-lg border border-blue-700/60 bg-blue-900/30 px-2.5 py-1.5 text-xs font-medium text-blue-300 transition-colors hover:bg-blue-800/50 hover:text-white"
                             >
                               <Play className="h-3.5 w-3.5" />
                               <span>{t('jobs.run_now')}</span>
@@ -445,15 +571,11 @@ export const JobManagePage: React.FC = () => {
                               onClick={() => handleOpenEditSchedule(s)}
                               className="inline-flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-800/60 px-2.5 py-1.5 text-xs font-medium text-slate-300 transition-colors hover:bg-slate-700 hover:text-white"
                             >
-                              <Eye className="h-3.5 w-3.5" />
+                              <Pencil className="h-3.5 w-3.5" />
                               <span>{t('common.edit')}</span>
                             </button>
                             <button
-                              onClick={() => {
-                                if (window.confirm(t('jobs.delete_confirm'))) {
-                                  deleteScheduleMutation.mutate(s.id);
-                                }
-                              }}
+                              onClick={() => setDeletingScheduleId(s.id)}
                               className="inline-flex items-center gap-1 rounded-lg border border-rose-900/50 bg-rose-950/30 px-2.5 py-1.5 text-xs font-medium text-rose-400 transition-colors hover:bg-rose-900/50 hover:text-rose-200"
                             >
                               <Trash2 className="h-3.5 w-3.5" />
@@ -475,23 +597,19 @@ export const JobManagePage: React.FC = () => {
           {tasksData?.map((tItem) => (
             <div
               key={tItem.type}
-              className="flex flex-col justify-between rounded-2xl border border-slate-800 bg-slate-900/60 p-5 shadow-xl backdrop-blur-sm"
+              className="flex flex-col justify-between rounded-2xl border border-slate-800 bg-slate-900/60 p-5 shadow-xl backdrop-blur-sm dark:border-blue-900/30 dark:bg-[#111A35]"
             >
               <div>
                 <div className="flex items-center justify-between">
                   <h3 className="font-semibold text-slate-100">{getJobTypeLabel(tItem.type)}</h3>
-                  <span className="font-mono text-xs text-indigo-400">{tItem.type}</span>
+                  <span className="font-mono text-xs text-tlu-blue dark:text-blue-400">{tItem.type}</span>
                 </div>
                 <p className="mt-2 text-sm text-slate-400">{tItem.description}</p>
               </div>
               <div className="mt-4 flex justify-end">
                 <button
-                  onClick={() => {
-                    setTriggerType(tItem.type);
-                    setTriggerPayload('{}');
-                    setTriggerModalOpen(true);
-                  }}
-                  className="flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-medium text-white transition-all hover:bg-indigo-500"
+                  onClick={() => handleOpenTrigger(tItem.type)}
+                  className="flex items-center gap-2 rounded-xl bg-tlu-navy px-4 py-2 text-xs font-medium text-white transition-all hover:bg-tlu-navy-light dark:bg-tlu-blue dark:hover:bg-blue-600"
                 >
                   <Play className="h-3.5 w-3.5" />
                   <span>{t('jobs.trigger_task')}</span>
@@ -511,13 +629,32 @@ export const JobManagePage: React.FC = () => {
           <div className="space-y-4 text-sm text-slate-300">
             <div>
               <label className="text-xs font-semibold uppercase text-slate-400">{t('jobs.type')}</label>
-              <div className="mt-1 font-mono text-sm text-indigo-300">
+              <div className="mt-1 font-mono text-sm text-blue-300">
                 {getJobTypeLabel(selectedJob.type)} <span className="text-xs text-slate-500">({selectedJob.type})</span>
               </div>
             </div>
             <div>
               <label className="text-xs font-semibold uppercase text-slate-400">{t('jobs.status')}</label>
               <div className="mt-1">{getStatusBadge(selectedJob.status)}</div>
+            </div>
+            <div>
+              <label className="text-xs font-semibold uppercase text-slate-400">{t('jobs.progress')}</label>
+              <div className="mt-1.5 flex items-center gap-3">
+                <div className="h-2.5 w-36 overflow-hidden rounded-full bg-slate-800">
+                  <div
+                    className="h-full bg-tlu-blue transition-all duration-300"
+                    style={{ width: `${getProgressPercent(selectedJob)}%` }}
+                  />
+                </div>
+                <span className="text-xs font-semibold text-slate-200">
+                  {getProgressPercent(selectedJob)}%
+                </span>
+                {selectedJob.total !== undefined && selectedJob.total > 0 && (
+                  <span className="text-xs text-slate-400 font-mono">
+                    ({selectedJob.progress} / {selectedJob.total})
+                  </span>
+                )}
+              </div>
             </div>
             {selectedJob.payload_json && (
               <div>
@@ -535,11 +672,11 @@ export const JobManagePage: React.FC = () => {
                 </pre>
               </div>
             )}
-            {selectedJob.error_message && (
+            {(selectedJob.error_msg || selectedJob.error_message) && (
               <div>
                 <label className="text-xs font-semibold uppercase text-slate-400">{t('jobs.error')}</label>
                 <pre className="mt-1 max-h-40 overflow-y-auto rounded-lg bg-slate-950 p-3 font-mono text-xs text-rose-400">
-                  {selectedJob.error_message}
+                  {selectedJob.error_msg || selectedJob.error_message}
                 </pre>
               </div>
             )}
@@ -560,15 +697,15 @@ export const JobManagePage: React.FC = () => {
                 type="text"
                 value={scheduleForm.name}
                 onChange={(e) => setScheduleForm({ ...scheduleForm, name: e.target.value })}
-                className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-tlu-blue"
               />
             </div>
             <div>
               <label className="text-xs font-medium text-slate-300">{t('jobs.type')}</label>
               <select
                 value={scheduleForm.job_type}
-                onChange={(e) => setScheduleForm({ ...scheduleForm, job_type: e.target.value })}
-                className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                onChange={(e) => handleScheduleTypeChange(e.target.value)}
+                className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-tlu-blue"
               >
                 {availableJobTypes.map((opt) => (
                   <option key={opt.value} value={opt.value}>
@@ -577,6 +714,58 @@ export const JobManagePage: React.FC = () => {
                 ))}
               </select>
             </div>
+
+            {isCrawlerType(scheduleForm.job_type || '') && (
+              <div className="rounded-xl border border-slate-700/60 bg-slate-800/40 p-4 space-y-3">
+                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-tlu-blue">
+                  <Sliders className="h-3.5 w-3.5" />
+                  <span>{t('jobs.crawler_settings')}</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-medium text-slate-300">
+                      {t('jobs.max_time_days')}
+                    </label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={scheduleMaxTimeDays}
+                      onChange={(e) =>
+                        handleScheduleScopeChange(
+                          Math.max(0, parseInt(e.target.value, 10) || 0),
+                          scheduleMaxPages
+                        )
+                      }
+                      className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-tlu-blue"
+                    />
+                    <p className="mt-1 text-[11px] text-slate-400">
+                      {t('jobs.max_time_days_help')}
+                    </p>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-slate-300">
+                      {t('jobs.max_pages')}
+                    </label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={scheduleMaxPages}
+                      onChange={(e) =>
+                        handleScheduleScopeChange(
+                          scheduleMaxTimeDays,
+                          Math.max(0, parseInt(e.target.value, 10) || 0)
+                        )
+                      }
+                      className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-tlu-blue"
+                    />
+                    <p className="mt-1 text-[11px] text-slate-400">
+                      {t('jobs.max_pages_help')}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div>
               <label className="text-xs font-medium text-slate-300">{t('jobs.interval_sec')}</label>
               <input
@@ -585,7 +774,7 @@ export const JobManagePage: React.FC = () => {
                 onChange={(e) =>
                   setScheduleForm({ ...scheduleForm, interval_sec: parseInt(e.target.value, 10) || 0 })
                 }
-                className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-tlu-blue"
               />
             </div>
             <div className="flex items-center gap-3">
@@ -594,12 +783,38 @@ export const JobManagePage: React.FC = () => {
                 id="is_active_check"
                 checked={scheduleForm.is_active}
                 onChange={(e) => setScheduleForm({ ...scheduleForm, is_active: e.target.checked })}
-                className="h-4 w-4 rounded border-slate-700 bg-slate-900 text-indigo-600 focus:ring-indigo-500"
+                className="h-4 w-4 rounded border-slate-700 bg-slate-900 text-tlu-blue focus:ring-tlu-blue"
               />
               <label htmlFor="is_active_check" className="text-sm text-slate-300">
                 {t('jobs.active')}
               </label>
             </div>
+
+            <div className="pt-1">
+              <button
+                type="button"
+                onClick={() => setScheduleShowAdvanced(!scheduleShowAdvanced)}
+                className="flex items-center gap-1.5 text-xs font-medium text-slate-400 hover:text-slate-200 cursor-pointer"
+              >
+                <Sliders className="h-3.5 w-3.5" />
+                <span>{t('jobs.advanced_payload')}</span>
+                {scheduleShowAdvanced ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+              </button>
+              {scheduleShowAdvanced && (
+                <div className="mt-2 space-y-1">
+                  <p className="text-[11px] text-slate-400">
+                    {t('jobs.advanced_payload_desc')}
+                  </p>
+                  <textarea
+                    rows={4}
+                    value={scheduleForm.payload_json || '{}'}
+                    onChange={(e) => handleSchedulePayloadTextChange(e.target.value)}
+                    className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 font-mono text-xs text-slate-200 focus:outline-none focus:ring-2 focus:ring-tlu-blue"
+                  />
+                </div>
+              )}
+            </div>
+
             <div className="mt-6 flex justify-end gap-3">
               <button
                 onClick={() => setScheduleModalOpen(false)}
@@ -614,7 +829,7 @@ export const JobManagePage: React.FC = () => {
                     body: scheduleForm,
                   })
                 }
-                className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500"
+                className="rounded-xl bg-tlu-navy px-4 py-2 text-sm font-medium text-white hover:bg-tlu-navy-light dark:bg-tlu-blue dark:hover:bg-blue-600"
               >
                 {t('common.save')}
               </button>
@@ -634,8 +849,8 @@ export const JobManagePage: React.FC = () => {
               <label className="text-xs font-medium text-slate-300">{t('jobs.type')}</label>
               <select
                 value={triggerType}
-                onChange={(e) => setTriggerType(e.target.value)}
-                className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                onChange={(e) => handleTriggerTypeChange(e.target.value)}
+                className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-tlu-blue"
               >
                 {availableJobTypes.map((opt) => (
                   <option key={opt.value} value={opt.value}>
@@ -644,15 +859,83 @@ export const JobManagePage: React.FC = () => {
                 ))}
               </select>
             </div>
-            <div>
-              <label className="text-xs font-medium text-slate-300">{t('jobs.payload')}</label>
-              <textarea
-                rows={4}
-                value={triggerPayload}
-                onChange={(e) => setTriggerPayload(e.target.value)}
-                className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-900 p-3 font-mono text-xs text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
+
+            {isCrawlerType(triggerType) && (
+              <div className="rounded-xl border border-slate-700/60 bg-slate-800/40 p-4 space-y-3">
+                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-tlu-blue">
+                  <Sliders className="h-3.5 w-3.5" />
+                  <span>{t('jobs.crawler_settings')}</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-medium text-slate-300">
+                      {t('jobs.max_time_days')}
+                    </label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={triggerMaxTimeDays}
+                      onChange={(e) =>
+                        handleTriggerScopeChange(
+                          Math.max(0, parseInt(e.target.value, 10) || 0),
+                          triggerMaxPages
+                        )
+                      }
+                      className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-tlu-blue"
+                    />
+                    <p className="mt-1 text-[11px] text-slate-400">
+                      {t('jobs.max_time_days_help')}
+                    </p>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-slate-300">
+                      {t('jobs.max_pages')}
+                    </label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={triggerMaxPages}
+                      onChange={(e) =>
+                        handleTriggerScopeChange(
+                          triggerMaxTimeDays,
+                          Math.max(0, parseInt(e.target.value, 10) || 0)
+                        )
+                      }
+                      className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-tlu-blue"
+                    />
+                    <p className="mt-1 text-[11px] text-slate-400">
+                      {t('jobs.max_pages_help')}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="pt-1">
+              <button
+                type="button"
+                onClick={() => setTriggerShowAdvanced(!triggerShowAdvanced)}
+                className="flex items-center gap-1.5 text-xs font-medium text-slate-400 hover:text-slate-200 cursor-pointer"
+              >
+                <Sliders className="h-3.5 w-3.5" />
+                <span>{t('jobs.advanced_payload')}</span>
+                {triggerShowAdvanced ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+              </button>
+              {triggerShowAdvanced && (
+                <div className="mt-2 space-y-1">
+                  <p className="text-[11px] text-slate-400">
+                    {t('jobs.advanced_payload_desc')}
+                  </p>
+                  <textarea
+                    rows={4}
+                    value={triggerPayload}
+                    onChange={(e) => handleTriggerPayloadTextChange(e.target.value)}
+                    className="w-full rounded-xl border border-slate-700 bg-slate-900 p-3 font-mono text-xs text-slate-200 focus:outline-none focus:ring-2 focus:ring-tlu-blue"
+                  />
+                </div>
+              )}
             </div>
+
             <div className="mt-6 flex justify-end gap-3">
               <button
                 onClick={() => setTriggerModalOpen(false)}
@@ -667,7 +950,7 @@ export const JobManagePage: React.FC = () => {
                     payload_json: triggerPayload,
                   })
                 }
-                className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500"
+                className="rounded-xl bg-tlu-navy px-4 py-2 text-sm font-medium text-white hover:bg-tlu-navy-light dark:bg-tlu-blue dark:hover:bg-blue-600"
               >
                 {t('jobs.run_now')}
               </button>
@@ -675,6 +958,21 @@ export const JobManagePage: React.FC = () => {
           </div>
         </Modal>
       )}
+
+      <ConfirmModal
+        isOpen={Boolean(deletingScheduleId)}
+        onClose={() => setDeletingScheduleId(null)}
+        onConfirm={() => {
+          if (deletingScheduleId) {
+            deleteScheduleMutation.mutate(deletingScheduleId);
+            setDeletingScheduleId(null);
+          }
+        }}
+        title={t('common.delete')}
+        message={t('jobs.delete_confirm')}
+        variant="danger"
+        isLoading={deleteScheduleMutation.isPending}
+      />
     </div>
   );
 };

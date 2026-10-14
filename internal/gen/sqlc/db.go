@@ -39,6 +39,27 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.claimJobScheduleStmt, err = db.PrepareContext(ctx, claimJobSchedule); err != nil {
 		return nil, fmt.Errorf("error preparing query ClaimJobSchedule: %w", err)
 	}
+	if q.clearAllDocumentChunksStmt, err = db.PrepareContext(ctx, clearAllDocumentChunks); err != nil {
+		return nil, fmt.Errorf("error preparing query ClearAllDocumentChunks: %w", err)
+	}
+	if q.clearAllDocumentRulesStmt, err = db.PrepareContext(ctx, clearAllDocumentRules); err != nil {
+		return nil, fmt.Errorf("error preparing query ClearAllDocumentRules: %w", err)
+	}
+	if q.clearAllDocumentsStmt, err = db.PrepareContext(ctx, clearAllDocuments); err != nil {
+		return nil, fmt.Errorf("error preparing query ClearAllDocuments: %w", err)
+	}
+	if q.clearAllKGEdgesStmt, err = db.PrepareContext(ctx, clearAllKGEdges); err != nil {
+		return nil, fmt.Errorf("error preparing query ClearAllKGEdges: %w", err)
+	}
+	if q.clearAllKGNodesStmt, err = db.PrepareContext(ctx, clearAllKGNodes); err != nil {
+		return nil, fmt.Errorf("error preparing query ClearAllKGNodes: %w", err)
+	}
+	if q.clearAllSupersessionAuditLogsStmt, err = db.PrepareContext(ctx, clearAllSupersessionAuditLogs); err != nil {
+		return nil, fmt.Errorf("error preparing query ClearAllSupersessionAuditLogs: %w", err)
+	}
+	if q.clearAllSupersessionEdgesStmt, err = db.PrepareContext(ctx, clearAllSupersessionEdges); err != nil {
+		return nil, fmt.Errorf("error preparing query ClearAllSupersessionEdges: %w", err)
+	}
 	if q.clearAllUserMemoriesStmt, err = db.PrepareContext(ctx, clearAllUserMemories); err != nil {
 		return nil, fmt.Errorf("error preparing query ClearAllUserMemories: %w", err)
 	}
@@ -63,11 +84,23 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.countAllAuditLogsStmt, err = db.PrepareContext(ctx, countAllAuditLogs); err != nil {
 		return nil, fmt.Errorf("error preparing query CountAllAuditLogs: %w", err)
 	}
+	if q.countArchivedDocumentsStmt, err = db.PrepareContext(ctx, countArchivedDocuments); err != nil {
+		return nil, fmt.Errorf("error preparing query CountArchivedDocuments: %w", err)
+	}
 	if q.countChunksTotalStmt, err = db.PrepareContext(ctx, countChunksTotal); err != nil {
 		return nil, fmt.Errorf("error preparing query CountChunksTotal: %w", err)
 	}
 	if q.countConversationsByUserIDStmt, err = db.PrepareContext(ctx, countConversationsByUserID); err != nil {
 		return nil, fmt.Errorf("error preparing query CountConversationsByUserID: %w", err)
+	}
+	if q.countCoursesFilteredStmt, err = db.PrepareContext(ctx, countCoursesFiltered); err != nil {
+		return nil, fmt.Errorf("error preparing query CountCoursesFiltered: %w", err)
+	}
+	if q.countCurriculumCoursesStmt, err = db.PrepareContext(ctx, countCurriculumCourses); err != nil {
+		return nil, fmt.Errorf("error preparing query CountCurriculumCourses: %w", err)
+	}
+	if q.countCurriculumsStmt, err = db.PrepareContext(ctx, countCurriculums); err != nil {
+		return nil, fmt.Errorf("error preparing query CountCurriculums: %w", err)
 	}
 	if q.countDocumentsStmt, err = db.PrepareContext(ctx, countDocuments); err != nil {
 		return nil, fmt.Errorf("error preparing query CountDocuments: %w", err)
@@ -90,8 +123,23 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.countNodesTotalStmt, err = db.PrepareContext(ctx, countNodesTotal); err != nil {
 		return nil, fmt.Errorf("error preparing query CountNodesTotal: %w", err)
 	}
+	if q.countPartiallyAmendedDocumentsStmt, err = db.PrepareContext(ctx, countPartiallyAmendedDocuments); err != nil {
+		return nil, fmt.Errorf("error preparing query CountPartiallyAmendedDocuments: %w", err)
+	}
+	if q.countSubstitutionsStmt, err = db.PrepareContext(ctx, countSubstitutions); err != nil {
+		return nil, fmt.Errorf("error preparing query CountSubstitutions: %w", err)
+	}
+	if q.countSubstitutionsFilteredStmt, err = db.PrepareContext(ctx, countSubstitutionsFiltered); err != nil {
+		return nil, fmt.Errorf("error preparing query CountSubstitutionsFiltered: %w", err)
+	}
 	if q.countSupersededDocumentsStmt, err = db.PrepareContext(ctx, countSupersededDocuments); err != nil {
 		return nil, fmt.Errorf("error preparing query CountSupersededDocuments: %w", err)
+	}
+	if q.countTLUClawSnapshotsStmt, err = db.PrepareContext(ctx, countTLUClawSnapshots); err != nil {
+		return nil, fmt.Errorf("error preparing query CountTLUClawSnapshots: %w", err)
+	}
+	if q.countTranscriptGradesByUserIDStmt, err = db.PrepareContext(ctx, countTranscriptGradesByUserID); err != nil {
+		return nil, fmt.Errorf("error preparing query CountTranscriptGradesByUserID: %w", err)
 	}
 	if q.countUnreadNotificationsStmt, err = db.PrepareContext(ctx, countUnreadNotifications); err != nil {
 		return nil, fmt.Errorf("error preparing query CountUnreadNotifications: %w", err)
@@ -132,6 +180,15 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.createRoleStmt, err = db.PrepareContext(ctx, createRole); err != nil {
 		return nil, fmt.Errorf("error preparing query CreateRole: %w", err)
 	}
+	if q.createTLUClawMessageStmt, err = db.PrepareContext(ctx, createTLUClawMessage); err != nil {
+		return nil, fmt.Errorf("error preparing query CreateTLUClawMessage: %w", err)
+	}
+	if q.createTLUClawSessionStmt, err = db.PrepareContext(ctx, createTLUClawSession); err != nil {
+		return nil, fmt.Errorf("error preparing query CreateTLUClawSession: %w", err)
+	}
+	if q.createTLUClawSnapshotStmt, err = db.PrepareContext(ctx, createTLUClawSnapshot); err != nil {
+		return nil, fmt.Errorf("error preparing query CreateTLUClawSnapshot: %w", err)
+	}
 	if q.createUserStmt, err = db.PrepareContext(ctx, createUser); err != nil {
 		return nil, fmt.Errorf("error preparing query CreateUser: %w", err)
 	}
@@ -144,11 +201,26 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.deleteChainStmt, err = db.PrepareContext(ctx, deleteChain); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteChain: %w", err)
 	}
+	if q.deleteChunksByDocumentIDStmt, err = db.PrepareContext(ctx, deleteChunksByDocumentID); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteChunksByDocumentID: %w", err)
+	}
 	if q.deleteConversationStmt, err = db.PrepareContext(ctx, deleteConversation); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteConversation: %w", err)
 	}
 	if q.deleteConversationAdminStmt, err = db.PrepareContext(ctx, deleteConversationAdmin); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteConversationAdmin: %w", err)
+	}
+	if q.deleteCoursePrerequisiteStmt, err = db.PrepareContext(ctx, deleteCoursePrerequisite); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteCoursePrerequisite: %w", err)
+	}
+	if q.deleteCourseSubstitutionStmt, err = db.PrepareContext(ctx, deleteCourseSubstitution); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteCourseSubstitution: %w", err)
+	}
+	if q.deleteCurriculumStmt, err = db.PrepareContext(ctx, deleteCurriculum); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteCurriculum: %w", err)
+	}
+	if q.deleteCurriculumCourseStmt, err = db.PrepareContext(ctx, deleteCurriculumCourse); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteCurriculumCourse: %w", err)
 	}
 	if q.deleteJobScheduleStmt, err = db.PrepareContext(ctx, deleteJobSchedule); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteJobSchedule: %w", err)
@@ -162,14 +234,29 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.deleteLLMProviderStmt, err = db.PrepareContext(ctx, deleteLLMProvider); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteLLMProvider: %w", err)
 	}
+	if q.deleteNotificationByIDStmt, err = db.PrepareContext(ctx, deleteNotificationByID); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteNotificationByID: %w", err)
+	}
 	if q.deleteRoleStmt, err = db.PrepareContext(ctx, deleteRole); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteRole: %w", err)
 	}
 	if q.deleteRolePermissionsStmt, err = db.PrepareContext(ctx, deleteRolePermissions); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteRolePermissions: %w", err)
 	}
+	if q.deleteRulesByDocumentIDStmt, err = db.PrepareContext(ctx, deleteRulesByDocumentID); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteRulesByDocumentID: %w", err)
+	}
 	if q.deleteStudentProfileStmt, err = db.PrepareContext(ctx, deleteStudentProfile); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteStudentProfile: %w", err)
+	}
+	if q.deleteTLUClawSessionStmt, err = db.PrepareContext(ctx, deleteTLUClawSession); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteTLUClawSession: %w", err)
+	}
+	if q.deleteTranscriptByUserIDStmt, err = db.PrepareContext(ctx, deleteTranscriptByUserID); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteTranscriptByUserID: %w", err)
+	}
+	if q.deleteTranscriptGradeStmt, err = db.PrepareContext(ctx, deleteTranscriptGrade); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteTranscriptGrade: %w", err)
 	}
 	if q.deleteUserStmt, err = db.PrepareContext(ctx, deleteUser); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteUser: %w", err)
@@ -177,8 +264,23 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.deleteUserMemoryStmt, err = db.PrepareContext(ctx, deleteUserMemory); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteUserMemory: %w", err)
 	}
+	if q.documentExistsByURLStmt, err = db.PrepareContext(ctx, documentExistsByURL); err != nil {
+		return nil, fmt.Errorf("error preparing query DocumentExistsByURL: %w", err)
+	}
 	if q.expireInquiryStmt, err = db.PrepareContext(ctx, expireInquiry); err != nil {
 		return nil, fmt.Errorf("error preparing query ExpireInquiry: %w", err)
+	}
+	if q.findCourseMetadataByCodeStmt, err = db.PrepareContext(ctx, findCourseMetadataByCode); err != nil {
+		return nil, fmt.Errorf("error preparing query FindCourseMetadataByCode: %w", err)
+	}
+	if q.findDirectSubstitutionsStmt, err = db.PrepareContext(ctx, findDirectSubstitutions); err != nil {
+		return nil, fmt.Errorf("error preparing query FindDirectSubstitutions: %w", err)
+	}
+	if q.findDocumentByIdentifierStmt, err = db.PrepareContext(ctx, findDocumentByIdentifier); err != nil {
+		return nil, fmt.Errorf("error preparing query FindDocumentByIdentifier: %w", err)
+	}
+	if q.findMajorMappingStmt, err = db.PrepareContext(ctx, findMajorMapping); err != nil {
+		return nil, fmt.Errorf("error preparing query FindMajorMapping: %w", err)
 	}
 	if q.findSupersededDocIDsStmt, err = db.PrepareContext(ctx, findSupersededDocIDs); err != nil {
 		return nil, fmt.Errorf("error preparing query FindSupersededDocIDs: %w", err)
@@ -219,6 +321,27 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getConversationsByIDsStmt, err = db.PrepareContext(ctx, getConversationsByIDs); err != nil {
 		return nil, fmt.Errorf("error preparing query GetConversationsByIDs: %w", err)
 	}
+	if q.getCoursePrerequisiteByIDStmt, err = db.PrepareContext(ctx, getCoursePrerequisiteByID); err != nil {
+		return nil, fmt.Errorf("error preparing query GetCoursePrerequisiteByID: %w", err)
+	}
+	if q.getCoursesByCodeAndCohortStmt, err = db.PrepareContext(ctx, getCoursesByCodeAndCohort); err != nil {
+		return nil, fmt.Errorf("error preparing query GetCoursesByCodeAndCohort: %w", err)
+	}
+	if q.getCurriculumByCohortAndMajorStmt, err = db.PrepareContext(ctx, getCurriculumByCohortAndMajor); err != nil {
+		return nil, fmt.Errorf("error preparing query GetCurriculumByCohortAndMajor: %w", err)
+	}
+	if q.getCurriculumByIDStmt, err = db.PrepareContext(ctx, getCurriculumByID); err != nil {
+		return nil, fmt.Errorf("error preparing query GetCurriculumByID: %w", err)
+	}
+	if q.getCurriculumCourseByIDStmt, err = db.PrepareContext(ctx, getCurriculumCourseByID); err != nil {
+		return nil, fmt.Errorf("error preparing query GetCurriculumCourseByID: %w", err)
+	}
+	if q.getCurriculumCoursesByCohortAndMajorStmt, err = db.PrepareContext(ctx, getCurriculumCoursesByCohortAndMajor); err != nil {
+		return nil, fmt.Errorf("error preparing query GetCurriculumCoursesByCohortAndMajor: %w", err)
+	}
+	if q.getCurriculumCoursesByCurriculumIDStmt, err = db.PrepareContext(ctx, getCurriculumCoursesByCurriculumID); err != nil {
+		return nil, fmt.Errorf("error preparing query GetCurriculumCoursesByCurriculumID: %w", err)
+	}
 	if q.getDefaultLLMModelByTypeStmt, err = db.PrepareContext(ctx, getDefaultLLMModelByType); err != nil {
 		return nil, fmt.Errorf("error preparing query GetDefaultLLMModelByType: %w", err)
 	}
@@ -227,6 +350,12 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.getDocumentByIDStmt, err = db.PrepareContext(ctx, getDocumentByID); err != nil {
 		return nil, fmt.Errorf("error preparing query GetDocumentByID: %w", err)
+	}
+	if q.getDocumentByURLStmt, err = db.PrepareContext(ctx, getDocumentByURL); err != nil {
+		return nil, fmt.Errorf("error preparing query GetDocumentByURL: %w", err)
+	}
+	if q.getDocumentRuleByIDStmt, err = db.PrepareContext(ctx, getDocumentRuleByID); err != nil {
+		return nil, fmt.Errorf("error preparing query GetDocumentRuleByID: %w", err)
 	}
 	if q.getDocumentsByIDsStmt, err = db.PrepareContext(ctx, getDocumentsByIDs); err != nil {
 		return nil, fmt.Errorf("error preparing query GetDocumentsByIDs: %w", err)
@@ -303,6 +432,33 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getStudentProfileByUserIDStmt, err = db.PrepareContext(ctx, getStudentProfileByUserID); err != nil {
 		return nil, fmt.Errorf("error preparing query GetStudentProfileByUserID: %w", err)
 	}
+	if q.getSubstitutionByIDStmt, err = db.PrepareContext(ctx, getSubstitutionByID); err != nil {
+		return nil, fmt.Errorf("error preparing query GetSubstitutionByID: %w", err)
+	}
+	if q.getTLUClawSessionByIDStmt, err = db.PrepareContext(ctx, getTLUClawSessionByID); err != nil {
+		return nil, fmt.Errorf("error preparing query GetTLUClawSessionByID: %w", err)
+	}
+	if q.getTLUClawSessionsByIDsStmt, err = db.PrepareContext(ctx, getTLUClawSessionsByIDs); err != nil {
+		return nil, fmt.Errorf("error preparing query GetTLUClawSessionsByIDs: %w", err)
+	}
+	if q.getTLUClawSnapshotByBatchIDStmt, err = db.PrepareContext(ctx, getTLUClawSnapshotByBatchID); err != nil {
+		return nil, fmt.Errorf("error preparing query GetTLUClawSnapshotByBatchID: %w", err)
+	}
+	if q.getTLUClawSnapshotByIDStmt, err = db.PrepareContext(ctx, getTLUClawSnapshotByID); err != nil {
+		return nil, fmt.Errorf("error preparing query GetTLUClawSnapshotByID: %w", err)
+	}
+	if q.getTLUClawSnapshotByNonceStmt, err = db.PrepareContext(ctx, getTLUClawSnapshotByNonce); err != nil {
+		return nil, fmt.Errorf("error preparing query GetTLUClawSnapshotByNonce: %w", err)
+	}
+	if q.getTranscriptGradeByIDStmt, err = db.PrepareContext(ctx, getTranscriptGradeByID); err != nil {
+		return nil, fmt.Errorf("error preparing query GetTranscriptGradeByID: %w", err)
+	}
+	if q.getTranscriptGradeByUserAndCourseStmt, err = db.PrepareContext(ctx, getTranscriptGradeByUserAndCourse); err != nil {
+		return nil, fmt.Errorf("error preparing query GetTranscriptGradeByUserAndCourse: %w", err)
+	}
+	if q.getTranscriptGradesByIDsStmt, err = db.PrepareContext(ctx, getTranscriptGradesByIDs); err != nil {
+		return nil, fmt.Errorf("error preparing query GetTranscriptGradesByIDs: %w", err)
+	}
 	if q.getUserByEmailStmt, err = db.PrepareContext(ctx, getUserByEmail); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserByEmail: %w", err)
 	}
@@ -311,6 +467,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.getUserByIDWithoutDeletedStmt, err = db.PrepareContext(ctx, getUserByIDWithoutDeleted); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserByIDWithoutDeleted: %w", err)
+	}
+	if q.getUserByStudentCodeStmt, err = db.PrepareContext(ctx, getUserByStudentCode); err != nil {
+		return nil, fmt.Errorf("error preparing query GetUserByStudentCode: %w", err)
 	}
 	if q.getUserMemoriesByIDsStmt, err = db.PrepareContext(ctx, getUserMemoriesByIDs); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUserMemoriesByIDs: %w", err)
@@ -342,6 +501,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.listActiveLLMModelsByTypeStmt, err = db.PrepareContext(ctx, listActiveLLMModelsByType); err != nil {
 		return nil, fmt.Errorf("error preparing query ListActiveLLMModelsByType: %w", err)
 	}
+	if q.listActiveRulesByDocumentIDStmt, err = db.PrepareContext(ctx, listActiveRulesByDocumentID); err != nil {
+		return nil, fmt.Errorf("error preparing query ListActiveRulesByDocumentID: %w", err)
+	}
 	if q.listAdminConversationsFeedbackDownStmt, err = db.PrepareContext(ctx, listAdminConversationsFeedbackDown); err != nil {
 		return nil, fmt.Errorf("error preparing query ListAdminConversationsFeedbackDown: %w", err)
 	}
@@ -360,11 +522,26 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.listAllAuditLogsStmt, err = db.PrepareContext(ctx, listAllAuditLogs); err != nil {
 		return nil, fmt.Errorf("error preparing query ListAllAuditLogs: %w", err)
 	}
+	if q.listAllDocumentIdentifiersStmt, err = db.PrepareContext(ctx, listAllDocumentIdentifiers); err != nil {
+		return nil, fmt.Errorf("error preparing query ListAllDocumentIdentifiers: %w", err)
+	}
 	if q.listAllKGEdgesStmt, err = db.PrepareContext(ctx, listAllKGEdges); err != nil {
 		return nil, fmt.Errorf("error preparing query ListAllKGEdges: %w", err)
 	}
 	if q.listAllKGNodesStmt, err = db.PrepareContext(ctx, listAllKGNodes); err != nil {
 		return nil, fmt.Errorf("error preparing query ListAllKGNodes: %w", err)
+	}
+	if q.listAllMajorMetadataStmt, err = db.PrepareContext(ctx, listAllMajorMetadata); err != nil {
+		return nil, fmt.Errorf("error preparing query ListAllMajorMetadata: %w", err)
+	}
+	if q.listAllMajorsStmt, err = db.PrepareContext(ctx, listAllMajors); err != nil {
+		return nil, fmt.Errorf("error preparing query ListAllMajors: %w", err)
+	}
+	if q.listAllPrerequisitesForCohortAndMajorStmt, err = db.PrepareContext(ctx, listAllPrerequisitesForCohortAndMajor); err != nil {
+		return nil, fmt.Errorf("error preparing query ListAllPrerequisitesForCohortAndMajor: %w", err)
+	}
+	if q.listAllRegulationIDsChronologicalStmt, err = db.PrepareContext(ctx, listAllRegulationIDsChronological); err != nil {
+		return nil, fmt.Errorf("error preparing query ListAllRegulationIDsChronological: %w", err)
 	}
 	if q.listAuditLogsByDocIDStmt, err = db.PrepareContext(ctx, listAuditLogsByDocID); err != nil {
 		return nil, fmt.Errorf("error preparing query ListAuditLogsByDocID: %w", err)
@@ -378,8 +555,26 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.listChunksByDocumentIDStmt, err = db.PrepareContext(ctx, listChunksByDocumentID); err != nil {
 		return nil, fmt.Errorf("error preparing query ListChunksByDocumentID: %w", err)
 	}
+	if q.listCohortsStmt, err = db.PrepareContext(ctx, listCohorts); err != nil {
+		return nil, fmt.Errorf("error preparing query ListCohorts: %w", err)
+	}
 	if q.listConversationIDsByUserIDStmt, err = db.PrepareContext(ctx, listConversationIDsByUserID); err != nil {
 		return nil, fmt.Errorf("error preparing query ListConversationIDsByUserID: %w", err)
+	}
+	if q.listCoursesPaginatedStmt, err = db.PrepareContext(ctx, listCoursesPaginated); err != nil {
+		return nil, fmt.Errorf("error preparing query ListCoursesPaginated: %w", err)
+	}
+	if q.listCurriculumsStmt, err = db.PrepareContext(ctx, listCurriculums); err != nil {
+		return nil, fmt.Errorf("error preparing query ListCurriculums: %w", err)
+	}
+	if q.listCurriculumsByCohortStmt, err = db.PrepareContext(ctx, listCurriculumsByCohort); err != nil {
+		return nil, fmt.Errorf("error preparing query ListCurriculumsByCohort: %w", err)
+	}
+	if q.listDependentCoursesStmt, err = db.PrepareContext(ctx, listDependentCourses); err != nil {
+		return nil, fmt.Errorf("error preparing query ListDependentCourses: %w", err)
+	}
+	if q.listDistinctSubstitutionMajorsStmt, err = db.PrepareContext(ctx, listDistinctSubstitutionMajors); err != nil {
+		return nil, fmt.Errorf("error preparing query ListDistinctSubstitutionMajors: %w", err)
 	}
 	if q.listDueJobScheduleIDsStmt, err = db.PrepareContext(ctx, listDueJobScheduleIDs); err != nil {
 		return nil, fmt.Errorf("error preparing query ListDueJobScheduleIDs: %w", err)
@@ -389,6 +584,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.listFilteredJobIDsStmt, err = db.PrepareContext(ctx, listFilteredJobIDs); err != nil {
 		return nil, fmt.Errorf("error preparing query ListFilteredJobIDs: %w", err)
+	}
+	if q.listGroupSubstitutionsStmt, err = db.PrepareContext(ctx, listGroupSubstitutions); err != nil {
+		return nil, fmt.Errorf("error preparing query ListGroupSubstitutions: %w", err)
 	}
 	if q.listInquiryIDsStmt, err = db.PrepareContext(ctx, listInquiryIDs); err != nil {
 		return nil, fmt.Errorf("error preparing query ListInquiryIDs: %w", err)
@@ -408,6 +606,15 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.listLLMProvidersStmt, err = db.PrepareContext(ctx, listLLMProviders); err != nil {
 		return nil, fmt.Errorf("error preparing query ListLLMProviders: %w", err)
 	}
+	if q.listLatestCommittedTLUClawSnapshotsStmt, err = db.PrepareContext(ctx, listLatestCommittedTLUClawSnapshots); err != nil {
+		return nil, fmt.Errorf("error preparing query ListLatestCommittedTLUClawSnapshots: %w", err)
+	}
+	if q.listMajorsByCohortStmt, err = db.PrepareContext(ctx, listMajorsByCohort); err != nil {
+		return nil, fmt.Errorf("error preparing query ListMajorsByCohort: %w", err)
+	}
+	if q.listMajorsByFacultyStmt, err = db.PrepareContext(ctx, listMajorsByFaculty); err != nil {
+		return nil, fmt.Errorf("error preparing query ListMajorsByFaculty: %w", err)
+	}
 	if q.listMessagesByConversationIDStmt, err = db.PrepareContext(ctx, listMessagesByConversationID); err != nil {
 		return nil, fmt.Errorf("error preparing query ListMessagesByConversationID: %w", err)
 	}
@@ -420,14 +627,47 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.listPermissionsStmt, err = db.PrepareContext(ctx, listPermissions); err != nil {
 		return nil, fmt.Errorf("error preparing query ListPermissions: %w", err)
 	}
+	if q.listPrerequisitesForCourseStmt, err = db.PrepareContext(ctx, listPrerequisitesForCourse); err != nil {
+		return nil, fmt.Errorf("error preparing query ListPrerequisitesForCourse: %w", err)
+	}
+	if q.listRecentNotificationIDsStmt, err = db.PrepareContext(ctx, listRecentNotificationIDs); err != nil {
+		return nil, fmt.Errorf("error preparing query ListRecentNotificationIDs: %w", err)
+	}
 	if q.listRolePermissionIDsStmt, err = db.PrepareContext(ctx, listRolePermissionIDs); err != nil {
 		return nil, fmt.Errorf("error preparing query ListRolePermissionIDs: %w", err)
 	}
 	if q.listRolePermissionsStmt, err = db.PrepareContext(ctx, listRolePermissions); err != nil {
 		return nil, fmt.Errorf("error preparing query ListRolePermissions: %w", err)
 	}
+	if q.listRulesByDocumentIDStmt, err = db.PrepareContext(ctx, listRulesByDocumentID); err != nil {
+		return nil, fmt.Errorf("error preparing query ListRulesByDocumentID: %w", err)
+	}
+	if q.listStudentProfilesByStandingStmt, err = db.PrepareContext(ctx, listStudentProfilesByStanding); err != nil {
+		return nil, fmt.Errorf("error preparing query ListStudentProfilesByStanding: %w", err)
+	}
+	if q.listSubstitutionsByCohortAndMajorStmt, err = db.PrepareContext(ctx, listSubstitutionsByCohortAndMajor); err != nil {
+		return nil, fmt.Errorf("error preparing query ListSubstitutionsByCohortAndMajor: %w", err)
+	}
+	if q.listSubstitutionsPaginatedStmt, err = db.PrepareContext(ctx, listSubstitutionsPaginated); err != nil {
+		return nil, fmt.Errorf("error preparing query ListSubstitutionsPaginated: %w", err)
+	}
 	if q.listSupersededDocumentsStmt, err = db.PrepareContext(ctx, listSupersededDocuments); err != nil {
 		return nil, fmt.Errorf("error preparing query ListSupersededDocuments: %w", err)
+	}
+	if q.listTLUClawMessagesBySessionIDStmt, err = db.PrepareContext(ctx, listTLUClawMessagesBySessionID); err != nil {
+		return nil, fmt.Errorf("error preparing query ListTLUClawMessagesBySessionID: %w", err)
+	}
+	if q.listTLUClawSessionIDsByAdminStmt, err = db.PrepareContext(ctx, listTLUClawSessionIDsByAdmin); err != nil {
+		return nil, fmt.Errorf("error preparing query ListTLUClawSessionIDsByAdmin: %w", err)
+	}
+	if q.listTLUClawSnapshotsBySessionIDStmt, err = db.PrepareContext(ctx, listTLUClawSnapshotsBySessionID); err != nil {
+		return nil, fmt.Errorf("error preparing query ListTLUClawSnapshotsBySessionID: %w", err)
+	}
+	if q.listTLUClawSnapshotsPaginatedStmt, err = db.PrepareContext(ctx, listTLUClawSnapshotsPaginated); err != nil {
+		return nil, fmt.Errorf("error preparing query ListTLUClawSnapshotsPaginated: %w", err)
+	}
+	if q.listTranscriptGradeIDsByUserIDStmt, err = db.PrepareContext(ctx, listTranscriptGradeIDsByUserID); err != nil {
+		return nil, fmt.Errorf("error preparing query ListTranscriptGradeIDsByUserID: %w", err)
 	}
 	if q.listUserMemoriesByUserIDStmt, err = db.PrepareContext(ctx, listUserMemoriesByUserID); err != nil {
 		return nil, fmt.Errorf("error preparing query ListUserMemoriesByUserID: %w", err)
@@ -459,6 +699,15 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.removeChainNodeStmt, err = db.PrepareContext(ctx, removeChainNode); err != nil {
 		return nil, fmt.Errorf("error preparing query RemoveChainNode: %w", err)
 	}
+	if q.resetAllChunkSupersessionsStmt, err = db.PrepareContext(ctx, resetAllChunkSupersessions); err != nil {
+		return nil, fmt.Errorf("error preparing query ResetAllChunkSupersessions: %w", err)
+	}
+	if q.resetAllDocumentSupersessionsStmt, err = db.PrepareContext(ctx, resetAllDocumentSupersessions); err != nil {
+		return nil, fmt.Errorf("error preparing query ResetAllDocumentSupersessions: %w", err)
+	}
+	if q.resetAllRuleSupersessionsStmt, err = db.PrepareContext(ctx, resetAllRuleSupersessions); err != nil {
+		return nil, fmt.Errorf("error preparing query ResetAllRuleSupersessions: %w", err)
+	}
 	if q.restoreUserStmt, err = db.PrepareContext(ctx, restoreUser); err != nil {
 		return nil, fmt.Errorf("error preparing query RestoreUser: %w", err)
 	}
@@ -467,6 +716,12 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.rotateUserRefreshTokenStmt, err = db.PrepareContext(ctx, rotateUserRefreshToken); err != nil {
 		return nil, fmt.Errorf("error preparing query RotateUserRefreshToken: %w", err)
+	}
+	if q.searchActiveChunkIDsFTSStmt, err = db.PrepareContext(ctx, searchActiveChunkIDsFTS); err != nil {
+		return nil, fmt.Errorf("error preparing query SearchActiveChunkIDsFTS: %w", err)
+	}
+	if q.searchCurriculumCoursesStmt, err = db.PrepareContext(ctx, searchCurriculumCourses); err != nil {
+		return nil, fmt.Errorf("error preparing query SearchCurriculumCourses: %w", err)
 	}
 	if q.searchDocumentIDsStmt, err = db.PrepareContext(ctx, searchDocumentIDs); err != nil {
 		return nil, fmt.Errorf("error preparing query SearchDocumentIDs: %w", err)
@@ -483,6 +738,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.touchConversationStmt, err = db.PrepareContext(ctx, touchConversation); err != nil {
 		return nil, fmt.Errorf("error preparing query TouchConversation: %w", err)
 	}
+	if q.touchTLUClawSessionStmt, err = db.PrepareContext(ctx, touchTLUClawSession); err != nil {
+		return nil, fmt.Errorf("error preparing query TouchTLUClawSession: %w", err)
+	}
 	if q.updateAgentSkillEnabledStmt, err = db.PrepareContext(ctx, updateAgentSkillEnabled); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateAgentSkillEnabled: %w", err)
 	}
@@ -497,6 +755,15 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.updateConversationTitleStmt, err = db.PrepareContext(ctx, updateConversationTitle); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateConversationTitle: %w", err)
+	}
+	if q.updateCurriculumCourseStmt, err = db.PrepareContext(ctx, updateCurriculumCourse); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateCurriculumCourse: %w", err)
+	}
+	if q.updateDocumentChunksByDocIDStatusStmt, err = db.PrepareContext(ctx, updateDocumentChunksByDocIDStatus); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateDocumentChunksByDocIDStatus: %w", err)
+	}
+	if q.updateDocumentChunksByRuleIDStatusStmt, err = db.PrepareContext(ctx, updateDocumentChunksByRuleIDStatus); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateDocumentChunksByRuleIDStatus: %w", err)
 	}
 	if q.updateDocumentStatusStmt, err = db.PrepareContext(ctx, updateDocumentStatus); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateDocumentStatus: %w", err)
@@ -516,6 +783,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.updateLLMProviderStmt, err = db.PrepareContext(ctx, updateLLMProvider); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateLLMProvider: %w", err)
 	}
+	if q.updateMajorMetadataByNameStmt, err = db.PrepareContext(ctx, updateMajorMetadataByName); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateMajorMetadataByName: %w", err)
+	}
 	if q.updateMessageFeedbackStmt, err = db.PrepareContext(ctx, updateMessageFeedback); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateMessageFeedback: %w", err)
 	}
@@ -528,8 +798,17 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.updateRolePositionStmt, err = db.PrepareContext(ctx, updateRolePosition); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateRolePosition: %w", err)
 	}
+	if q.updateRuleStatusStmt, err = db.PrepareContext(ctx, updateRuleStatus); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateRuleStatus: %w", err)
+	}
 	if q.updateSystemRoleDescriptionStmt, err = db.PrepareContext(ctx, updateSystemRoleDescription); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateSystemRoleDescription: %w", err)
+	}
+	if q.updateTLUClawSessionTitleStmt, err = db.PrepareContext(ctx, updateTLUClawSessionTitle); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateTLUClawSessionTitle: %w", err)
+	}
+	if q.updateTLUClawSnapshotStatusStmt, err = db.PrepareContext(ctx, updateTLUClawSnapshotStatus); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateTLUClawSnapshotStatus: %w", err)
 	}
 	if q.updateUserPasswordStmt, err = db.PrepareContext(ctx, updateUserPassword); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateUserPassword: %w", err)
@@ -552,11 +831,29 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.upsertAppSettingStmt, err = db.PrepareContext(ctx, upsertAppSetting); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertAppSetting: %w", err)
 	}
+	if q.upsertCourseGroupSubstitutionStmt, err = db.PrepareContext(ctx, upsertCourseGroupSubstitution); err != nil {
+		return nil, fmt.Errorf("error preparing query UpsertCourseGroupSubstitution: %w", err)
+	}
+	if q.upsertCoursePrerequisiteStmt, err = db.PrepareContext(ctx, upsertCoursePrerequisite); err != nil {
+		return nil, fmt.Errorf("error preparing query UpsertCoursePrerequisite: %w", err)
+	}
+	if q.upsertCourseSubstitutionStmt, err = db.PrepareContext(ctx, upsertCourseSubstitution); err != nil {
+		return nil, fmt.Errorf("error preparing query UpsertCourseSubstitution: %w", err)
+	}
+	if q.upsertCurriculumStmt, err = db.PrepareContext(ctx, upsertCurriculum); err != nil {
+		return nil, fmt.Errorf("error preparing query UpsertCurriculum: %w", err)
+	}
+	if q.upsertCurriculumCourseStmt, err = db.PrepareContext(ctx, upsertCurriculumCourse); err != nil {
+		return nil, fmt.Errorf("error preparing query UpsertCurriculumCourse: %w", err)
+	}
 	if q.upsertDocumentStmt, err = db.PrepareContext(ctx, upsertDocument); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertDocument: %w", err)
 	}
 	if q.upsertDocumentChunkStmt, err = db.PrepareContext(ctx, upsertDocumentChunk); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertDocumentChunk: %w", err)
+	}
+	if q.upsertDocumentRuleStmt, err = db.PrepareContext(ctx, upsertDocumentRule); err != nil {
+		return nil, fmt.Errorf("error preparing query UpsertDocumentRule: %w", err)
 	}
 	if q.upsertKGEdgeStmt, err = db.PrepareContext(ctx, upsertKGEdge); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertKGEdge: %w", err)
@@ -572,6 +869,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.upsertStudentProfileStmt, err = db.PrepareContext(ctx, upsertStudentProfile); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertStudentProfile: %w", err)
+	}
+	if q.upsertTranscriptGradeStmt, err = db.PrepareContext(ctx, upsertTranscriptGrade); err != nil {
+		return nil, fmt.Errorf("error preparing query UpsertTranscriptGrade: %w", err)
 	}
 	if q.upsertUserStmt, err = db.PrepareContext(ctx, upsertUser); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertUser: %w", err)
@@ -607,6 +907,41 @@ func (q *Queries) Close() error {
 	if q.claimJobScheduleStmt != nil {
 		if cerr := q.claimJobScheduleStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing claimJobScheduleStmt: %w", cerr)
+		}
+	}
+	if q.clearAllDocumentChunksStmt != nil {
+		if cerr := q.clearAllDocumentChunksStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing clearAllDocumentChunksStmt: %w", cerr)
+		}
+	}
+	if q.clearAllDocumentRulesStmt != nil {
+		if cerr := q.clearAllDocumentRulesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing clearAllDocumentRulesStmt: %w", cerr)
+		}
+	}
+	if q.clearAllDocumentsStmt != nil {
+		if cerr := q.clearAllDocumentsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing clearAllDocumentsStmt: %w", cerr)
+		}
+	}
+	if q.clearAllKGEdgesStmt != nil {
+		if cerr := q.clearAllKGEdgesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing clearAllKGEdgesStmt: %w", cerr)
+		}
+	}
+	if q.clearAllKGNodesStmt != nil {
+		if cerr := q.clearAllKGNodesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing clearAllKGNodesStmt: %w", cerr)
+		}
+	}
+	if q.clearAllSupersessionAuditLogsStmt != nil {
+		if cerr := q.clearAllSupersessionAuditLogsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing clearAllSupersessionAuditLogsStmt: %w", cerr)
+		}
+	}
+	if q.clearAllSupersessionEdgesStmt != nil {
+		if cerr := q.clearAllSupersessionEdgesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing clearAllSupersessionEdgesStmt: %w", cerr)
 		}
 	}
 	if q.clearAllUserMemoriesStmt != nil {
@@ -649,6 +984,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing countAllAuditLogsStmt: %w", cerr)
 		}
 	}
+	if q.countArchivedDocumentsStmt != nil {
+		if cerr := q.countArchivedDocumentsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing countArchivedDocumentsStmt: %w", cerr)
+		}
+	}
 	if q.countChunksTotalStmt != nil {
 		if cerr := q.countChunksTotalStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing countChunksTotalStmt: %w", cerr)
@@ -657,6 +997,21 @@ func (q *Queries) Close() error {
 	if q.countConversationsByUserIDStmt != nil {
 		if cerr := q.countConversationsByUserIDStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing countConversationsByUserIDStmt: %w", cerr)
+		}
+	}
+	if q.countCoursesFilteredStmt != nil {
+		if cerr := q.countCoursesFilteredStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing countCoursesFilteredStmt: %w", cerr)
+		}
+	}
+	if q.countCurriculumCoursesStmt != nil {
+		if cerr := q.countCurriculumCoursesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing countCurriculumCoursesStmt: %w", cerr)
+		}
+	}
+	if q.countCurriculumsStmt != nil {
+		if cerr := q.countCurriculumsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing countCurriculumsStmt: %w", cerr)
 		}
 	}
 	if q.countDocumentsStmt != nil {
@@ -694,9 +1049,34 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing countNodesTotalStmt: %w", cerr)
 		}
 	}
+	if q.countPartiallyAmendedDocumentsStmt != nil {
+		if cerr := q.countPartiallyAmendedDocumentsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing countPartiallyAmendedDocumentsStmt: %w", cerr)
+		}
+	}
+	if q.countSubstitutionsStmt != nil {
+		if cerr := q.countSubstitutionsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing countSubstitutionsStmt: %w", cerr)
+		}
+	}
+	if q.countSubstitutionsFilteredStmt != nil {
+		if cerr := q.countSubstitutionsFilteredStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing countSubstitutionsFilteredStmt: %w", cerr)
+		}
+	}
 	if q.countSupersededDocumentsStmt != nil {
 		if cerr := q.countSupersededDocumentsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing countSupersededDocumentsStmt: %w", cerr)
+		}
+	}
+	if q.countTLUClawSnapshotsStmt != nil {
+		if cerr := q.countTLUClawSnapshotsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing countTLUClawSnapshotsStmt: %w", cerr)
+		}
+	}
+	if q.countTranscriptGradesByUserIDStmt != nil {
+		if cerr := q.countTranscriptGradesByUserIDStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing countTranscriptGradesByUserIDStmt: %w", cerr)
 		}
 	}
 	if q.countUnreadNotificationsStmt != nil {
@@ -764,6 +1144,21 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing createRoleStmt: %w", cerr)
 		}
 	}
+	if q.createTLUClawMessageStmt != nil {
+		if cerr := q.createTLUClawMessageStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing createTLUClawMessageStmt: %w", cerr)
+		}
+	}
+	if q.createTLUClawSessionStmt != nil {
+		if cerr := q.createTLUClawSessionStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing createTLUClawSessionStmt: %w", cerr)
+		}
+	}
+	if q.createTLUClawSnapshotStmt != nil {
+		if cerr := q.createTLUClawSnapshotStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing createTLUClawSnapshotStmt: %w", cerr)
+		}
+	}
 	if q.createUserStmt != nil {
 		if cerr := q.createUserStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing createUserStmt: %w", cerr)
@@ -784,6 +1179,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing deleteChainStmt: %w", cerr)
 		}
 	}
+	if q.deleteChunksByDocumentIDStmt != nil {
+		if cerr := q.deleteChunksByDocumentIDStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteChunksByDocumentIDStmt: %w", cerr)
+		}
+	}
 	if q.deleteConversationStmt != nil {
 		if cerr := q.deleteConversationStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteConversationStmt: %w", cerr)
@@ -792,6 +1192,26 @@ func (q *Queries) Close() error {
 	if q.deleteConversationAdminStmt != nil {
 		if cerr := q.deleteConversationAdminStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteConversationAdminStmt: %w", cerr)
+		}
+	}
+	if q.deleteCoursePrerequisiteStmt != nil {
+		if cerr := q.deleteCoursePrerequisiteStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteCoursePrerequisiteStmt: %w", cerr)
+		}
+	}
+	if q.deleteCourseSubstitutionStmt != nil {
+		if cerr := q.deleteCourseSubstitutionStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteCourseSubstitutionStmt: %w", cerr)
+		}
+	}
+	if q.deleteCurriculumStmt != nil {
+		if cerr := q.deleteCurriculumStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteCurriculumStmt: %w", cerr)
+		}
+	}
+	if q.deleteCurriculumCourseStmt != nil {
+		if cerr := q.deleteCurriculumCourseStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteCurriculumCourseStmt: %w", cerr)
 		}
 	}
 	if q.deleteJobScheduleStmt != nil {
@@ -814,6 +1234,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing deleteLLMProviderStmt: %w", cerr)
 		}
 	}
+	if q.deleteNotificationByIDStmt != nil {
+		if cerr := q.deleteNotificationByIDStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteNotificationByIDStmt: %w", cerr)
+		}
+	}
 	if q.deleteRoleStmt != nil {
 		if cerr := q.deleteRoleStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteRoleStmt: %w", cerr)
@@ -824,9 +1249,29 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing deleteRolePermissionsStmt: %w", cerr)
 		}
 	}
+	if q.deleteRulesByDocumentIDStmt != nil {
+		if cerr := q.deleteRulesByDocumentIDStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteRulesByDocumentIDStmt: %w", cerr)
+		}
+	}
 	if q.deleteStudentProfileStmt != nil {
 		if cerr := q.deleteStudentProfileStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteStudentProfileStmt: %w", cerr)
+		}
+	}
+	if q.deleteTLUClawSessionStmt != nil {
+		if cerr := q.deleteTLUClawSessionStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteTLUClawSessionStmt: %w", cerr)
+		}
+	}
+	if q.deleteTranscriptByUserIDStmt != nil {
+		if cerr := q.deleteTranscriptByUserIDStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteTranscriptByUserIDStmt: %w", cerr)
+		}
+	}
+	if q.deleteTranscriptGradeStmt != nil {
+		if cerr := q.deleteTranscriptGradeStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteTranscriptGradeStmt: %w", cerr)
 		}
 	}
 	if q.deleteUserStmt != nil {
@@ -839,9 +1284,34 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing deleteUserMemoryStmt: %w", cerr)
 		}
 	}
+	if q.documentExistsByURLStmt != nil {
+		if cerr := q.documentExistsByURLStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing documentExistsByURLStmt: %w", cerr)
+		}
+	}
 	if q.expireInquiryStmt != nil {
 		if cerr := q.expireInquiryStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing expireInquiryStmt: %w", cerr)
+		}
+	}
+	if q.findCourseMetadataByCodeStmt != nil {
+		if cerr := q.findCourseMetadataByCodeStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing findCourseMetadataByCodeStmt: %w", cerr)
+		}
+	}
+	if q.findDirectSubstitutionsStmt != nil {
+		if cerr := q.findDirectSubstitutionsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing findDirectSubstitutionsStmt: %w", cerr)
+		}
+	}
+	if q.findDocumentByIdentifierStmt != nil {
+		if cerr := q.findDocumentByIdentifierStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing findDocumentByIdentifierStmt: %w", cerr)
+		}
+	}
+	if q.findMajorMappingStmt != nil {
+		if cerr := q.findMajorMappingStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing findMajorMappingStmt: %w", cerr)
 		}
 	}
 	if q.findSupersededDocIDsStmt != nil {
@@ -909,6 +1379,41 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getConversationsByIDsStmt: %w", cerr)
 		}
 	}
+	if q.getCoursePrerequisiteByIDStmt != nil {
+		if cerr := q.getCoursePrerequisiteByIDStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getCoursePrerequisiteByIDStmt: %w", cerr)
+		}
+	}
+	if q.getCoursesByCodeAndCohortStmt != nil {
+		if cerr := q.getCoursesByCodeAndCohortStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getCoursesByCodeAndCohortStmt: %w", cerr)
+		}
+	}
+	if q.getCurriculumByCohortAndMajorStmt != nil {
+		if cerr := q.getCurriculumByCohortAndMajorStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getCurriculumByCohortAndMajorStmt: %w", cerr)
+		}
+	}
+	if q.getCurriculumByIDStmt != nil {
+		if cerr := q.getCurriculumByIDStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getCurriculumByIDStmt: %w", cerr)
+		}
+	}
+	if q.getCurriculumCourseByIDStmt != nil {
+		if cerr := q.getCurriculumCourseByIDStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getCurriculumCourseByIDStmt: %w", cerr)
+		}
+	}
+	if q.getCurriculumCoursesByCohortAndMajorStmt != nil {
+		if cerr := q.getCurriculumCoursesByCohortAndMajorStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getCurriculumCoursesByCohortAndMajorStmt: %w", cerr)
+		}
+	}
+	if q.getCurriculumCoursesByCurriculumIDStmt != nil {
+		if cerr := q.getCurriculumCoursesByCurriculumIDStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getCurriculumCoursesByCurriculumIDStmt: %w", cerr)
+		}
+	}
 	if q.getDefaultLLMModelByTypeStmt != nil {
 		if cerr := q.getDefaultLLMModelByTypeStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getDefaultLLMModelByTypeStmt: %w", cerr)
@@ -922,6 +1427,16 @@ func (q *Queries) Close() error {
 	if q.getDocumentByIDStmt != nil {
 		if cerr := q.getDocumentByIDStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getDocumentByIDStmt: %w", cerr)
+		}
+	}
+	if q.getDocumentByURLStmt != nil {
+		if cerr := q.getDocumentByURLStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getDocumentByURLStmt: %w", cerr)
+		}
+	}
+	if q.getDocumentRuleByIDStmt != nil {
+		if cerr := q.getDocumentRuleByIDStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getDocumentRuleByIDStmt: %w", cerr)
 		}
 	}
 	if q.getDocumentsByIDsStmt != nil {
@@ -1049,6 +1564,51 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getStudentProfileByUserIDStmt: %w", cerr)
 		}
 	}
+	if q.getSubstitutionByIDStmt != nil {
+		if cerr := q.getSubstitutionByIDStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getSubstitutionByIDStmt: %w", cerr)
+		}
+	}
+	if q.getTLUClawSessionByIDStmt != nil {
+		if cerr := q.getTLUClawSessionByIDStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getTLUClawSessionByIDStmt: %w", cerr)
+		}
+	}
+	if q.getTLUClawSessionsByIDsStmt != nil {
+		if cerr := q.getTLUClawSessionsByIDsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getTLUClawSessionsByIDsStmt: %w", cerr)
+		}
+	}
+	if q.getTLUClawSnapshotByBatchIDStmt != nil {
+		if cerr := q.getTLUClawSnapshotByBatchIDStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getTLUClawSnapshotByBatchIDStmt: %w", cerr)
+		}
+	}
+	if q.getTLUClawSnapshotByIDStmt != nil {
+		if cerr := q.getTLUClawSnapshotByIDStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getTLUClawSnapshotByIDStmt: %w", cerr)
+		}
+	}
+	if q.getTLUClawSnapshotByNonceStmt != nil {
+		if cerr := q.getTLUClawSnapshotByNonceStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getTLUClawSnapshotByNonceStmt: %w", cerr)
+		}
+	}
+	if q.getTranscriptGradeByIDStmt != nil {
+		if cerr := q.getTranscriptGradeByIDStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getTranscriptGradeByIDStmt: %w", cerr)
+		}
+	}
+	if q.getTranscriptGradeByUserAndCourseStmt != nil {
+		if cerr := q.getTranscriptGradeByUserAndCourseStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getTranscriptGradeByUserAndCourseStmt: %w", cerr)
+		}
+	}
+	if q.getTranscriptGradesByIDsStmt != nil {
+		if cerr := q.getTranscriptGradesByIDsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getTranscriptGradesByIDsStmt: %w", cerr)
+		}
+	}
 	if q.getUserByEmailStmt != nil {
 		if cerr := q.getUserByEmailStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getUserByEmailStmt: %w", cerr)
@@ -1062,6 +1622,11 @@ func (q *Queries) Close() error {
 	if q.getUserByIDWithoutDeletedStmt != nil {
 		if cerr := q.getUserByIDWithoutDeletedStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getUserByIDWithoutDeletedStmt: %w", cerr)
+		}
+	}
+	if q.getUserByStudentCodeStmt != nil {
+		if cerr := q.getUserByStudentCodeStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getUserByStudentCodeStmt: %w", cerr)
 		}
 	}
 	if q.getUserMemoriesByIDsStmt != nil {
@@ -1114,6 +1679,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing listActiveLLMModelsByTypeStmt: %w", cerr)
 		}
 	}
+	if q.listActiveRulesByDocumentIDStmt != nil {
+		if cerr := q.listActiveRulesByDocumentIDStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listActiveRulesByDocumentIDStmt: %w", cerr)
+		}
+	}
 	if q.listAdminConversationsFeedbackDownStmt != nil {
 		if cerr := q.listAdminConversationsFeedbackDownStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listAdminConversationsFeedbackDownStmt: %w", cerr)
@@ -1144,6 +1714,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing listAllAuditLogsStmt: %w", cerr)
 		}
 	}
+	if q.listAllDocumentIdentifiersStmt != nil {
+		if cerr := q.listAllDocumentIdentifiersStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listAllDocumentIdentifiersStmt: %w", cerr)
+		}
+	}
 	if q.listAllKGEdgesStmt != nil {
 		if cerr := q.listAllKGEdgesStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listAllKGEdgesStmt: %w", cerr)
@@ -1152,6 +1727,26 @@ func (q *Queries) Close() error {
 	if q.listAllKGNodesStmt != nil {
 		if cerr := q.listAllKGNodesStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listAllKGNodesStmt: %w", cerr)
+		}
+	}
+	if q.listAllMajorMetadataStmt != nil {
+		if cerr := q.listAllMajorMetadataStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listAllMajorMetadataStmt: %w", cerr)
+		}
+	}
+	if q.listAllMajorsStmt != nil {
+		if cerr := q.listAllMajorsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listAllMajorsStmt: %w", cerr)
+		}
+	}
+	if q.listAllPrerequisitesForCohortAndMajorStmt != nil {
+		if cerr := q.listAllPrerequisitesForCohortAndMajorStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listAllPrerequisitesForCohortAndMajorStmt: %w", cerr)
+		}
+	}
+	if q.listAllRegulationIDsChronologicalStmt != nil {
+		if cerr := q.listAllRegulationIDsChronologicalStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listAllRegulationIDsChronologicalStmt: %w", cerr)
 		}
 	}
 	if q.listAuditLogsByDocIDStmt != nil {
@@ -1174,9 +1769,39 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing listChunksByDocumentIDStmt: %w", cerr)
 		}
 	}
+	if q.listCohortsStmt != nil {
+		if cerr := q.listCohortsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listCohortsStmt: %w", cerr)
+		}
+	}
 	if q.listConversationIDsByUserIDStmt != nil {
 		if cerr := q.listConversationIDsByUserIDStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listConversationIDsByUserIDStmt: %w", cerr)
+		}
+	}
+	if q.listCoursesPaginatedStmt != nil {
+		if cerr := q.listCoursesPaginatedStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listCoursesPaginatedStmt: %w", cerr)
+		}
+	}
+	if q.listCurriculumsStmt != nil {
+		if cerr := q.listCurriculumsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listCurriculumsStmt: %w", cerr)
+		}
+	}
+	if q.listCurriculumsByCohortStmt != nil {
+		if cerr := q.listCurriculumsByCohortStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listCurriculumsByCohortStmt: %w", cerr)
+		}
+	}
+	if q.listDependentCoursesStmt != nil {
+		if cerr := q.listDependentCoursesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listDependentCoursesStmt: %w", cerr)
+		}
+	}
+	if q.listDistinctSubstitutionMajorsStmt != nil {
+		if cerr := q.listDistinctSubstitutionMajorsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listDistinctSubstitutionMajorsStmt: %w", cerr)
 		}
 	}
 	if q.listDueJobScheduleIDsStmt != nil {
@@ -1192,6 +1817,11 @@ func (q *Queries) Close() error {
 	if q.listFilteredJobIDsStmt != nil {
 		if cerr := q.listFilteredJobIDsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listFilteredJobIDsStmt: %w", cerr)
+		}
+	}
+	if q.listGroupSubstitutionsStmt != nil {
+		if cerr := q.listGroupSubstitutionsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listGroupSubstitutionsStmt: %w", cerr)
 		}
 	}
 	if q.listInquiryIDsStmt != nil {
@@ -1224,6 +1854,21 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing listLLMProvidersStmt: %w", cerr)
 		}
 	}
+	if q.listLatestCommittedTLUClawSnapshotsStmt != nil {
+		if cerr := q.listLatestCommittedTLUClawSnapshotsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listLatestCommittedTLUClawSnapshotsStmt: %w", cerr)
+		}
+	}
+	if q.listMajorsByCohortStmt != nil {
+		if cerr := q.listMajorsByCohortStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listMajorsByCohortStmt: %w", cerr)
+		}
+	}
+	if q.listMajorsByFacultyStmt != nil {
+		if cerr := q.listMajorsByFacultyStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listMajorsByFacultyStmt: %w", cerr)
+		}
+	}
 	if q.listMessagesByConversationIDStmt != nil {
 		if cerr := q.listMessagesByConversationIDStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listMessagesByConversationIDStmt: %w", cerr)
@@ -1244,6 +1889,16 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing listPermissionsStmt: %w", cerr)
 		}
 	}
+	if q.listPrerequisitesForCourseStmt != nil {
+		if cerr := q.listPrerequisitesForCourseStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listPrerequisitesForCourseStmt: %w", cerr)
+		}
+	}
+	if q.listRecentNotificationIDsStmt != nil {
+		if cerr := q.listRecentNotificationIDsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listRecentNotificationIDsStmt: %w", cerr)
+		}
+	}
 	if q.listRolePermissionIDsStmt != nil {
 		if cerr := q.listRolePermissionIDsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listRolePermissionIDsStmt: %w", cerr)
@@ -1254,9 +1909,54 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing listRolePermissionsStmt: %w", cerr)
 		}
 	}
+	if q.listRulesByDocumentIDStmt != nil {
+		if cerr := q.listRulesByDocumentIDStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listRulesByDocumentIDStmt: %w", cerr)
+		}
+	}
+	if q.listStudentProfilesByStandingStmt != nil {
+		if cerr := q.listStudentProfilesByStandingStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listStudentProfilesByStandingStmt: %w", cerr)
+		}
+	}
+	if q.listSubstitutionsByCohortAndMajorStmt != nil {
+		if cerr := q.listSubstitutionsByCohortAndMajorStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listSubstitutionsByCohortAndMajorStmt: %w", cerr)
+		}
+	}
+	if q.listSubstitutionsPaginatedStmt != nil {
+		if cerr := q.listSubstitutionsPaginatedStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listSubstitutionsPaginatedStmt: %w", cerr)
+		}
+	}
 	if q.listSupersededDocumentsStmt != nil {
 		if cerr := q.listSupersededDocumentsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listSupersededDocumentsStmt: %w", cerr)
+		}
+	}
+	if q.listTLUClawMessagesBySessionIDStmt != nil {
+		if cerr := q.listTLUClawMessagesBySessionIDStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listTLUClawMessagesBySessionIDStmt: %w", cerr)
+		}
+	}
+	if q.listTLUClawSessionIDsByAdminStmt != nil {
+		if cerr := q.listTLUClawSessionIDsByAdminStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listTLUClawSessionIDsByAdminStmt: %w", cerr)
+		}
+	}
+	if q.listTLUClawSnapshotsBySessionIDStmt != nil {
+		if cerr := q.listTLUClawSnapshotsBySessionIDStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listTLUClawSnapshotsBySessionIDStmt: %w", cerr)
+		}
+	}
+	if q.listTLUClawSnapshotsPaginatedStmt != nil {
+		if cerr := q.listTLUClawSnapshotsPaginatedStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listTLUClawSnapshotsPaginatedStmt: %w", cerr)
+		}
+	}
+	if q.listTranscriptGradeIDsByUserIDStmt != nil {
+		if cerr := q.listTranscriptGradeIDsByUserIDStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listTranscriptGradeIDsByUserIDStmt: %w", cerr)
 		}
 	}
 	if q.listUserMemoriesByUserIDStmt != nil {
@@ -1309,6 +2009,21 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing removeChainNodeStmt: %w", cerr)
 		}
 	}
+	if q.resetAllChunkSupersessionsStmt != nil {
+		if cerr := q.resetAllChunkSupersessionsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing resetAllChunkSupersessionsStmt: %w", cerr)
+		}
+	}
+	if q.resetAllDocumentSupersessionsStmt != nil {
+		if cerr := q.resetAllDocumentSupersessionsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing resetAllDocumentSupersessionsStmt: %w", cerr)
+		}
+	}
+	if q.resetAllRuleSupersessionsStmt != nil {
+		if cerr := q.resetAllRuleSupersessionsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing resetAllRuleSupersessionsStmt: %w", cerr)
+		}
+	}
 	if q.restoreUserStmt != nil {
 		if cerr := q.restoreUserStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing restoreUserStmt: %w", cerr)
@@ -1322,6 +2037,16 @@ func (q *Queries) Close() error {
 	if q.rotateUserRefreshTokenStmt != nil {
 		if cerr := q.rotateUserRefreshTokenStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing rotateUserRefreshTokenStmt: %w", cerr)
+		}
+	}
+	if q.searchActiveChunkIDsFTSStmt != nil {
+		if cerr := q.searchActiveChunkIDsFTSStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing searchActiveChunkIDsFTSStmt: %w", cerr)
+		}
+	}
+	if q.searchCurriculumCoursesStmt != nil {
+		if cerr := q.searchCurriculumCoursesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing searchCurriculumCoursesStmt: %w", cerr)
 		}
 	}
 	if q.searchDocumentIDsStmt != nil {
@@ -1349,6 +2074,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing touchConversationStmt: %w", cerr)
 		}
 	}
+	if q.touchTLUClawSessionStmt != nil {
+		if cerr := q.touchTLUClawSessionStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing touchTLUClawSessionStmt: %w", cerr)
+		}
+	}
 	if q.updateAgentSkillEnabledStmt != nil {
 		if cerr := q.updateAgentSkillEnabledStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing updateAgentSkillEnabledStmt: %w", cerr)
@@ -1372,6 +2102,21 @@ func (q *Queries) Close() error {
 	if q.updateConversationTitleStmt != nil {
 		if cerr := q.updateConversationTitleStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing updateConversationTitleStmt: %w", cerr)
+		}
+	}
+	if q.updateCurriculumCourseStmt != nil {
+		if cerr := q.updateCurriculumCourseStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateCurriculumCourseStmt: %w", cerr)
+		}
+	}
+	if q.updateDocumentChunksByDocIDStatusStmt != nil {
+		if cerr := q.updateDocumentChunksByDocIDStatusStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateDocumentChunksByDocIDStatusStmt: %w", cerr)
+		}
+	}
+	if q.updateDocumentChunksByRuleIDStatusStmt != nil {
+		if cerr := q.updateDocumentChunksByRuleIDStatusStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateDocumentChunksByRuleIDStatusStmt: %w", cerr)
 		}
 	}
 	if q.updateDocumentStatusStmt != nil {
@@ -1404,6 +2149,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing updateLLMProviderStmt: %w", cerr)
 		}
 	}
+	if q.updateMajorMetadataByNameStmt != nil {
+		if cerr := q.updateMajorMetadataByNameStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateMajorMetadataByNameStmt: %w", cerr)
+		}
+	}
 	if q.updateMessageFeedbackStmt != nil {
 		if cerr := q.updateMessageFeedbackStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing updateMessageFeedbackStmt: %w", cerr)
@@ -1424,9 +2174,24 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing updateRolePositionStmt: %w", cerr)
 		}
 	}
+	if q.updateRuleStatusStmt != nil {
+		if cerr := q.updateRuleStatusStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateRuleStatusStmt: %w", cerr)
+		}
+	}
 	if q.updateSystemRoleDescriptionStmt != nil {
 		if cerr := q.updateSystemRoleDescriptionStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing updateSystemRoleDescriptionStmt: %w", cerr)
+		}
+	}
+	if q.updateTLUClawSessionTitleStmt != nil {
+		if cerr := q.updateTLUClawSessionTitleStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateTLUClawSessionTitleStmt: %w", cerr)
+		}
+	}
+	if q.updateTLUClawSnapshotStatusStmt != nil {
+		if cerr := q.updateTLUClawSnapshotStatusStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateTLUClawSnapshotStatusStmt: %w", cerr)
 		}
 	}
 	if q.updateUserPasswordStmt != nil {
@@ -1464,6 +2229,31 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing upsertAppSettingStmt: %w", cerr)
 		}
 	}
+	if q.upsertCourseGroupSubstitutionStmt != nil {
+		if cerr := q.upsertCourseGroupSubstitutionStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing upsertCourseGroupSubstitutionStmt: %w", cerr)
+		}
+	}
+	if q.upsertCoursePrerequisiteStmt != nil {
+		if cerr := q.upsertCoursePrerequisiteStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing upsertCoursePrerequisiteStmt: %w", cerr)
+		}
+	}
+	if q.upsertCourseSubstitutionStmt != nil {
+		if cerr := q.upsertCourseSubstitutionStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing upsertCourseSubstitutionStmt: %w", cerr)
+		}
+	}
+	if q.upsertCurriculumStmt != nil {
+		if cerr := q.upsertCurriculumStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing upsertCurriculumStmt: %w", cerr)
+		}
+	}
+	if q.upsertCurriculumCourseStmt != nil {
+		if cerr := q.upsertCurriculumCourseStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing upsertCurriculumCourseStmt: %w", cerr)
+		}
+	}
 	if q.upsertDocumentStmt != nil {
 		if cerr := q.upsertDocumentStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing upsertDocumentStmt: %w", cerr)
@@ -1472,6 +2262,11 @@ func (q *Queries) Close() error {
 	if q.upsertDocumentChunkStmt != nil {
 		if cerr := q.upsertDocumentChunkStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing upsertDocumentChunkStmt: %w", cerr)
+		}
+	}
+	if q.upsertDocumentRuleStmt != nil {
+		if cerr := q.upsertDocumentRuleStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing upsertDocumentRuleStmt: %w", cerr)
 		}
 	}
 	if q.upsertKGEdgeStmt != nil {
@@ -1497,6 +2292,11 @@ func (q *Queries) Close() error {
 	if q.upsertStudentProfileStmt != nil {
 		if cerr := q.upsertStudentProfileStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing upsertStudentProfileStmt: %w", cerr)
+		}
+	}
+	if q.upsertTranscriptGradeStmt != nil {
+		if cerr := q.upsertTranscriptGradeStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing upsertTranscriptGradeStmt: %w", cerr)
 		}
 	}
 	if q.upsertUserStmt != nil {
@@ -1546,383 +2346,583 @@ func (q *Queries) queryRow(ctx context.Context, stmt *sql.Stmt, query string, ar
 }
 
 type Queries struct {
-	db                                      DBTX
-	tx                                      *sql.Tx
-	addChainNodeStmt                        *sql.Stmt
-	answerInquiryStmt                       *sql.Stmt
-	bulkDeleteRolesFromUserStmt             *sql.Stmt
-	claimInitialSetupStmt                   *sql.Stmt
-	claimJobScheduleStmt                    *sql.Stmt
-	clearAllUserMemoriesStmt                *sql.Stmt
-	clearChainNodesStmt                     *sql.Stmt
-	countActiveAdminUsersStmt               *sql.Stmt
-	countActiveDocumentsStmt                *sql.Stmt
-	countAdminConversationsFeedbackDownStmt *sql.Stmt
-	countAdminConversationsFeedbackUpStmt   *sql.Stmt
-	countAdminConversationsNoFeedbackStmt   *sql.Stmt
-	countAllAuditLogsStmt                   *sql.Stmt
-	countChunksTotalStmt                    *sql.Stmt
-	countConversationsByUserIDStmt          *sql.Stmt
-	countDocumentsStmt                      *sql.Stmt
-	countDocumentsTotalStmt                 *sql.Stmt
-	countEdgesTotalStmt                     *sql.Stmt
-	countInquiriesStmt                      *sql.Stmt
-	countInquiriesByUserIDStmt              *sql.Stmt
-	countJobsStmt                           *sql.Stmt
-	countNodesTotalStmt                     *sql.Stmt
-	countSupersededDocumentsStmt            *sql.Stmt
-	countUnreadNotificationsStmt            *sql.Stmt
-	countUserMemoriesStmt                   *sql.Stmt
-	countUsersStmt                          *sql.Stmt
-	createChainStmt                         *sql.Stmt
-	createConversationStmt                  *sql.Stmt
-	createInquiryStmt                       *sql.Stmt
-	createJobStmt                           *sql.Stmt
-	createJobScheduleStmt                   *sql.Stmt
-	createLLMModelStmt                      *sql.Stmt
-	createLLMProviderStmt                   *sql.Stmt
-	createMessageStmt                       *sql.Stmt
-	createNotificationStmt                  *sql.Stmt
-	createRoleStmt                          *sql.Stmt
-	createUserStmt                          *sql.Stmt
-	createUserRoleStmt                      *sql.Stmt
-	deleteAgentSkillStmt                    *sql.Stmt
-	deleteChainStmt                         *sql.Stmt
-	deleteConversationStmt                  *sql.Stmt
-	deleteConversationAdminStmt             *sql.Stmt
-	deleteJobScheduleStmt                   *sql.Stmt
-	deleteKGEdgeStmt                        *sql.Stmt
-	deleteLLMModelStmt                      *sql.Stmt
-	deleteLLMProviderStmt                   *sql.Stmt
-	deleteRoleStmt                          *sql.Stmt
-	deleteRolePermissionsStmt               *sql.Stmt
-	deleteStudentProfileStmt                *sql.Stmt
-	deleteUserStmt                          *sql.Stmt
-	deleteUserMemoryStmt                    *sql.Stmt
-	expireInquiryStmt                       *sql.Stmt
-	findSupersededDocIDsStmt                *sql.Stmt
-	getActiveChainByTypeStmt                *sql.Stmt
-	getAdminMessageStatsStmt                *sql.Stmt
-	getAdminTotalChatsStmt                  *sql.Stmt
-	getAgentPromptStmt                      *sql.Stmt
-	getAgentSkillStmt                       *sql.Stmt
-	getAppSettingStmt                       *sql.Stmt
-	getAutoAssignRoleIDsStmt                *sql.Stmt
-	getChainStmt                            *sql.Stmt
-	getChunkByIDStmt                        *sql.Stmt
-	getChunksByIDsStmt                      *sql.Stmt
-	getConversationByIDStmt                 *sql.Stmt
-	getConversationsByIDsStmt               *sql.Stmt
-	getDefaultLLMModelByTypeStmt            *sql.Stmt
-	getDefaultLLMProviderStmt               *sql.Stmt
-	getDocumentByIDStmt                     *sql.Stmt
-	getDocumentsByIDsStmt                   *sql.Stmt
-	getInquiriesByIDsStmt                   *sql.Stmt
-	getInquiryByIDStmt                      *sql.Stmt
-	getJobByIDStmt                          *sql.Stmt
-	getJobScheduleByIDStmt                  *sql.Stmt
-	getJobSchedulesByIDsStmt                *sql.Stmt
-	getJobsByIDsStmt                        *sql.Stmt
-	getKGEdgeByIDStmt                       *sql.Stmt
-	getKGNodeByIDStmt                       *sql.Stmt
-	getLLMModelByIDStmt                     *sql.Stmt
-	getLLMModelByKeyStmt                    *sql.Stmt
-	getLLMModelWithProviderStmt             *sql.Stmt
-	getLLMProviderByIDStmt                  *sql.Stmt
-	getNotificationByIDStmt                 *sql.Stmt
-	getNotificationsByIDsStmt               *sql.Stmt
-	getPermissionsByKeysStmt                *sql.Stmt
-	getRoleByIDStmt                         *sql.Stmt
-	getRoleByNameStmt                       *sql.Stmt
-	getRoleIDsStmt                          *sql.Stmt
-	getRolePermissionIDsStmt                *sql.Stmt
-	getRolePermissionsStmt                  *sql.Stmt
-	getRolePermissionsByIDsStmt             *sql.Stmt
-	getRolesByIDsStmt                       *sql.Stmt
-	getSetupStateStmt                       *sql.Stmt
-	getStudentProfileByUserIDStmt           *sql.Stmt
-	getUserByEmailStmt                      *sql.Stmt
-	getUserByIDStmt                         *sql.Stmt
-	getUserByIDWithoutDeletedStmt           *sql.Stmt
-	getUserMemoriesByIDsStmt                *sql.Stmt
-	getUserMemoryByIDStmt                   *sql.Stmt
-	getUserRolePermissionsStmt              *sql.Stmt
-	getUserRolesStmt                        *sql.Stmt
-	getUserTokenVersionStmt                 *sql.Stmt
-	getUsersByIDsStmt                       *sql.Stmt
-	listActiveAgentPromptsStmt              *sql.Stmt
-	listActiveAnsweredInquiriesStmt         *sql.Stmt
-	listActiveChatModelsWithProviderStmt    *sql.Stmt
-	listActiveLLMModelsByTypeStmt           *sql.Stmt
-	listAdminConversationsFeedbackDownStmt  *sql.Stmt
-	listAdminConversationsFeedbackUpStmt    *sql.Stmt
-	listAdminConversationsNoFeedbackStmt    *sql.Stmt
-	listAgentPromptsStmt                    *sql.Stmt
-	listAgentSkillsStmt                     *sql.Stmt
-	listAllAuditLogsStmt                    *sql.Stmt
-	listAllKGEdgesStmt                      *sql.Stmt
-	listAllKGNodesStmt                      *sql.Stmt
-	listAuditLogsByDocIDStmt                *sql.Stmt
-	listChainNodesWithDetailsStmt           *sql.Stmt
-	listChainsStmt                          *sql.Stmt
-	listChunksByDocumentIDStmt              *sql.Stmt
-	listConversationIDsByUserIDStmt         *sql.Stmt
-	listDueJobScheduleIDsStmt               *sql.Stmt
-	listEnabledAgentSkillsStmt              *sql.Stmt
-	listFilteredJobIDsStmt                  *sql.Stmt
-	listInquiryIDsStmt                      *sql.Stmt
-	listInquiryIDsByUserIDStmt              *sql.Stmt
-	listJobScheduleIDsStmt                  *sql.Stmt
-	listLLMModelsStmt                       *sql.Stmt
-	listLLMModelsByProviderIDStmt           *sql.Stmt
-	listLLMProvidersStmt                    *sql.Stmt
-	listMessagesByConversationIDStmt        *sql.Stmt
-	listNotificationIDsByUserIDStmt         *sql.Stmt
-	listPermissionKeysStmt                  *sql.Stmt
-	listPermissionsStmt                     *sql.Stmt
-	listRolePermissionIDsStmt               *sql.Stmt
-	listRolePermissionsStmt                 *sql.Stmt
-	listSupersededDocumentsStmt             *sql.Stmt
-	listUserMemoriesByUserIDStmt            *sql.Stmt
-	listUserMemoryIDsByUserIDStmt           *sql.Stmt
-	markAllNotificationsAsReadStmt          *sql.Stmt
-	markNotificationAsReadStmt              *sql.Stmt
-	markRunningJobsInterruptedStmt          *sql.Stmt
-	pruneFinishedJobsStmt                   *sql.Stmt
-	queryActiveChunkCandidatesStmt          *sql.Stmt
-	recordSupersessionAuditStmt             *sql.Stmt
-	releaseJobScheduleClaimStmt             *sql.Stmt
-	removeChainNodeStmt                     *sql.Stmt
-	restoreUserStmt                         *sql.Stmt
-	revokeUserSessionsStmt                  *sql.Stmt
-	rotateUserRefreshTokenStmt              *sql.Stmt
-	searchDocumentIDsStmt                   *sql.Stmt
-	searchUserIDsStmt                       *sql.Stmt
-	setDefaultLLMModelStmt                  *sql.Stmt
-	setDefaultLLMProviderStmt               *sql.Stmt
-	touchConversationStmt                   *sql.Stmt
-	updateAgentSkillEnabledStmt             *sql.Stmt
-	updateChainStmt                         *sql.Stmt
-	updateChainNodePriorityStmt             *sql.Stmt
-	updateChunkStatusStmt                   *sql.Stmt
-	updateConversationTitleStmt             *sql.Stmt
-	updateDocumentStatusStmt                *sql.Stmt
-	updateJobProgressStmt                   *sql.Stmt
-	updateJobScheduleStmt                   *sql.Stmt
-	updateJobStatusStmt                     *sql.Stmt
-	updateLLMModelStmt                      *sql.Stmt
-	updateLLMProviderStmt                   *sql.Stmt
-	updateMessageFeedbackStmt               *sql.Stmt
-	updateModelVisionCapabilityStmt         *sql.Stmt
-	updateRoleStmt                          *sql.Stmt
-	updateRolePositionStmt                  *sql.Stmt
-	updateSystemRoleDescriptionStmt         *sql.Stmt
-	updateUserPasswordStmt                  *sql.Stmt
-	updateUserProfileStmt                   *sql.Stmt
-	updateUserRefreshTokenStmt              *sql.Stmt
-	updateUserTokenVersionStmt              *sql.Stmt
-	upsertAgentPromptStmt                   *sql.Stmt
-	upsertAgentSkillStmt                    *sql.Stmt
-	upsertAppSettingStmt                    *sql.Stmt
-	upsertDocumentStmt                      *sql.Stmt
-	upsertDocumentChunkStmt                 *sql.Stmt
-	upsertKGEdgeStmt                        *sql.Stmt
-	upsertKGNodeStmt                        *sql.Stmt
-	upsertRolePermissionStmt                *sql.Stmt
-	upsertSetupStateStmt                    *sql.Stmt
-	upsertStudentProfileStmt                *sql.Stmt
-	upsertUserStmt                          *sql.Stmt
-	upsertUserMemoryStmt                    *sql.Stmt
+	db                                        DBTX
+	tx                                        *sql.Tx
+	addChainNodeStmt                          *sql.Stmt
+	answerInquiryStmt                         *sql.Stmt
+	bulkDeleteRolesFromUserStmt               *sql.Stmt
+	claimInitialSetupStmt                     *sql.Stmt
+	claimJobScheduleStmt                      *sql.Stmt
+	clearAllDocumentChunksStmt                *sql.Stmt
+	clearAllDocumentRulesStmt                 *sql.Stmt
+	clearAllDocumentsStmt                     *sql.Stmt
+	clearAllKGEdgesStmt                       *sql.Stmt
+	clearAllKGNodesStmt                       *sql.Stmt
+	clearAllSupersessionAuditLogsStmt         *sql.Stmt
+	clearAllSupersessionEdgesStmt             *sql.Stmt
+	clearAllUserMemoriesStmt                  *sql.Stmt
+	clearChainNodesStmt                       *sql.Stmt
+	countActiveAdminUsersStmt                 *sql.Stmt
+	countActiveDocumentsStmt                  *sql.Stmt
+	countAdminConversationsFeedbackDownStmt   *sql.Stmt
+	countAdminConversationsFeedbackUpStmt     *sql.Stmt
+	countAdminConversationsNoFeedbackStmt     *sql.Stmt
+	countAllAuditLogsStmt                     *sql.Stmt
+	countArchivedDocumentsStmt                *sql.Stmt
+	countChunksTotalStmt                      *sql.Stmt
+	countConversationsByUserIDStmt            *sql.Stmt
+	countCoursesFilteredStmt                  *sql.Stmt
+	countCurriculumCoursesStmt                *sql.Stmt
+	countCurriculumsStmt                      *sql.Stmt
+	countDocumentsStmt                        *sql.Stmt
+	countDocumentsTotalStmt                   *sql.Stmt
+	countEdgesTotalStmt                       *sql.Stmt
+	countInquiriesStmt                        *sql.Stmt
+	countInquiriesByUserIDStmt                *sql.Stmt
+	countJobsStmt                             *sql.Stmt
+	countNodesTotalStmt                       *sql.Stmt
+	countPartiallyAmendedDocumentsStmt        *sql.Stmt
+	countSubstitutionsStmt                    *sql.Stmt
+	countSubstitutionsFilteredStmt            *sql.Stmt
+	countSupersededDocumentsStmt              *sql.Stmt
+	countTLUClawSnapshotsStmt                 *sql.Stmt
+	countTranscriptGradesByUserIDStmt         *sql.Stmt
+	countUnreadNotificationsStmt              *sql.Stmt
+	countUserMemoriesStmt                     *sql.Stmt
+	countUsersStmt                            *sql.Stmt
+	createChainStmt                           *sql.Stmt
+	createConversationStmt                    *sql.Stmt
+	createInquiryStmt                         *sql.Stmt
+	createJobStmt                             *sql.Stmt
+	createJobScheduleStmt                     *sql.Stmt
+	createLLMModelStmt                        *sql.Stmt
+	createLLMProviderStmt                     *sql.Stmt
+	createMessageStmt                         *sql.Stmt
+	createNotificationStmt                    *sql.Stmt
+	createRoleStmt                            *sql.Stmt
+	createTLUClawMessageStmt                  *sql.Stmt
+	createTLUClawSessionStmt                  *sql.Stmt
+	createTLUClawSnapshotStmt                 *sql.Stmt
+	createUserStmt                            *sql.Stmt
+	createUserRoleStmt                        *sql.Stmt
+	deleteAgentSkillStmt                      *sql.Stmt
+	deleteChainStmt                           *sql.Stmt
+	deleteChunksByDocumentIDStmt              *sql.Stmt
+	deleteConversationStmt                    *sql.Stmt
+	deleteConversationAdminStmt               *sql.Stmt
+	deleteCoursePrerequisiteStmt              *sql.Stmt
+	deleteCourseSubstitutionStmt              *sql.Stmt
+	deleteCurriculumStmt                      *sql.Stmt
+	deleteCurriculumCourseStmt                *sql.Stmt
+	deleteJobScheduleStmt                     *sql.Stmt
+	deleteKGEdgeStmt                          *sql.Stmt
+	deleteLLMModelStmt                        *sql.Stmt
+	deleteLLMProviderStmt                     *sql.Stmt
+	deleteNotificationByIDStmt                *sql.Stmt
+	deleteRoleStmt                            *sql.Stmt
+	deleteRolePermissionsStmt                 *sql.Stmt
+	deleteRulesByDocumentIDStmt               *sql.Stmt
+	deleteStudentProfileStmt                  *sql.Stmt
+	deleteTLUClawSessionStmt                  *sql.Stmt
+	deleteTranscriptByUserIDStmt              *sql.Stmt
+	deleteTranscriptGradeStmt                 *sql.Stmt
+	deleteUserStmt                            *sql.Stmt
+	deleteUserMemoryStmt                      *sql.Stmt
+	documentExistsByURLStmt                   *sql.Stmt
+	expireInquiryStmt                         *sql.Stmt
+	findCourseMetadataByCodeStmt              *sql.Stmt
+	findDirectSubstitutionsStmt               *sql.Stmt
+	findDocumentByIdentifierStmt              *sql.Stmt
+	findMajorMappingStmt                      *sql.Stmt
+	findSupersededDocIDsStmt                  *sql.Stmt
+	getActiveChainByTypeStmt                  *sql.Stmt
+	getAdminMessageStatsStmt                  *sql.Stmt
+	getAdminTotalChatsStmt                    *sql.Stmt
+	getAgentPromptStmt                        *sql.Stmt
+	getAgentSkillStmt                         *sql.Stmt
+	getAppSettingStmt                         *sql.Stmt
+	getAutoAssignRoleIDsStmt                  *sql.Stmt
+	getChainStmt                              *sql.Stmt
+	getChunkByIDStmt                          *sql.Stmt
+	getChunksByIDsStmt                        *sql.Stmt
+	getConversationByIDStmt                   *sql.Stmt
+	getConversationsByIDsStmt                 *sql.Stmt
+	getCoursePrerequisiteByIDStmt             *sql.Stmt
+	getCoursesByCodeAndCohortStmt             *sql.Stmt
+	getCurriculumByCohortAndMajorStmt         *sql.Stmt
+	getCurriculumByIDStmt                     *sql.Stmt
+	getCurriculumCourseByIDStmt               *sql.Stmt
+	getCurriculumCoursesByCohortAndMajorStmt  *sql.Stmt
+	getCurriculumCoursesByCurriculumIDStmt    *sql.Stmt
+	getDefaultLLMModelByTypeStmt              *sql.Stmt
+	getDefaultLLMProviderStmt                 *sql.Stmt
+	getDocumentByIDStmt                       *sql.Stmt
+	getDocumentByURLStmt                      *sql.Stmt
+	getDocumentRuleByIDStmt                   *sql.Stmt
+	getDocumentsByIDsStmt                     *sql.Stmt
+	getInquiriesByIDsStmt                     *sql.Stmt
+	getInquiryByIDStmt                        *sql.Stmt
+	getJobByIDStmt                            *sql.Stmt
+	getJobScheduleByIDStmt                    *sql.Stmt
+	getJobSchedulesByIDsStmt                  *sql.Stmt
+	getJobsByIDsStmt                          *sql.Stmt
+	getKGEdgeByIDStmt                         *sql.Stmt
+	getKGNodeByIDStmt                         *sql.Stmt
+	getLLMModelByIDStmt                       *sql.Stmt
+	getLLMModelByKeyStmt                      *sql.Stmt
+	getLLMModelWithProviderStmt               *sql.Stmt
+	getLLMProviderByIDStmt                    *sql.Stmt
+	getNotificationByIDStmt                   *sql.Stmt
+	getNotificationsByIDsStmt                 *sql.Stmt
+	getPermissionsByKeysStmt                  *sql.Stmt
+	getRoleByIDStmt                           *sql.Stmt
+	getRoleByNameStmt                         *sql.Stmt
+	getRoleIDsStmt                            *sql.Stmt
+	getRolePermissionIDsStmt                  *sql.Stmt
+	getRolePermissionsStmt                    *sql.Stmt
+	getRolePermissionsByIDsStmt               *sql.Stmt
+	getRolesByIDsStmt                         *sql.Stmt
+	getSetupStateStmt                         *sql.Stmt
+	getStudentProfileByUserIDStmt             *sql.Stmt
+	getSubstitutionByIDStmt                   *sql.Stmt
+	getTLUClawSessionByIDStmt                 *sql.Stmt
+	getTLUClawSessionsByIDsStmt               *sql.Stmt
+	getTLUClawSnapshotByBatchIDStmt           *sql.Stmt
+	getTLUClawSnapshotByIDStmt                *sql.Stmt
+	getTLUClawSnapshotByNonceStmt             *sql.Stmt
+	getTranscriptGradeByIDStmt                *sql.Stmt
+	getTranscriptGradeByUserAndCourseStmt     *sql.Stmt
+	getTranscriptGradesByIDsStmt              *sql.Stmt
+	getUserByEmailStmt                        *sql.Stmt
+	getUserByIDStmt                           *sql.Stmt
+	getUserByIDWithoutDeletedStmt             *sql.Stmt
+	getUserByStudentCodeStmt                  *sql.Stmt
+	getUserMemoriesByIDsStmt                  *sql.Stmt
+	getUserMemoryByIDStmt                     *sql.Stmt
+	getUserRolePermissionsStmt                *sql.Stmt
+	getUserRolesStmt                          *sql.Stmt
+	getUserTokenVersionStmt                   *sql.Stmt
+	getUsersByIDsStmt                         *sql.Stmt
+	listActiveAgentPromptsStmt                *sql.Stmt
+	listActiveAnsweredInquiriesStmt           *sql.Stmt
+	listActiveChatModelsWithProviderStmt      *sql.Stmt
+	listActiveLLMModelsByTypeStmt             *sql.Stmt
+	listActiveRulesByDocumentIDStmt           *sql.Stmt
+	listAdminConversationsFeedbackDownStmt    *sql.Stmt
+	listAdminConversationsFeedbackUpStmt      *sql.Stmt
+	listAdminConversationsNoFeedbackStmt      *sql.Stmt
+	listAgentPromptsStmt                      *sql.Stmt
+	listAgentSkillsStmt                       *sql.Stmt
+	listAllAuditLogsStmt                      *sql.Stmt
+	listAllDocumentIdentifiersStmt            *sql.Stmt
+	listAllKGEdgesStmt                        *sql.Stmt
+	listAllKGNodesStmt                        *sql.Stmt
+	listAllMajorMetadataStmt                  *sql.Stmt
+	listAllMajorsStmt                         *sql.Stmt
+	listAllPrerequisitesForCohortAndMajorStmt *sql.Stmt
+	listAllRegulationIDsChronologicalStmt     *sql.Stmt
+	listAuditLogsByDocIDStmt                  *sql.Stmt
+	listChainNodesWithDetailsStmt             *sql.Stmt
+	listChainsStmt                            *sql.Stmt
+	listChunksByDocumentIDStmt                *sql.Stmt
+	listCohortsStmt                           *sql.Stmt
+	listConversationIDsByUserIDStmt           *sql.Stmt
+	listCoursesPaginatedStmt                  *sql.Stmt
+	listCurriculumsStmt                       *sql.Stmt
+	listCurriculumsByCohortStmt               *sql.Stmt
+	listDependentCoursesStmt                  *sql.Stmt
+	listDistinctSubstitutionMajorsStmt        *sql.Stmt
+	listDueJobScheduleIDsStmt                 *sql.Stmt
+	listEnabledAgentSkillsStmt                *sql.Stmt
+	listFilteredJobIDsStmt                    *sql.Stmt
+	listGroupSubstitutionsStmt                *sql.Stmt
+	listInquiryIDsStmt                        *sql.Stmt
+	listInquiryIDsByUserIDStmt                *sql.Stmt
+	listJobScheduleIDsStmt                    *sql.Stmt
+	listLLMModelsStmt                         *sql.Stmt
+	listLLMModelsByProviderIDStmt             *sql.Stmt
+	listLLMProvidersStmt                      *sql.Stmt
+	listLatestCommittedTLUClawSnapshotsStmt   *sql.Stmt
+	listMajorsByCohortStmt                    *sql.Stmt
+	listMajorsByFacultyStmt                   *sql.Stmt
+	listMessagesByConversationIDStmt          *sql.Stmt
+	listNotificationIDsByUserIDStmt           *sql.Stmt
+	listPermissionKeysStmt                    *sql.Stmt
+	listPermissionsStmt                       *sql.Stmt
+	listPrerequisitesForCourseStmt            *sql.Stmt
+	listRecentNotificationIDsStmt             *sql.Stmt
+	listRolePermissionIDsStmt                 *sql.Stmt
+	listRolePermissionsStmt                   *sql.Stmt
+	listRulesByDocumentIDStmt                 *sql.Stmt
+	listStudentProfilesByStandingStmt         *sql.Stmt
+	listSubstitutionsByCohortAndMajorStmt     *sql.Stmt
+	listSubstitutionsPaginatedStmt            *sql.Stmt
+	listSupersededDocumentsStmt               *sql.Stmt
+	listTLUClawMessagesBySessionIDStmt        *sql.Stmt
+	listTLUClawSessionIDsByAdminStmt          *sql.Stmt
+	listTLUClawSnapshotsBySessionIDStmt       *sql.Stmt
+	listTLUClawSnapshotsPaginatedStmt         *sql.Stmt
+	listTranscriptGradeIDsByUserIDStmt        *sql.Stmt
+	listUserMemoriesByUserIDStmt              *sql.Stmt
+	listUserMemoryIDsByUserIDStmt             *sql.Stmt
+	markAllNotificationsAsReadStmt            *sql.Stmt
+	markNotificationAsReadStmt                *sql.Stmt
+	markRunningJobsInterruptedStmt            *sql.Stmt
+	pruneFinishedJobsStmt                     *sql.Stmt
+	queryActiveChunkCandidatesStmt            *sql.Stmt
+	recordSupersessionAuditStmt               *sql.Stmt
+	releaseJobScheduleClaimStmt               *sql.Stmt
+	removeChainNodeStmt                       *sql.Stmt
+	resetAllChunkSupersessionsStmt            *sql.Stmt
+	resetAllDocumentSupersessionsStmt         *sql.Stmt
+	resetAllRuleSupersessionsStmt             *sql.Stmt
+	restoreUserStmt                           *sql.Stmt
+	revokeUserSessionsStmt                    *sql.Stmt
+	rotateUserRefreshTokenStmt                *sql.Stmt
+	searchActiveChunkIDsFTSStmt               *sql.Stmt
+	searchCurriculumCoursesStmt               *sql.Stmt
+	searchDocumentIDsStmt                     *sql.Stmt
+	searchUserIDsStmt                         *sql.Stmt
+	setDefaultLLMModelStmt                    *sql.Stmt
+	setDefaultLLMProviderStmt                 *sql.Stmt
+	touchConversationStmt                     *sql.Stmt
+	touchTLUClawSessionStmt                   *sql.Stmt
+	updateAgentSkillEnabledStmt               *sql.Stmt
+	updateChainStmt                           *sql.Stmt
+	updateChainNodePriorityStmt               *sql.Stmt
+	updateChunkStatusStmt                     *sql.Stmt
+	updateConversationTitleStmt               *sql.Stmt
+	updateCurriculumCourseStmt                *sql.Stmt
+	updateDocumentChunksByDocIDStatusStmt     *sql.Stmt
+	updateDocumentChunksByRuleIDStatusStmt    *sql.Stmt
+	updateDocumentStatusStmt                  *sql.Stmt
+	updateJobProgressStmt                     *sql.Stmt
+	updateJobScheduleStmt                     *sql.Stmt
+	updateJobStatusStmt                       *sql.Stmt
+	updateLLMModelStmt                        *sql.Stmt
+	updateLLMProviderStmt                     *sql.Stmt
+	updateMajorMetadataByNameStmt             *sql.Stmt
+	updateMessageFeedbackStmt                 *sql.Stmt
+	updateModelVisionCapabilityStmt           *sql.Stmt
+	updateRoleStmt                            *sql.Stmt
+	updateRolePositionStmt                    *sql.Stmt
+	updateRuleStatusStmt                      *sql.Stmt
+	updateSystemRoleDescriptionStmt           *sql.Stmt
+	updateTLUClawSessionTitleStmt             *sql.Stmt
+	updateTLUClawSnapshotStatusStmt           *sql.Stmt
+	updateUserPasswordStmt                    *sql.Stmt
+	updateUserProfileStmt                     *sql.Stmt
+	updateUserRefreshTokenStmt                *sql.Stmt
+	updateUserTokenVersionStmt                *sql.Stmt
+	upsertAgentPromptStmt                     *sql.Stmt
+	upsertAgentSkillStmt                      *sql.Stmt
+	upsertAppSettingStmt                      *sql.Stmt
+	upsertCourseGroupSubstitutionStmt         *sql.Stmt
+	upsertCoursePrerequisiteStmt              *sql.Stmt
+	upsertCourseSubstitutionStmt              *sql.Stmt
+	upsertCurriculumStmt                      *sql.Stmt
+	upsertCurriculumCourseStmt                *sql.Stmt
+	upsertDocumentStmt                        *sql.Stmt
+	upsertDocumentChunkStmt                   *sql.Stmt
+	upsertDocumentRuleStmt                    *sql.Stmt
+	upsertKGEdgeStmt                          *sql.Stmt
+	upsertKGNodeStmt                          *sql.Stmt
+	upsertRolePermissionStmt                  *sql.Stmt
+	upsertSetupStateStmt                      *sql.Stmt
+	upsertStudentProfileStmt                  *sql.Stmt
+	upsertTranscriptGradeStmt                 *sql.Stmt
+	upsertUserStmt                            *sql.Stmt
+	upsertUserMemoryStmt                      *sql.Stmt
 }
 
 func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 	return &Queries{
-		db:                                      tx,
-		tx:                                      tx,
-		addChainNodeStmt:                        q.addChainNodeStmt,
-		answerInquiryStmt:                       q.answerInquiryStmt,
-		bulkDeleteRolesFromUserStmt:             q.bulkDeleteRolesFromUserStmt,
-		claimInitialSetupStmt:                   q.claimInitialSetupStmt,
-		claimJobScheduleStmt:                    q.claimJobScheduleStmt,
-		clearAllUserMemoriesStmt:                q.clearAllUserMemoriesStmt,
-		clearChainNodesStmt:                     q.clearChainNodesStmt,
-		countActiveAdminUsersStmt:               q.countActiveAdminUsersStmt,
-		countActiveDocumentsStmt:                q.countActiveDocumentsStmt,
-		countAdminConversationsFeedbackDownStmt: q.countAdminConversationsFeedbackDownStmt,
-		countAdminConversationsFeedbackUpStmt:   q.countAdminConversationsFeedbackUpStmt,
-		countAdminConversationsNoFeedbackStmt:   q.countAdminConversationsNoFeedbackStmt,
-		countAllAuditLogsStmt:                   q.countAllAuditLogsStmt,
-		countChunksTotalStmt:                    q.countChunksTotalStmt,
-		countConversationsByUserIDStmt:          q.countConversationsByUserIDStmt,
-		countDocumentsStmt:                      q.countDocumentsStmt,
-		countDocumentsTotalStmt:                 q.countDocumentsTotalStmt,
-		countEdgesTotalStmt:                     q.countEdgesTotalStmt,
-		countInquiriesStmt:                      q.countInquiriesStmt,
-		countInquiriesByUserIDStmt:              q.countInquiriesByUserIDStmt,
-		countJobsStmt:                           q.countJobsStmt,
-		countNodesTotalStmt:                     q.countNodesTotalStmt,
-		countSupersededDocumentsStmt:            q.countSupersededDocumentsStmt,
-		countUnreadNotificationsStmt:            q.countUnreadNotificationsStmt,
-		countUserMemoriesStmt:                   q.countUserMemoriesStmt,
-		countUsersStmt:                          q.countUsersStmt,
-		createChainStmt:                         q.createChainStmt,
-		createConversationStmt:                  q.createConversationStmt,
-		createInquiryStmt:                       q.createInquiryStmt,
-		createJobStmt:                           q.createJobStmt,
-		createJobScheduleStmt:                   q.createJobScheduleStmt,
-		createLLMModelStmt:                      q.createLLMModelStmt,
-		createLLMProviderStmt:                   q.createLLMProviderStmt,
-		createMessageStmt:                       q.createMessageStmt,
-		createNotificationStmt:                  q.createNotificationStmt,
-		createRoleStmt:                          q.createRoleStmt,
-		createUserStmt:                          q.createUserStmt,
-		createUserRoleStmt:                      q.createUserRoleStmt,
-		deleteAgentSkillStmt:                    q.deleteAgentSkillStmt,
-		deleteChainStmt:                         q.deleteChainStmt,
-		deleteConversationStmt:                  q.deleteConversationStmt,
-		deleteConversationAdminStmt:             q.deleteConversationAdminStmt,
-		deleteJobScheduleStmt:                   q.deleteJobScheduleStmt,
-		deleteKGEdgeStmt:                        q.deleteKGEdgeStmt,
-		deleteLLMModelStmt:                      q.deleteLLMModelStmt,
-		deleteLLMProviderStmt:                   q.deleteLLMProviderStmt,
-		deleteRoleStmt:                          q.deleteRoleStmt,
-		deleteRolePermissionsStmt:               q.deleteRolePermissionsStmt,
-		deleteStudentProfileStmt:                q.deleteStudentProfileStmt,
-		deleteUserStmt:                          q.deleteUserStmt,
-		deleteUserMemoryStmt:                    q.deleteUserMemoryStmt,
-		expireInquiryStmt:                       q.expireInquiryStmt,
-		findSupersededDocIDsStmt:                q.findSupersededDocIDsStmt,
-		getActiveChainByTypeStmt:                q.getActiveChainByTypeStmt,
-		getAdminMessageStatsStmt:                q.getAdminMessageStatsStmt,
-		getAdminTotalChatsStmt:                  q.getAdminTotalChatsStmt,
-		getAgentPromptStmt:                      q.getAgentPromptStmt,
-		getAgentSkillStmt:                       q.getAgentSkillStmt,
-		getAppSettingStmt:                       q.getAppSettingStmt,
-		getAutoAssignRoleIDsStmt:                q.getAutoAssignRoleIDsStmt,
-		getChainStmt:                            q.getChainStmt,
-		getChunkByIDStmt:                        q.getChunkByIDStmt,
-		getChunksByIDsStmt:                      q.getChunksByIDsStmt,
-		getConversationByIDStmt:                 q.getConversationByIDStmt,
-		getConversationsByIDsStmt:               q.getConversationsByIDsStmt,
-		getDefaultLLMModelByTypeStmt:            q.getDefaultLLMModelByTypeStmt,
-		getDefaultLLMProviderStmt:               q.getDefaultLLMProviderStmt,
-		getDocumentByIDStmt:                     q.getDocumentByIDStmt,
-		getDocumentsByIDsStmt:                   q.getDocumentsByIDsStmt,
-		getInquiriesByIDsStmt:                   q.getInquiriesByIDsStmt,
-		getInquiryByIDStmt:                      q.getInquiryByIDStmt,
-		getJobByIDStmt:                          q.getJobByIDStmt,
-		getJobScheduleByIDStmt:                  q.getJobScheduleByIDStmt,
-		getJobSchedulesByIDsStmt:                q.getJobSchedulesByIDsStmt,
-		getJobsByIDsStmt:                        q.getJobsByIDsStmt,
-		getKGEdgeByIDStmt:                       q.getKGEdgeByIDStmt,
-		getKGNodeByIDStmt:                       q.getKGNodeByIDStmt,
-		getLLMModelByIDStmt:                     q.getLLMModelByIDStmt,
-		getLLMModelByKeyStmt:                    q.getLLMModelByKeyStmt,
-		getLLMModelWithProviderStmt:             q.getLLMModelWithProviderStmt,
-		getLLMProviderByIDStmt:                  q.getLLMProviderByIDStmt,
-		getNotificationByIDStmt:                 q.getNotificationByIDStmt,
-		getNotificationsByIDsStmt:               q.getNotificationsByIDsStmt,
-		getPermissionsByKeysStmt:                q.getPermissionsByKeysStmt,
-		getRoleByIDStmt:                         q.getRoleByIDStmt,
-		getRoleByNameStmt:                       q.getRoleByNameStmt,
-		getRoleIDsStmt:                          q.getRoleIDsStmt,
-		getRolePermissionIDsStmt:                q.getRolePermissionIDsStmt,
-		getRolePermissionsStmt:                  q.getRolePermissionsStmt,
-		getRolePermissionsByIDsStmt:             q.getRolePermissionsByIDsStmt,
-		getRolesByIDsStmt:                       q.getRolesByIDsStmt,
-		getSetupStateStmt:                       q.getSetupStateStmt,
-		getStudentProfileByUserIDStmt:           q.getStudentProfileByUserIDStmt,
-		getUserByEmailStmt:                      q.getUserByEmailStmt,
-		getUserByIDStmt:                         q.getUserByIDStmt,
-		getUserByIDWithoutDeletedStmt:           q.getUserByIDWithoutDeletedStmt,
-		getUserMemoriesByIDsStmt:                q.getUserMemoriesByIDsStmt,
-		getUserMemoryByIDStmt:                   q.getUserMemoryByIDStmt,
-		getUserRolePermissionsStmt:              q.getUserRolePermissionsStmt,
-		getUserRolesStmt:                        q.getUserRolesStmt,
-		getUserTokenVersionStmt:                 q.getUserTokenVersionStmt,
-		getUsersByIDsStmt:                       q.getUsersByIDsStmt,
-		listActiveAgentPromptsStmt:              q.listActiveAgentPromptsStmt,
-		listActiveAnsweredInquiriesStmt:         q.listActiveAnsweredInquiriesStmt,
-		listActiveChatModelsWithProviderStmt:    q.listActiveChatModelsWithProviderStmt,
-		listActiveLLMModelsByTypeStmt:           q.listActiveLLMModelsByTypeStmt,
-		listAdminConversationsFeedbackDownStmt:  q.listAdminConversationsFeedbackDownStmt,
-		listAdminConversationsFeedbackUpStmt:    q.listAdminConversationsFeedbackUpStmt,
-		listAdminConversationsNoFeedbackStmt:    q.listAdminConversationsNoFeedbackStmt,
-		listAgentPromptsStmt:                    q.listAgentPromptsStmt,
-		listAgentSkillsStmt:                     q.listAgentSkillsStmt,
-		listAllAuditLogsStmt:                    q.listAllAuditLogsStmt,
-		listAllKGEdgesStmt:                      q.listAllKGEdgesStmt,
-		listAllKGNodesStmt:                      q.listAllKGNodesStmt,
-		listAuditLogsByDocIDStmt:                q.listAuditLogsByDocIDStmt,
-		listChainNodesWithDetailsStmt:           q.listChainNodesWithDetailsStmt,
-		listChainsStmt:                          q.listChainsStmt,
-		listChunksByDocumentIDStmt:              q.listChunksByDocumentIDStmt,
-		listConversationIDsByUserIDStmt:         q.listConversationIDsByUserIDStmt,
-		listDueJobScheduleIDsStmt:               q.listDueJobScheduleIDsStmt,
-		listEnabledAgentSkillsStmt:              q.listEnabledAgentSkillsStmt,
-		listFilteredJobIDsStmt:                  q.listFilteredJobIDsStmt,
-		listInquiryIDsStmt:                      q.listInquiryIDsStmt,
-		listInquiryIDsByUserIDStmt:              q.listInquiryIDsByUserIDStmt,
-		listJobScheduleIDsStmt:                  q.listJobScheduleIDsStmt,
-		listLLMModelsStmt:                       q.listLLMModelsStmt,
-		listLLMModelsByProviderIDStmt:           q.listLLMModelsByProviderIDStmt,
-		listLLMProvidersStmt:                    q.listLLMProvidersStmt,
-		listMessagesByConversationIDStmt:        q.listMessagesByConversationIDStmt,
-		listNotificationIDsByUserIDStmt:         q.listNotificationIDsByUserIDStmt,
-		listPermissionKeysStmt:                  q.listPermissionKeysStmt,
-		listPermissionsStmt:                     q.listPermissionsStmt,
-		listRolePermissionIDsStmt:               q.listRolePermissionIDsStmt,
-		listRolePermissionsStmt:                 q.listRolePermissionsStmt,
-		listSupersededDocumentsStmt:             q.listSupersededDocumentsStmt,
-		listUserMemoriesByUserIDStmt:            q.listUserMemoriesByUserIDStmt,
-		listUserMemoryIDsByUserIDStmt:           q.listUserMemoryIDsByUserIDStmt,
-		markAllNotificationsAsReadStmt:          q.markAllNotificationsAsReadStmt,
-		markNotificationAsReadStmt:              q.markNotificationAsReadStmt,
-		markRunningJobsInterruptedStmt:          q.markRunningJobsInterruptedStmt,
-		pruneFinishedJobsStmt:                   q.pruneFinishedJobsStmt,
-		queryActiveChunkCandidatesStmt:          q.queryActiveChunkCandidatesStmt,
-		recordSupersessionAuditStmt:             q.recordSupersessionAuditStmt,
-		releaseJobScheduleClaimStmt:             q.releaseJobScheduleClaimStmt,
-		removeChainNodeStmt:                     q.removeChainNodeStmt,
-		restoreUserStmt:                         q.restoreUserStmt,
-		revokeUserSessionsStmt:                  q.revokeUserSessionsStmt,
-		rotateUserRefreshTokenStmt:              q.rotateUserRefreshTokenStmt,
-		searchDocumentIDsStmt:                   q.searchDocumentIDsStmt,
-		searchUserIDsStmt:                       q.searchUserIDsStmt,
-		setDefaultLLMModelStmt:                  q.setDefaultLLMModelStmt,
-		setDefaultLLMProviderStmt:               q.setDefaultLLMProviderStmt,
-		touchConversationStmt:                   q.touchConversationStmt,
-		updateAgentSkillEnabledStmt:             q.updateAgentSkillEnabledStmt,
-		updateChainStmt:                         q.updateChainStmt,
-		updateChainNodePriorityStmt:             q.updateChainNodePriorityStmt,
-		updateChunkStatusStmt:                   q.updateChunkStatusStmt,
-		updateConversationTitleStmt:             q.updateConversationTitleStmt,
-		updateDocumentStatusStmt:                q.updateDocumentStatusStmt,
-		updateJobProgressStmt:                   q.updateJobProgressStmt,
-		updateJobScheduleStmt:                   q.updateJobScheduleStmt,
-		updateJobStatusStmt:                     q.updateJobStatusStmt,
-		updateLLMModelStmt:                      q.updateLLMModelStmt,
-		updateLLMProviderStmt:                   q.updateLLMProviderStmt,
-		updateMessageFeedbackStmt:               q.updateMessageFeedbackStmt,
-		updateModelVisionCapabilityStmt:         q.updateModelVisionCapabilityStmt,
-		updateRoleStmt:                          q.updateRoleStmt,
-		updateRolePositionStmt:                  q.updateRolePositionStmt,
-		updateSystemRoleDescriptionStmt:         q.updateSystemRoleDescriptionStmt,
-		updateUserPasswordStmt:                  q.updateUserPasswordStmt,
-		updateUserProfileStmt:                   q.updateUserProfileStmt,
-		updateUserRefreshTokenStmt:              q.updateUserRefreshTokenStmt,
-		updateUserTokenVersionStmt:              q.updateUserTokenVersionStmt,
-		upsertAgentPromptStmt:                   q.upsertAgentPromptStmt,
-		upsertAgentSkillStmt:                    q.upsertAgentSkillStmt,
-		upsertAppSettingStmt:                    q.upsertAppSettingStmt,
-		upsertDocumentStmt:                      q.upsertDocumentStmt,
-		upsertDocumentChunkStmt:                 q.upsertDocumentChunkStmt,
-		upsertKGEdgeStmt:                        q.upsertKGEdgeStmt,
-		upsertKGNodeStmt:                        q.upsertKGNodeStmt,
-		upsertRolePermissionStmt:                q.upsertRolePermissionStmt,
-		upsertSetupStateStmt:                    q.upsertSetupStateStmt,
-		upsertStudentProfileStmt:                q.upsertStudentProfileStmt,
-		upsertUserStmt:                          q.upsertUserStmt,
-		upsertUserMemoryStmt:                    q.upsertUserMemoryStmt,
+		db:                                        tx,
+		tx:                                        tx,
+		addChainNodeStmt:                          q.addChainNodeStmt,
+		answerInquiryStmt:                         q.answerInquiryStmt,
+		bulkDeleteRolesFromUserStmt:               q.bulkDeleteRolesFromUserStmt,
+		claimInitialSetupStmt:                     q.claimInitialSetupStmt,
+		claimJobScheduleStmt:                      q.claimJobScheduleStmt,
+		clearAllDocumentChunksStmt:                q.clearAllDocumentChunksStmt,
+		clearAllDocumentRulesStmt:                 q.clearAllDocumentRulesStmt,
+		clearAllDocumentsStmt:                     q.clearAllDocumentsStmt,
+		clearAllKGEdgesStmt:                       q.clearAllKGEdgesStmt,
+		clearAllKGNodesStmt:                       q.clearAllKGNodesStmt,
+		clearAllSupersessionAuditLogsStmt:         q.clearAllSupersessionAuditLogsStmt,
+		clearAllSupersessionEdgesStmt:             q.clearAllSupersessionEdgesStmt,
+		clearAllUserMemoriesStmt:                  q.clearAllUserMemoriesStmt,
+		clearChainNodesStmt:                       q.clearChainNodesStmt,
+		countActiveAdminUsersStmt:                 q.countActiveAdminUsersStmt,
+		countActiveDocumentsStmt:                  q.countActiveDocumentsStmt,
+		countAdminConversationsFeedbackDownStmt:   q.countAdminConversationsFeedbackDownStmt,
+		countAdminConversationsFeedbackUpStmt:     q.countAdminConversationsFeedbackUpStmt,
+		countAdminConversationsNoFeedbackStmt:     q.countAdminConversationsNoFeedbackStmt,
+		countAllAuditLogsStmt:                     q.countAllAuditLogsStmt,
+		countArchivedDocumentsStmt:                q.countArchivedDocumentsStmt,
+		countChunksTotalStmt:                      q.countChunksTotalStmt,
+		countConversationsByUserIDStmt:            q.countConversationsByUserIDStmt,
+		countCoursesFilteredStmt:                  q.countCoursesFilteredStmt,
+		countCurriculumCoursesStmt:                q.countCurriculumCoursesStmt,
+		countCurriculumsStmt:                      q.countCurriculumsStmt,
+		countDocumentsStmt:                        q.countDocumentsStmt,
+		countDocumentsTotalStmt:                   q.countDocumentsTotalStmt,
+		countEdgesTotalStmt:                       q.countEdgesTotalStmt,
+		countInquiriesStmt:                        q.countInquiriesStmt,
+		countInquiriesByUserIDStmt:                q.countInquiriesByUserIDStmt,
+		countJobsStmt:                             q.countJobsStmt,
+		countNodesTotalStmt:                       q.countNodesTotalStmt,
+		countPartiallyAmendedDocumentsStmt:        q.countPartiallyAmendedDocumentsStmt,
+		countSubstitutionsStmt:                    q.countSubstitutionsStmt,
+		countSubstitutionsFilteredStmt:            q.countSubstitutionsFilteredStmt,
+		countSupersededDocumentsStmt:              q.countSupersededDocumentsStmt,
+		countTLUClawSnapshotsStmt:                 q.countTLUClawSnapshotsStmt,
+		countTranscriptGradesByUserIDStmt:         q.countTranscriptGradesByUserIDStmt,
+		countUnreadNotificationsStmt:              q.countUnreadNotificationsStmt,
+		countUserMemoriesStmt:                     q.countUserMemoriesStmt,
+		countUsersStmt:                            q.countUsersStmt,
+		createChainStmt:                           q.createChainStmt,
+		createConversationStmt:                    q.createConversationStmt,
+		createInquiryStmt:                         q.createInquiryStmt,
+		createJobStmt:                             q.createJobStmt,
+		createJobScheduleStmt:                     q.createJobScheduleStmt,
+		createLLMModelStmt:                        q.createLLMModelStmt,
+		createLLMProviderStmt:                     q.createLLMProviderStmt,
+		createMessageStmt:                         q.createMessageStmt,
+		createNotificationStmt:                    q.createNotificationStmt,
+		createRoleStmt:                            q.createRoleStmt,
+		createTLUClawMessageStmt:                  q.createTLUClawMessageStmt,
+		createTLUClawSessionStmt:                  q.createTLUClawSessionStmt,
+		createTLUClawSnapshotStmt:                 q.createTLUClawSnapshotStmt,
+		createUserStmt:                            q.createUserStmt,
+		createUserRoleStmt:                        q.createUserRoleStmt,
+		deleteAgentSkillStmt:                      q.deleteAgentSkillStmt,
+		deleteChainStmt:                           q.deleteChainStmt,
+		deleteChunksByDocumentIDStmt:              q.deleteChunksByDocumentIDStmt,
+		deleteConversationStmt:                    q.deleteConversationStmt,
+		deleteConversationAdminStmt:               q.deleteConversationAdminStmt,
+		deleteCoursePrerequisiteStmt:              q.deleteCoursePrerequisiteStmt,
+		deleteCourseSubstitutionStmt:              q.deleteCourseSubstitutionStmt,
+		deleteCurriculumStmt:                      q.deleteCurriculumStmt,
+		deleteCurriculumCourseStmt:                q.deleteCurriculumCourseStmt,
+		deleteJobScheduleStmt:                     q.deleteJobScheduleStmt,
+		deleteKGEdgeStmt:                          q.deleteKGEdgeStmt,
+		deleteLLMModelStmt:                        q.deleteLLMModelStmt,
+		deleteLLMProviderStmt:                     q.deleteLLMProviderStmt,
+		deleteNotificationByIDStmt:                q.deleteNotificationByIDStmt,
+		deleteRoleStmt:                            q.deleteRoleStmt,
+		deleteRolePermissionsStmt:                 q.deleteRolePermissionsStmt,
+		deleteRulesByDocumentIDStmt:               q.deleteRulesByDocumentIDStmt,
+		deleteStudentProfileStmt:                  q.deleteStudentProfileStmt,
+		deleteTLUClawSessionStmt:                  q.deleteTLUClawSessionStmt,
+		deleteTranscriptByUserIDStmt:              q.deleteTranscriptByUserIDStmt,
+		deleteTranscriptGradeStmt:                 q.deleteTranscriptGradeStmt,
+		deleteUserStmt:                            q.deleteUserStmt,
+		deleteUserMemoryStmt:                      q.deleteUserMemoryStmt,
+		documentExistsByURLStmt:                   q.documentExistsByURLStmt,
+		expireInquiryStmt:                         q.expireInquiryStmt,
+		findCourseMetadataByCodeStmt:              q.findCourseMetadataByCodeStmt,
+		findDirectSubstitutionsStmt:               q.findDirectSubstitutionsStmt,
+		findDocumentByIdentifierStmt:              q.findDocumentByIdentifierStmt,
+		findMajorMappingStmt:                      q.findMajorMappingStmt,
+		findSupersededDocIDsStmt:                  q.findSupersededDocIDsStmt,
+		getActiveChainByTypeStmt:                  q.getActiveChainByTypeStmt,
+		getAdminMessageStatsStmt:                  q.getAdminMessageStatsStmt,
+		getAdminTotalChatsStmt:                    q.getAdminTotalChatsStmt,
+		getAgentPromptStmt:                        q.getAgentPromptStmt,
+		getAgentSkillStmt:                         q.getAgentSkillStmt,
+		getAppSettingStmt:                         q.getAppSettingStmt,
+		getAutoAssignRoleIDsStmt:                  q.getAutoAssignRoleIDsStmt,
+		getChainStmt:                              q.getChainStmt,
+		getChunkByIDStmt:                          q.getChunkByIDStmt,
+		getChunksByIDsStmt:                        q.getChunksByIDsStmt,
+		getConversationByIDStmt:                   q.getConversationByIDStmt,
+		getConversationsByIDsStmt:                 q.getConversationsByIDsStmt,
+		getCoursePrerequisiteByIDStmt:             q.getCoursePrerequisiteByIDStmt,
+		getCoursesByCodeAndCohortStmt:             q.getCoursesByCodeAndCohortStmt,
+		getCurriculumByCohortAndMajorStmt:         q.getCurriculumByCohortAndMajorStmt,
+		getCurriculumByIDStmt:                     q.getCurriculumByIDStmt,
+		getCurriculumCourseByIDStmt:               q.getCurriculumCourseByIDStmt,
+		getCurriculumCoursesByCohortAndMajorStmt:  q.getCurriculumCoursesByCohortAndMajorStmt,
+		getCurriculumCoursesByCurriculumIDStmt:    q.getCurriculumCoursesByCurriculumIDStmt,
+		getDefaultLLMModelByTypeStmt:              q.getDefaultLLMModelByTypeStmt,
+		getDefaultLLMProviderStmt:                 q.getDefaultLLMProviderStmt,
+		getDocumentByIDStmt:                       q.getDocumentByIDStmt,
+		getDocumentByURLStmt:                      q.getDocumentByURLStmt,
+		getDocumentRuleByIDStmt:                   q.getDocumentRuleByIDStmt,
+		getDocumentsByIDsStmt:                     q.getDocumentsByIDsStmt,
+		getInquiriesByIDsStmt:                     q.getInquiriesByIDsStmt,
+		getInquiryByIDStmt:                        q.getInquiryByIDStmt,
+		getJobByIDStmt:                            q.getJobByIDStmt,
+		getJobScheduleByIDStmt:                    q.getJobScheduleByIDStmt,
+		getJobSchedulesByIDsStmt:                  q.getJobSchedulesByIDsStmt,
+		getJobsByIDsStmt:                          q.getJobsByIDsStmt,
+		getKGEdgeByIDStmt:                         q.getKGEdgeByIDStmt,
+		getKGNodeByIDStmt:                         q.getKGNodeByIDStmt,
+		getLLMModelByIDStmt:                       q.getLLMModelByIDStmt,
+		getLLMModelByKeyStmt:                      q.getLLMModelByKeyStmt,
+		getLLMModelWithProviderStmt:               q.getLLMModelWithProviderStmt,
+		getLLMProviderByIDStmt:                    q.getLLMProviderByIDStmt,
+		getNotificationByIDStmt:                   q.getNotificationByIDStmt,
+		getNotificationsByIDsStmt:                 q.getNotificationsByIDsStmt,
+		getPermissionsByKeysStmt:                  q.getPermissionsByKeysStmt,
+		getRoleByIDStmt:                           q.getRoleByIDStmt,
+		getRoleByNameStmt:                         q.getRoleByNameStmt,
+		getRoleIDsStmt:                            q.getRoleIDsStmt,
+		getRolePermissionIDsStmt:                  q.getRolePermissionIDsStmt,
+		getRolePermissionsStmt:                    q.getRolePermissionsStmt,
+		getRolePermissionsByIDsStmt:               q.getRolePermissionsByIDsStmt,
+		getRolesByIDsStmt:                         q.getRolesByIDsStmt,
+		getSetupStateStmt:                         q.getSetupStateStmt,
+		getStudentProfileByUserIDStmt:             q.getStudentProfileByUserIDStmt,
+		getSubstitutionByIDStmt:                   q.getSubstitutionByIDStmt,
+		getTLUClawSessionByIDStmt:                 q.getTLUClawSessionByIDStmt,
+		getTLUClawSessionsByIDsStmt:               q.getTLUClawSessionsByIDsStmt,
+		getTLUClawSnapshotByBatchIDStmt:           q.getTLUClawSnapshotByBatchIDStmt,
+		getTLUClawSnapshotByIDStmt:                q.getTLUClawSnapshotByIDStmt,
+		getTLUClawSnapshotByNonceStmt:             q.getTLUClawSnapshotByNonceStmt,
+		getTranscriptGradeByIDStmt:                q.getTranscriptGradeByIDStmt,
+		getTranscriptGradeByUserAndCourseStmt:     q.getTranscriptGradeByUserAndCourseStmt,
+		getTranscriptGradesByIDsStmt:              q.getTranscriptGradesByIDsStmt,
+		getUserByEmailStmt:                        q.getUserByEmailStmt,
+		getUserByIDStmt:                           q.getUserByIDStmt,
+		getUserByIDWithoutDeletedStmt:             q.getUserByIDWithoutDeletedStmt,
+		getUserByStudentCodeStmt:                  q.getUserByStudentCodeStmt,
+		getUserMemoriesByIDsStmt:                  q.getUserMemoriesByIDsStmt,
+		getUserMemoryByIDStmt:                     q.getUserMemoryByIDStmt,
+		getUserRolePermissionsStmt:                q.getUserRolePermissionsStmt,
+		getUserRolesStmt:                          q.getUserRolesStmt,
+		getUserTokenVersionStmt:                   q.getUserTokenVersionStmt,
+		getUsersByIDsStmt:                         q.getUsersByIDsStmt,
+		listActiveAgentPromptsStmt:                q.listActiveAgentPromptsStmt,
+		listActiveAnsweredInquiriesStmt:           q.listActiveAnsweredInquiriesStmt,
+		listActiveChatModelsWithProviderStmt:      q.listActiveChatModelsWithProviderStmt,
+		listActiveLLMModelsByTypeStmt:             q.listActiveLLMModelsByTypeStmt,
+		listActiveRulesByDocumentIDStmt:           q.listActiveRulesByDocumentIDStmt,
+		listAdminConversationsFeedbackDownStmt:    q.listAdminConversationsFeedbackDownStmt,
+		listAdminConversationsFeedbackUpStmt:      q.listAdminConversationsFeedbackUpStmt,
+		listAdminConversationsNoFeedbackStmt:      q.listAdminConversationsNoFeedbackStmt,
+		listAgentPromptsStmt:                      q.listAgentPromptsStmt,
+		listAgentSkillsStmt:                       q.listAgentSkillsStmt,
+		listAllAuditLogsStmt:                      q.listAllAuditLogsStmt,
+		listAllDocumentIdentifiersStmt:            q.listAllDocumentIdentifiersStmt,
+		listAllKGEdgesStmt:                        q.listAllKGEdgesStmt,
+		listAllKGNodesStmt:                        q.listAllKGNodesStmt,
+		listAllMajorMetadataStmt:                  q.listAllMajorMetadataStmt,
+		listAllMajorsStmt:                         q.listAllMajorsStmt,
+		listAllPrerequisitesForCohortAndMajorStmt: q.listAllPrerequisitesForCohortAndMajorStmt,
+		listAllRegulationIDsChronologicalStmt:     q.listAllRegulationIDsChronologicalStmt,
+		listAuditLogsByDocIDStmt:                  q.listAuditLogsByDocIDStmt,
+		listChainNodesWithDetailsStmt:             q.listChainNodesWithDetailsStmt,
+		listChainsStmt:                            q.listChainsStmt,
+		listChunksByDocumentIDStmt:                q.listChunksByDocumentIDStmt,
+		listCohortsStmt:                           q.listCohortsStmt,
+		listConversationIDsByUserIDStmt:           q.listConversationIDsByUserIDStmt,
+		listCoursesPaginatedStmt:                  q.listCoursesPaginatedStmt,
+		listCurriculumsStmt:                       q.listCurriculumsStmt,
+		listCurriculumsByCohortStmt:               q.listCurriculumsByCohortStmt,
+		listDependentCoursesStmt:                  q.listDependentCoursesStmt,
+		listDistinctSubstitutionMajorsStmt:        q.listDistinctSubstitutionMajorsStmt,
+		listDueJobScheduleIDsStmt:                 q.listDueJobScheduleIDsStmt,
+		listEnabledAgentSkillsStmt:                q.listEnabledAgentSkillsStmt,
+		listFilteredJobIDsStmt:                    q.listFilteredJobIDsStmt,
+		listGroupSubstitutionsStmt:                q.listGroupSubstitutionsStmt,
+		listInquiryIDsStmt:                        q.listInquiryIDsStmt,
+		listInquiryIDsByUserIDStmt:                q.listInquiryIDsByUserIDStmt,
+		listJobScheduleIDsStmt:                    q.listJobScheduleIDsStmt,
+		listLLMModelsStmt:                         q.listLLMModelsStmt,
+		listLLMModelsByProviderIDStmt:             q.listLLMModelsByProviderIDStmt,
+		listLLMProvidersStmt:                      q.listLLMProvidersStmt,
+		listLatestCommittedTLUClawSnapshotsStmt:   q.listLatestCommittedTLUClawSnapshotsStmt,
+		listMajorsByCohortStmt:                    q.listMajorsByCohortStmt,
+		listMajorsByFacultyStmt:                   q.listMajorsByFacultyStmt,
+		listMessagesByConversationIDStmt:          q.listMessagesByConversationIDStmt,
+		listNotificationIDsByUserIDStmt:           q.listNotificationIDsByUserIDStmt,
+		listPermissionKeysStmt:                    q.listPermissionKeysStmt,
+		listPermissionsStmt:                       q.listPermissionsStmt,
+		listPrerequisitesForCourseStmt:            q.listPrerequisitesForCourseStmt,
+		listRecentNotificationIDsStmt:             q.listRecentNotificationIDsStmt,
+		listRolePermissionIDsStmt:                 q.listRolePermissionIDsStmt,
+		listRolePermissionsStmt:                   q.listRolePermissionsStmt,
+		listRulesByDocumentIDStmt:                 q.listRulesByDocumentIDStmt,
+		listStudentProfilesByStandingStmt:         q.listStudentProfilesByStandingStmt,
+		listSubstitutionsByCohortAndMajorStmt:     q.listSubstitutionsByCohortAndMajorStmt,
+		listSubstitutionsPaginatedStmt:            q.listSubstitutionsPaginatedStmt,
+		listSupersededDocumentsStmt:               q.listSupersededDocumentsStmt,
+		listTLUClawMessagesBySessionIDStmt:        q.listTLUClawMessagesBySessionIDStmt,
+		listTLUClawSessionIDsByAdminStmt:          q.listTLUClawSessionIDsByAdminStmt,
+		listTLUClawSnapshotsBySessionIDStmt:       q.listTLUClawSnapshotsBySessionIDStmt,
+		listTLUClawSnapshotsPaginatedStmt:         q.listTLUClawSnapshotsPaginatedStmt,
+		listTranscriptGradeIDsByUserIDStmt:        q.listTranscriptGradeIDsByUserIDStmt,
+		listUserMemoriesByUserIDStmt:              q.listUserMemoriesByUserIDStmt,
+		listUserMemoryIDsByUserIDStmt:             q.listUserMemoryIDsByUserIDStmt,
+		markAllNotificationsAsReadStmt:            q.markAllNotificationsAsReadStmt,
+		markNotificationAsReadStmt:                q.markNotificationAsReadStmt,
+		markRunningJobsInterruptedStmt:            q.markRunningJobsInterruptedStmt,
+		pruneFinishedJobsStmt:                     q.pruneFinishedJobsStmt,
+		queryActiveChunkCandidatesStmt:            q.queryActiveChunkCandidatesStmt,
+		recordSupersessionAuditStmt:               q.recordSupersessionAuditStmt,
+		releaseJobScheduleClaimStmt:               q.releaseJobScheduleClaimStmt,
+		removeChainNodeStmt:                       q.removeChainNodeStmt,
+		resetAllChunkSupersessionsStmt:            q.resetAllChunkSupersessionsStmt,
+		resetAllDocumentSupersessionsStmt:         q.resetAllDocumentSupersessionsStmt,
+		resetAllRuleSupersessionsStmt:             q.resetAllRuleSupersessionsStmt,
+		restoreUserStmt:                           q.restoreUserStmt,
+		revokeUserSessionsStmt:                    q.revokeUserSessionsStmt,
+		rotateUserRefreshTokenStmt:                q.rotateUserRefreshTokenStmt,
+		searchActiveChunkIDsFTSStmt:               q.searchActiveChunkIDsFTSStmt,
+		searchCurriculumCoursesStmt:               q.searchCurriculumCoursesStmt,
+		searchDocumentIDsStmt:                     q.searchDocumentIDsStmt,
+		searchUserIDsStmt:                         q.searchUserIDsStmt,
+		setDefaultLLMModelStmt:                    q.setDefaultLLMModelStmt,
+		setDefaultLLMProviderStmt:                 q.setDefaultLLMProviderStmt,
+		touchConversationStmt:                     q.touchConversationStmt,
+		touchTLUClawSessionStmt:                   q.touchTLUClawSessionStmt,
+		updateAgentSkillEnabledStmt:               q.updateAgentSkillEnabledStmt,
+		updateChainStmt:                           q.updateChainStmt,
+		updateChainNodePriorityStmt:               q.updateChainNodePriorityStmt,
+		updateChunkStatusStmt:                     q.updateChunkStatusStmt,
+		updateConversationTitleStmt:               q.updateConversationTitleStmt,
+		updateCurriculumCourseStmt:                q.updateCurriculumCourseStmt,
+		updateDocumentChunksByDocIDStatusStmt:     q.updateDocumentChunksByDocIDStatusStmt,
+		updateDocumentChunksByRuleIDStatusStmt:    q.updateDocumentChunksByRuleIDStatusStmt,
+		updateDocumentStatusStmt:                  q.updateDocumentStatusStmt,
+		updateJobProgressStmt:                     q.updateJobProgressStmt,
+		updateJobScheduleStmt:                     q.updateJobScheduleStmt,
+		updateJobStatusStmt:                       q.updateJobStatusStmt,
+		updateLLMModelStmt:                        q.updateLLMModelStmt,
+		updateLLMProviderStmt:                     q.updateLLMProviderStmt,
+		updateMajorMetadataByNameStmt:             q.updateMajorMetadataByNameStmt,
+		updateMessageFeedbackStmt:                 q.updateMessageFeedbackStmt,
+		updateModelVisionCapabilityStmt:           q.updateModelVisionCapabilityStmt,
+		updateRoleStmt:                            q.updateRoleStmt,
+		updateRolePositionStmt:                    q.updateRolePositionStmt,
+		updateRuleStatusStmt:                      q.updateRuleStatusStmt,
+		updateSystemRoleDescriptionStmt:           q.updateSystemRoleDescriptionStmt,
+		updateTLUClawSessionTitleStmt:             q.updateTLUClawSessionTitleStmt,
+		updateTLUClawSnapshotStatusStmt:           q.updateTLUClawSnapshotStatusStmt,
+		updateUserPasswordStmt:                    q.updateUserPasswordStmt,
+		updateUserProfileStmt:                     q.updateUserProfileStmt,
+		updateUserRefreshTokenStmt:                q.updateUserRefreshTokenStmt,
+		updateUserTokenVersionStmt:                q.updateUserTokenVersionStmt,
+		upsertAgentPromptStmt:                     q.upsertAgentPromptStmt,
+		upsertAgentSkillStmt:                      q.upsertAgentSkillStmt,
+		upsertAppSettingStmt:                      q.upsertAppSettingStmt,
+		upsertCourseGroupSubstitutionStmt:         q.upsertCourseGroupSubstitutionStmt,
+		upsertCoursePrerequisiteStmt:              q.upsertCoursePrerequisiteStmt,
+		upsertCourseSubstitutionStmt:              q.upsertCourseSubstitutionStmt,
+		upsertCurriculumStmt:                      q.upsertCurriculumStmt,
+		upsertCurriculumCourseStmt:                q.upsertCurriculumCourseStmt,
+		upsertDocumentStmt:                        q.upsertDocumentStmt,
+		upsertDocumentChunkStmt:                   q.upsertDocumentChunkStmt,
+		upsertDocumentRuleStmt:                    q.upsertDocumentRuleStmt,
+		upsertKGEdgeStmt:                          q.upsertKGEdgeStmt,
+		upsertKGNodeStmt:                          q.upsertKGNodeStmt,
+		upsertRolePermissionStmt:                  q.upsertRolePermissionStmt,
+		upsertSetupStateStmt:                      q.upsertSetupStateStmt,
+		upsertStudentProfileStmt:                  q.upsertStudentProfileStmt,
+		upsertTranscriptGradeStmt:                 q.upsertTranscriptGradeStmt,
+		upsertUserStmt:                            q.upsertUserStmt,
+		upsertUserMemoryStmt:                      q.upsertUserMemoryStmt,
 	}
 }

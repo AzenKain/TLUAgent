@@ -202,10 +202,15 @@ func (a *authService) Signin(ctx context.Context, dto *request.SignInDto) (*resp
 
 func (a *authService) SetupRequired(ctx context.Context) bool {
 	completed, err := a.settingsRepo.GetSetupState(ctx, "completed")
-	if err != nil && !apperrors.IsNotFound(err) {
+	if err == nil && completed == "true" {
 		return false
 	}
-	return completed != "true"
+	userCount, errCount := a.userRepo.Count(ctx, sqlc.CountUsersParams{})
+	if errCount == nil && userCount > 0 {
+		_ = a.settingsRepo.UpsertSetupState(ctx, "completed", "true")
+		return false
+	}
+	return true
 }
 
 func (a *authService) SubmitSetup(ctx context.Context, dto *request.SetupDto) (*response.AuthResponse, error) {

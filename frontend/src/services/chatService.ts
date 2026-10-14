@@ -1,4 +1,6 @@
 import { apiClient, CSRF_HEADER_NAME, getCsrfToken } from '@/lib/axios';
+import type { TranscriptDiffResultResponse, StudentCourseGradeItem } from '@/types/transcript';
+import type { RoadmapOptimizationResult } from '@/types/curriculum';
 
 export interface ChatModelDTO {
   id: string;
@@ -30,6 +32,11 @@ export interface ChatMessage {
   feedback?: 'up' | 'down';
   timestamp: string;
   canEscalate?: boolean;
+  transcriptDiff?: TranscriptDiffResultResponse;
+  extractedGrades?: StudentCourseGradeItem[];
+  transcriptActionState?: 'pending' | 'confirmed' | 'cancelled';
+  roadmap?: RoadmapOptimizationResult;
+  isCompacted?: boolean;
 }
 
 export interface ChatResponse {
@@ -39,6 +46,8 @@ export interface ChatResponse {
   sources: string[];
   timestamp: string;
   can_escalate?: boolean;
+  roadmap?: RoadmapOptimizationResult;
+  did_compact?: boolean;
 }
 
 export interface ChatSessionDTO {
@@ -58,6 +67,7 @@ export interface ChatMessageItemDTO {
   images?: string[];
   sources?: string[];
   feedback?: 'up' | 'down';
+  can_escalate?: boolean;
   created_at: string;
 }
 
@@ -114,6 +124,8 @@ export interface ChatStreamCallbacks {
   onToolCall?: (toolCall: ToolCallInfo) => void;
   onSources?: (sources: string[]) => void;
   onCanEscalate?: (canEscalate: boolean) => void;
+  onRoadmap?: (roadmap: RoadmapOptimizationResult) => void;
+  onCompact?: () => void;
   onDone?: (timestamp: string, sessionId?: string) => void;
   onError?: (error: Error) => void;
   onRehydrateRequired?: (sessionId?: string) => void;
@@ -194,6 +206,8 @@ export const chatService = {
           const payload = JSON.parse(jsonStr);
           if (payload.type === 'chunk' && payload.content) {
             callbacks?.onChunk(payload.content);
+          } else if (payload.type === 'compact') {
+            callbacks?.onCompact?.();
           } else if (payload.type === 'reasoning' && (payload.content || payload.reasoning_content)) {
             callbacks?.onReasoning?.(payload.content || payload.reasoning_content);
           } else if (payload.type === 'tool_call' && payload.tool_call) {
@@ -203,6 +217,8 @@ export const chatService = {
             }
           } else if (payload.type === 'sources' && payload.sources) {
             callbacks?.onSources?.(payload.sources);
+          } else if (payload.type === 'roadmap' && payload.roadmap) {
+            callbacks?.onRoadmap?.(payload.roadmap);
           } else if (payload.type === 'can_escalate') {
             callbacks?.onCanEscalate?.(true);
           } else if (payload.type === 'rehydrate_required') {

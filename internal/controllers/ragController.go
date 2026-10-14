@@ -7,8 +7,8 @@ import (
 	"tluagent-web/internal/dtos/request"
 	"tluagent-web/internal/dtos/response"
 	"tluagent-web/internal/models"
-	"tluagent-web/internal/repositories"
 	"tluagent-web/internal/services"
+	"tluagent-web/pkg/apperrors"
 	"tluagent-web/pkg/config"
 	"tluagent-web/pkg/guardrail"
 	"tluagent-web/pkg/validator"
@@ -17,14 +17,12 @@ import (
 // RAGController coordinates institutional search, knowledge graph auditing, and index synchronization.
 type RAGController struct {
 	ragService services.RAGService
-	ragRepo    repositories.RAGRepository
 }
 
 // NewRAGController creates a new RAGController instance.
-func NewRAGController(ragService services.RAGService, ragRepo repositories.RAGRepository) *RAGController {
+func NewRAGController(ragService services.RAGService) *RAGController {
 	return &RAGController{
 		ragService: ragService,
-		ragRepo:    ragRepo,
 	}
 }
 
@@ -107,7 +105,7 @@ func (c *RAGController) HandleGetDocuments(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	docs, total, err := c.ragRepo.ListDocuments(ctx, &dto)
+	docs, total, err := c.ragService.ListDocuments(ctx, &dto)
 	if err != nil {
 		writeJSONResponse(w, http.StatusInternalServerError, response.CommonResponse{
 			Status:  false,
@@ -118,11 +116,11 @@ func (c *RAGController) HandleGetDocuments(w http.ResponseWriter, r *http.Reques
 
 	writeJSONResponse(w, http.StatusOK, response.CommonResponse{
 		Status: true,
-		Data: map[string]any{
-			"documents": docs,
-			"total":     total,
-			"page":      dto.GetPage(),
-			"limit":     dto.GetLimit(20),
+		Data: &response.DocumentListResponse{
+			Documents: docs,
+			Total:     total,
+			Page:      dto.GetPage(),
+			Limit:     dto.GetLimit(20),
 		},
 	})
 }
@@ -151,6 +149,13 @@ func (c *RAGController) HandleGetDocumentDetail(w http.ResponseWriter, r *http.R
 
 	detail, err := c.ragService.GetDocumentDetail(ctx, id)
 	if err != nil {
+		if apperrors.IsForbidden(err) {
+			writeJSONResponse(w, http.StatusForbidden, response.CommonResponse{
+				Status:  false,
+				Message: err.Error(),
+			})
+			return
+		}
 		writeJSONResponse(w, http.StatusNotFound, response.CommonResponse{
 			Status:  false,
 			Message: "Document not found",
@@ -198,7 +203,7 @@ func (c *RAGController) HandleUpdateDocumentStatus(w http.ResponseWriter, r *htt
 	if err := c.ragService.UpdateDocumentStatus(ctx, id, &req); err != nil {
 		writeJSONResponse(w, http.StatusInternalServerError, response.CommonResponse{
 			Status:  false,
-			Message: "Failed to update document status: " + err.Error(),
+			Message: "Failed to update document status",
 		})
 		return
 	}
@@ -272,7 +277,7 @@ func (c *RAGController) HandleUpsertKGEdge(w http.ResponseWriter, r *http.Reques
 	if err != nil {
 		writeJSONResponse(w, http.StatusInternalServerError, response.CommonResponse{
 			Status:  false,
-			Message: "Failed to persist knowledge edge: " + err.Error(),
+			Message: "Failed to persist knowledge edge",
 		})
 		return
 	}
@@ -309,7 +314,7 @@ func (c *RAGController) HandleDeleteKGEdge(w http.ResponseWriter, r *http.Reques
 	if err := c.ragService.DeleteKGEdge(ctx, id); err != nil {
 		writeJSONResponse(w, http.StatusInternalServerError, response.CommonResponse{
 			Status:  false,
-			Message: "Failed to delete knowledge edge: " + err.Error(),
+			Message: "Failed to delete knowledge edge",
 		})
 		return
 	}
@@ -381,11 +386,11 @@ func (c *RAGController) HandleGetAuditLogs(w http.ResponseWriter, r *http.Reques
 
 	writeJSONResponse(w, http.StatusOK, response.CommonResponse{
 		Status: true,
-		Data: map[string]any{
-			"logs":  logs,
-			"total": total,
-			"page":  dto.GetPage(),
-			"limit": dto.GetLimit(20),
+		Data: &response.AuditLogListResponse{
+			Logs:  logs,
+			Total: total,
+			Page:  dto.GetPage(),
+			Limit: dto.GetLimit(20),
 		},
 	})
 }
@@ -406,11 +411,11 @@ func (c *RAGController) HandleSyncIndex(w http.ResponseWriter, r *http.Request) 
 	indexPath := config.GetConfigWithDefault("PROCESSED_INDEX_PATH", "../data/processed/processed_index.jsonl")
 	baseDataDir := config.GetConfigWithDefault("PROCESSED_DATA_DIR", "../data/processed")
 
-	count, err := c.ragService.IngestFromIndexJSONL(ctx, indexPath, baseDataDir, nil)
+	count, err := c.ragService.IngestFromIndexJSONL(ctx, indexPath, baseDataDir, nil, nil)
 	if err != nil {
 		writeJSONResponse(w, http.StatusInternalServerError, response.CommonResponse{
 			Status:  false,
-			Message: "Failed to sync knowledge index: " + err.Error(),
+			Message: "Failed to sync knowledge index",
 		})
 		return
 	}
@@ -418,8 +423,6 @@ func (c *RAGController) HandleSyncIndex(w http.ResponseWriter, r *http.Request) 
 	writeJSONResponse(w, http.StatusOK, response.CommonResponse{
 		Status:  true,
 		Message: "Knowledge index synchronized successfully",
-		Data: map[string]any{
-			"ingested_documents": count,
-		},
+		Data:    response.IngestSyncResponse{IngestedDocuments: count},
 	})
 }

@@ -4,12 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"strings"
 	"sync"
-	"time"
-
-	"tluagent-web/pkg/config"
 )
 
 // Manager manages multiple LLM providers with automatic fallback and routing.
@@ -30,7 +26,7 @@ func NewManager() *Manager {
 	return &Manager{
 		providers:           make(map[string]Provider),
 		visionStrategy:      VisionStrategyFallback,
-		visionFallbackModel: "gemini-2.5-flash",
+		visionFallbackModel: "",
 		chains:              make(map[ChainType]*LLMChain),
 	}
 }
@@ -54,9 +50,21 @@ func (m *Manager) SetVisionStrategy(strategy VisionHandlingStrategy, fallbackMod
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.visionStrategy = strategy
-	if fallbackModel != "" {
-		m.visionFallbackModel = fallbackModel
-	}
+	m.visionFallbackModel = fallbackModel
+}
+
+// VisionStrategy returns current vision handling strategy.
+func (m *Manager) VisionStrategy() VisionHandlingStrategy {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.visionStrategy
+}
+
+// VisionFallbackModel returns current vision fallback model.
+func (m *Manager) VisionFallbackModel() string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.visionFallbackModel
 }
 
 // SetEmbedder sets the default Embedder.
@@ -256,7 +264,6 @@ func (m *Manager) ChatStream(ctx context.Context, req *ChatRequest) (StreamReade
 	return p.ChatStream(ctx, adaptedReq)
 }
 
-// ExecuteRerank evaluates document relevance via the rerank chain or direct reranker.
 func (m *Manager) ExecuteRerank(ctx context.Context, query string, documents []string, topN *int) ([]RerankResult, error) {
 	m.mu.RLock()
 	rerankChain := m.chains[ChainTypeRerank]
@@ -286,9 +293,7 @@ func (m *Manager) ExecuteEmbedding(ctx context.Context, texts []string) ([][]flo
 
 	if embChain != nil && embChain.IsActive && len(embChain.Nodes) > 0 {
 		vectors, _, err := embChain.ExecuteEmbedding(ctx, texts)
-		if err == nil {
-			return vectors, nil
-		}
+		return vectors, err
 	}
 
 	if directEmbedder != nil {
@@ -346,124 +351,37 @@ func (m *Manager) ChatStreamWithFallback(ctx context.Context, req *ChatRequest, 
 	return nil, fmt.Errorf("all fallback stream providers failed. Last error: %w", lastErr)
 }
 
-// NewManagerFromEnv initializes and registers providers from environment variables.
-func NewManagerFromEnv() (*Manager, error) {
-	_ = config.LoadEnv()
+// ManagerConfig holds configuration options for initializing a Manager.
+type ManagerConfig struct {
+	DefaultProvider     string
+	Providers           map[string]Provider
+	Embedder            Embedder
+	Reranker            Reranker
+	Registry            *CapabilityRegistry
+	VisionStrategy      VisionHandlingStrategy
+	VisionFallbackModel string
+}
 
-	manager := NewManager()
-
-	token := os.Getenv("TOKEN")
-	if token == "" {
-		token = os.Getenv("OPENAI_API_KEY")
+// NewManagerWithConfig creates an LLM Manager initialized with the provided config.
+func NewManagerWithConfig(cfg ManagerConfig) *Manager {
+	m := NewManager()
+	if cfg.Registry != nil {
+		m.SetRegistry(cfg.Registry)
 	}
-
-	apiURL := os.Getenv("API")
-	if apiURL == "" {
-		apiURL = os.Getenv("OPENAI_BASE_URL")
+	if cfg.VisionStrategy != "" {
+		m.SetVisionStrategy(cfg.VisionStrategy, cfg.VisionFallbackModel)
 	}
-
-	model := os.Getenv("MODEL")
-	if model == "" {
-		model = os.Getenv("OPENAI_MODEL")
+	if cfg.Embedder != nil {
+		m.SetEmbedder(cfg.Embedder)
 	}
-
-	if token != "" || apiURL != "" {
-		if apiURL == "" {
-			apiURL = "https://api.openai.com/v1"
-		}
-		if model == "" {
-			model = "gpt-4o-mini"
-		}
-
-		retryClient := NewRetryClient(120*time.Second, 2)
-		openaiProvider := NewOpenAIProvider(OpenAIConfig{
-			BaseURL:      apiURL,
-			APIKey:       token,
-			DefaultModel: model,
-			HTTPClient:   retryClient,
-		})
-
-		manager.Register("openai", openaiProvider)
-		if strings.Contains(apiURL, "vilao") {
-			manager.Register("vilao", openaiProvider)
-		}
+	if cfg.Reranker != nil {
+		m.SetReranker(cfg.Reranker)
 	}
-
-	geminiKey := os.Getenv("GOOGLE_AI_API_KEY")
-	if geminiKey == "" {
-		geminiKey = os.Getenv("GEMINI_API_KEY")
+	for name, p := range cfg.Providers {
+		m.Register(name, p)
 	}
-
-	geminiModel := os.Getenv("GEMINI_MODEL")
-	if geminiModel == "" {
-		geminiModel = "gemini-2.5-flash"
+	if cfg.DefaultProvider != "" {
+		_ = m.SetDefault(cfg.DefaultProvider)
 	}
-
-	if geminiKey != "" {
-		retryClient := NewRetryClient(120*time.Second, 2)
-		geminiProvider := NewGeminiProvider(GeminiConfig{
-			APIKey:       geminiKey,
-			DefaultModel: geminiModel,
-			HTTPClient:   retryClient,
-		})
-		manager.Register("gemini", geminiProvider)
-		manager.Register("google", geminiProvider)
-	}
-
-	openRouterKey := os.Getenv("OPEN_ROUTER_API")
-	if openRouterKey == "" {
-		openRouterKey = os.Getenv("OPENROUTER_API_KEY")
-	}
-
-	if openRouterKey != "" {
-		retryClient := NewRetryClient(120*time.Second, 2)
-		openRouterProvider := NewOpenAIProvider(OpenAIConfig{
-			BaseURL:      "https://openrouter.ai/api/v1",
-			APIKey:       openRouterKey,
-			DefaultModel: "qwen/qwen3.8-max",
-			HTTPClient:   retryClient,
-		})
-		manager.Register("openrouter", openRouterProvider)
-
-		embedModel := os.Getenv("EMBEDDING_MODEL")
-		if embedModel == "" {
-			embedModel = "qwen/qwen3-embedding-8b"
-		}
-		manager.SetEmbedder(NewOpenAIEmbedder("https://openrouter.ai/api/v1", openRouterKey, embedModel))
-
-		rerankModel := os.Getenv("RERANK_MODEL")
-		if rerankModel == "" {
-			rerankModel = "cohere/rerank-4-pro"
-		}
-		manager.SetReranker(NewOpenRouterReranker("https://openrouter.ai/api/v1", openRouterKey, rerankModel))
-	}
-
-	reg := NewCapabilityRegistry(openRouterKey)
-	manager.SetRegistry(reg)
-
-	strat := VisionHandlingStrategy(os.Getenv("LLM_VISION_STRATEGY"))
-	if strat == "" {
-		strat = VisionStrategyFallback
-	}
-	fallbackModel := os.Getenv("VISION_FALLBACK_MODEL")
-	if fallbackModel == "" {
-		fallbackModel = "gemini-2.5-flash"
-	}
-	manager.SetVisionStrategy(strat, fallbackModel)
-
-	if len(manager.List()) == 0 {
-		return nil, errors.New("no LLM providers found in environment (neither TOKEN/API, GOOGLE_AI_API_KEY nor OPEN_ROUTER_API is configured)")
-	}
-
-	if strings.Contains(strings.ToLower(model), "gemini") {
-		_ = manager.SetDefault("gemini")
-	} else if _, err := manager.Get("vilao"); err == nil {
-		_ = manager.SetDefault("vilao")
-	} else if _, err := manager.Get("openai"); err == nil {
-		_ = manager.SetDefault("openai")
-	} else if _, err := manager.Get("gemini"); err == nil {
-		_ = manager.SetDefault("gemini")
-	}
-
-	return manager, nil
+	return m
 }

@@ -47,6 +47,21 @@ func (p *AgentPrompt) ToResponse() *response.AgentPromptResponse {
 	}
 }
 
+// AgentPromptsToResponse converts a batch of AgentPrompt domain models to response DTOs.
+func AgentPromptsToResponse(items []*AgentPrompt) []*response.AgentPromptResponse {
+	if items == nil {
+		return nil
+	}
+	out := make([]*response.AgentPromptResponse, 0, len(items))
+	for _, item := range items {
+		if item == nil {
+			continue
+		}
+		out = append(out, item.ToResponse())
+	}
+	return out
+}
+
 // AgentSkill represents an individual modular capability in the agent skills system.
 type AgentSkill struct {
 	ID             string    `json:"id"`
@@ -93,4 +108,19 @@ func (s *AgentSkill) ToResponse() *response.AgentSkillResponse {
 		UpdatedAt:      s.UpdatedAt,
 		UpdatedBy:      s.UpdatedBy,
 	}
+}
+
+// AgentSkillsToResponse converts a batch of AgentSkill domain models to response DTOs.
+func AgentSkillsToResponse(items []*AgentSkill) []*response.AgentSkillResponse {
+	if items == nil {
+		return nil
+	}
+	out := make([]*response.AgentSkillResponse, 0, len(items))
+	for _, item := range items {
+		if item == nil {
+			continue
+		}
+		out = append(out, item.ToResponse())
+	}
+	return out
 }

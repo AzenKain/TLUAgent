@@ -23,6 +23,10 @@ const (
 	PermCurriculumRead   = "curriculum.read"
 	PermCurriculumManage = "curriculum.manage"
 
+	// Transcript & Academic Course Grades permissions
+	PermTranscriptRead   = "transcript.read"
+	PermTranscriptManage = "transcript.manage"
+
 	// Crawler permissions
 	PermCrawlerTrigger = "crawler.trigger"
 
@@ -52,6 +56,10 @@ const (
 	PermInquiryCreate = "inquiry.create"
 	PermInquiryAnswer = "inquiry.answer"
 	PermInquiryManage = "inquiry.manage"
+
+	// Admin TLUClaw permissions
+	PermTLUClawRead   = "tluclaw.read"
+	PermTLUClawManage = "tluclaw.manage"
 )
 
 type PermissionInfo struct {
@@ -77,6 +85,8 @@ func GetDefaultPermissionsForRole(role RoleType) []string {
 		return []string{
 			PermRegulationRead,
 			PermCurriculumRead,
+			PermTranscriptRead,
+			PermTranscriptManage,
 			PermChatAsk,
 			PermChatPersist,
 			PermRAGRead,
@@ -89,6 +99,8 @@ func GetDefaultPermissionsForRole(role RoleType) []string {
 			PermRegulationWrite,
 			PermCurriculumRead,
 			PermCurriculumManage,
+			PermTranscriptRead,
+			PermTranscriptManage,
 			PermChatAsk,
 			PermChatPersist,
 			PermChatManage,
@@ -104,6 +116,8 @@ func GetDefaultPermissionsForRole(role RoleType) []string {
 			PermRegulationWrite,
 			PermCurriculumRead,
 			PermCurriculumManage,
+			PermTranscriptRead,
+			PermTranscriptManage,
 			PermCrawlerTrigger,
 			PermAuditRead,
 			PermChatAsk,
@@ -120,6 +134,8 @@ func GetDefaultPermissionsForRole(role RoleType) []string {
 			PermInquiryCreate,
 			PermInquiryAnswer,
 			PermInquiryManage,
+			PermTLUClawRead,
+			PermTLUClawManage,
 		}
 	default:
 		return []string{}

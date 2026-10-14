@@ -38,3 +38,8 @@ func New(err error, message string) error {
 func IsNotFound(err error) bool {
 	return errors.Is(err, sql.ErrNoRows) || errors.Is(err, ErrNotFound)
 }
+
+// IsForbidden checks whether the given error represents a forbidden access error.
+func IsForbidden(err error) bool {
+	return errors.Is(err, ErrForbidden)
+}

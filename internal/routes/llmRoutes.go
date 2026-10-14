@@ -34,6 +34,8 @@ func RegisterLLMRoutes(mux *http.ServeMux, llmCtrl *controllers.LLMController, u
 	mux.Handle("PUT /api/admin/llm/models/{id}", protectManage(llmCtrl.UpdateModel))
 	mux.Handle("DELETE /api/admin/llm/models/{id}", protectManage(llmCtrl.DeleteModel))
 	mux.Handle("POST /api/admin/llm/models/probe-vision", protectManage(llmCtrl.ProbeVision))
+	mux.Handle("GET /api/admin/llm/vision-settings", protectManage(llmCtrl.GetVisionSettings))
+	mux.Handle("PUT /api/admin/llm/vision-settings", protectManage(llmCtrl.UpdateVisionSettings))
 
 	mux.Handle("GET /api/admin/llm/chains", protectManage(llmCtrl.ListChains))
 	mux.Handle("GET /api/admin/llm/chains/{id}", protectManage(llmCtrl.GetChain))

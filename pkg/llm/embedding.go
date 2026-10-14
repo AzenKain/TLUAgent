@@ -8,18 +8,15 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 	"time"
 )
 
-// Embedder generates vector embeddings for textual input.
 type Embedder interface {
 	Embed(ctx context.Context, texts []string) ([][]float32, error)
 	EmbedSingle(ctx context.Context, text string) ([]float32, error)
 	Model() string
 }
 
-// OpenAIEmbedder connects to any OpenAI-compatible embedding API (OpenRouter, OpenAI, Ollama).
 type OpenAIEmbedder struct {
 	baseURL    string
 	apiKey     string
@@ -33,22 +30,7 @@ func NewOpenAIEmbedder(baseURL, apiKey, model string, allowPrivate ...bool) *Ope
 	if len(allowPrivate) > 0 && allowPrivate[0] {
 		allowPriv = true
 	}
-	if baseURL == "" {
-		baseURL = "https://openrouter.ai/api/v1"
-	}
-	baseURL = strings.TrimRight(baseURL, "/")
-	endpoint := baseURL
-	if !strings.HasSuffix(endpoint, "/embeddings") {
-		if strings.HasSuffix(endpoint, "/v1") {
-			endpoint += "/embeddings"
-		} else {
-			endpoint += "/v1/embeddings"
-		}
-	}
-
-	if model == "" {
-		model = "qwen/qwen3-embedding-8b"
-	}
+	endpoint := ResolveOpenAIEmbeddingsEndpoint(baseURL)
 
 	return &OpenAIEmbedder{
 		baseURL:    endpoint,
@@ -106,9 +88,9 @@ func (e *OpenAIEmbedder) Embed(ctx context.Context, texts []string) ([][]float32
 		return nil, fmt.Errorf("failed to create embedding HTTP request: %w", err)
 	}
 
-	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set(HeaderContentType, MIMEApplicationJSON)
 	if e.apiKey != "" {
-		httpReq.Header.Set("Authorization", "Bearer "+e.apiKey)
+		httpReq.Header.Set(HeaderAuthorization, AuthBearerPrefix+e.apiKey)
 	}
 
 	resp, err := e.httpClient.Do(httpReq)

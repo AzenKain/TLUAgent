@@ -32,7 +32,8 @@ func setupAgentTestController(t *testing.T) (*controllers.AgentController, servi
 
 	ramCache := cache.NewRamCache()
 	agentRepo := repositories.NewAgentRepository(db, ramCache)
-	agentSvc := services.NewAgentService(agentRepo)
+	settingsRepo := repositories.NewSettingsRepository(db, ramCache)
+	agentSvc := services.NewAgentService(agentRepo, nil, settingsRepo)
 
 	err = agentSvc.SeedDefaultsIfEmpty(context.Background())
 	require.NoError(t, err)
@@ -56,9 +57,6 @@ func setupAgentTestController(t *testing.T) (*controllers.AgentController, servi
 	mux.HandleFunc("POST /api/admin/agent/preview", ctrl.PreviewPrompt)
 	mux.HandleFunc("GET /api/admin/agent/compactor", ctrl.GetCompactorSettings)
 	mux.HandleFunc("PUT /api/admin/agent/compactor", ctrl.UpdateCompactorSettings)
-
-	settingsRepo := repositories.NewSettingsRepository(db, ramCache)
-	agentSvc.SetSettingsRepository(settingsRepo)
 
 	return ctrl, agentSvc, mux, db
 }

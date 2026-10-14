@@ -15,14 +15,14 @@ const (
 )
 
 type StudentAcademicProfile struct {
-	UserID           string           `json:"user_id"`
-	StudentID        string           `json:"student_id"`
-	FullName         string           `json:"full_name"`
-	Major            string           `json:"major"`
-	CohortYear       int              `json:"cohort_year"`
-	AcademicStanding AcademicStanding `json:"academic_standing"`
-	CompletedCredits int              `json:"completed_credits"`
-	CumulativeGPA    float64          `json:"cumulative_gpa"`
+	UserID           string            `json:"user_id"`
+	StudentID        string            `json:"student_id"`
+	FullName         string            `json:"full_name"`
+	Major            string            `json:"major"`
+	CohortYear       int               `json:"cohort_year"`
+	AcademicStanding AcademicStanding  `json:"academic_standing"`
+	CompletedCredits int               `json:"completed_credits"`
+	CumulativeGPA    float64           `json:"cumulative_gpa"`
 	Preferences      map[string]string `json:"preferences,omitempty"`
 }
 
@@ -43,31 +43,41 @@ func FormatStudentPromptContext(p *StudentAcademicProfile) string {
 		return ""
 	}
 	var sb strings.Builder
-	sb.WriteString("[STUDENT ACADEMIC PROFILE]\n")
+	sb.WriteString("[HỒ SƠ HỌC VỤ SINH VIÊN - NGƯỜI DÙNG ĐÃ XÁC THỰC]\n")
+	if p.CohortYear > 0 && p.Major != "" {
+		sb.WriteString("- Trạng thái: Sinh viên đã xác thực. Khóa học và Ngành đã được ghi nhận chính thức.\n")
+	} else {
+		sb.WriteString("- Trạng thái: Sinh viên đã xác thực. LƯU Ý: Khóa học hoặc Ngành chưa rõ trong hồ sơ.\n")
+		sb.WriteString("- YÊU CẦU BẮT BUỘC: Khi sinh viên hỏi về chương trình đào tạo, môn thay thế, chuẩn đầu ra hoặc học phí, bạn PHẢI chủ động hỏi sinh viên Khóa (K mấy?) và/hoặc Ngành trước khi tư vấn chi tiết.\n")
+	}
 	if p.StudentID != "" {
-		fmt.Fprintf(&sb, "- Student ID: %s\n", p.StudentID)
+		fmt.Fprintf(&sb, "- Mã sinh viên / Student ID: %s\n", p.StudentID)
 	}
 	if p.FullName != "" {
-		fmt.Fprintf(&sb, "- Full Name: %s\n", p.FullName)
+		fmt.Fprintf(&sb, "- Họ và tên: %s\n", p.FullName)
 	}
 	if p.Major != "" {
-		fmt.Fprintf(&sb, "- Major: %s\n", p.Major)
+		fmt.Fprintf(&sb, "- Ngành học: %s\n", p.Major)
+	} else {
+		sb.WriteString("- Ngành học: CHƯA RÕ (Bắt buộc hỏi sinh viên khi cần thiết)\n")
 	}
 	if p.CohortYear > 0 {
-		fmt.Fprintf(&sb, "- Cohort Year: K%d\n", p.CohortYear)
+		fmt.Fprintf(&sb, "- Khóa học: K%d\n", p.CohortYear)
+	} else {
+		sb.WriteString("- Khóa học: CHƯA RÕ (Bắt buộc hỏi sinh viên khi cần thiết)\n")
 	}
 	if p.CompletedCredits > 0 {
-		fmt.Fprintf(&sb, "- Completed Credits: %d\n", p.CompletedCredits)
+		fmt.Fprintf(&sb, "- Tín chỉ đã tích lũy: %d\n", p.CompletedCredits)
 	}
 	if p.CumulativeGPA > 0 {
-		fmt.Fprintf(&sb, "- Cumulative GPA: %.2f\n", p.CumulativeGPA)
+		fmt.Fprintf(&sb, "- Điểm trung bình tích lũy (CPA): %.2f\n", p.CumulativeGPA)
 	}
 	if p.AcademicStanding != "" {
-		fmt.Fprintf(&sb, "- Academic Standing: %s\n", p.AcademicStanding)
+		fmt.Fprintf(&sb, "- Tình trạng học vụ: %s\n", p.AcademicStanding)
 	}
 	if len(p.Preferences) > 0 {
 		for k, v := range p.Preferences {
-			fmt.Fprintf(&sb, "- Preference [%s]: %s\n", k, v)
+			fmt.Fprintf(&sb, "- Thiết lập cá nhân [%s]: %s\n", k, v)
 		}
 	}
 	return sb.String()
@@ -79,11 +89,11 @@ func FormatLearnedKnowledgePromptContext(items []LearnedKnowledgeItem) string {
 		return ""
 	}
 	var sb strings.Builder
-	sb.WriteString("[VERIFIED ACADEMIC KNOWLEDGE BASE (TEACHER-APPROVED)]\n")
+	sb.WriteString("[CƠ SỞ TRI THỨC HỌC VỤ ĐÃ ĐƯỢC GIẢNG VIÊN / CỐ VẤN PHÊ DUYỆT]\n")
 	for i, item := range items {
-		sb.WriteString(fmt.Sprintf("[%d] Topic: %s (%s)\n", i+1, item.Topic, item.Department))
-		sb.WriteString(fmt.Sprintf("    Q: %s\n", item.Question))
-		sb.WriteString(fmt.Sprintf("    A: %s\n", item.VerifiedAnswer))
+		fmt.Fprintf(&sb, "[%d] Chủ đề: %s (%s)\n", i+1, item.Topic, item.Department)
+		fmt.Fprintf(&sb, "    Hỏi: %s\n", item.Question)
+		fmt.Fprintf(&sb, "    Đáp: %s\n", item.VerifiedAnswer)
 	}
 	return sb.String()
 }

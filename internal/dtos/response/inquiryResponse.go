@@ -41,3 +41,19 @@ type NotificationResponse struct {
 type UnreadCountResponse struct {
 	UnreadCount int `json:"unread_count"`
 }
+
+// InquiryListResponse is a paginated envelope of student or advisor inquiries.
+type InquiryListResponse struct {
+	Items []*InquiryResponse `json:"items"`
+	Total int                `json:"total"`
+	Page  int                `json:"page"`
+	Limit int                `json:"limit"`
+}
+
+// NotificationListResponse is a paginated envelope of student notifications with an unread counter.
+type NotificationListResponse struct {
+	Items       []*NotificationResponse `json:"items"`
+	UnreadCount int                     `json:"unread_count"`
+	Page        int                     `json:"page"`
+	Limit       int                     `json:"limit"`
+}

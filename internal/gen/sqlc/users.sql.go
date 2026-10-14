@@ -182,6 +182,33 @@ func (q *Queries) GetUserByIDWithoutDeleted(ctx context.Context, id string) (Use
 	return i, err
 }
 
+const getUserByStudentCode = `-- name: GetUserByStudentCode :one
+SELECT id, email, full_name, student_code, avatar_url, password_hash, auth_provider, token_version, refresh_token, is_deleted, created_at, updated_at
+FROM users
+WHERE student_code = ? AND is_deleted = 0
+LIMIT 1
+`
+
+func (q *Queries) GetUserByStudentCode(ctx context.Context, studentCode sql.NullString) (User, error) {
+	row := q.queryRow(ctx, q.getUserByStudentCodeStmt, getUserByStudentCode, studentCode)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.FullName,
+		&i.StudentCode,
+		&i.AvatarUrl,
+		&i.PasswordHash,
+		&i.AuthProvider,
+		&i.TokenVersion,
+		&i.RefreshToken,
+		&i.IsDeleted,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getUserRolePermissions = `-- name: GetUserRolePermissions :many
 SELECT rp.id, rp.role_id, rp.permission_key, rp.effect, rp.conditions_json, rp.created_at, rp.updated_at
 FROM role_permissions rp

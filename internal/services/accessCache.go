@@ -8,7 +8,6 @@ import (
 	"sync"
 
 	"tluagent-web/internal/dtos/response"
-	"tluagent-web/internal/models"
 	"tluagent-web/internal/repositories"
 	"tluagent-web/pkg/constants"
 )
@@ -30,7 +29,7 @@ type PermissionCache interface {
 	CanRoles(roleIDs []string, roles []constants.RoleType, permission string, attrs map[string]any) bool
 	IsAdmin(roleIDs []string, roles []constants.RoleType) bool
 	GetGuestPermissions() []string
-	DescribeRoles(roleIDs []string) []*models.RoleSimple
+	DescribeRoles(roleIDs []string) []*response.RoleSimpleResponse
 }
 
 type cachedRolePermission struct {
@@ -180,26 +179,26 @@ func (p *permissionCache) IsAdmin(roleIDs []string, roles []constants.RoleType) 
 	return p.hasAdmin(resolved)
 }
 
-func (p *permissionCache) DescribeRoles(roleIDs []string) []*models.RoleSimple {
+func (p *permissionCache) DescribeRoles(roleIDs []string) []*response.RoleSimpleResponse {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
-	out := make([]*models.RoleSimple, 0, len(roleIDs))
+	out := make([]*response.RoleSimpleResponse, 0, len(roleIDs))
 	for _, id := range roleIDs {
 		role, ok := p.roles[id]
 		if !ok || role == nil {
 			continue
 		}
-		permissions := make([]*models.RolePermissionEntity, 0, len(role.Permissions))
+		permissions := make([]*response.RolePermissionResponse, 0, len(role.Permissions))
 		for _, perm := range role.Permissions {
-			permissions = append(permissions, &models.RolePermissionEntity{
+			permissions = append(permissions, &response.RolePermissionResponse{
 				RoleID:        role.ID,
 				PermissionKey: perm.PermissionKey,
 				Effect:        perm.Effect,
 				Conditions:    perm.Conditions,
 			})
 		}
-		out = append(out, &models.RoleSimple{
+		out = append(out, &response.RoleSimpleResponse{
 			ID:          role.ID,
 			Name:        role.Name,
 			IsAdmin:     role.IsAdmin,

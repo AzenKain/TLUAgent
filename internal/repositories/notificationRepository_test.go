@@ -75,4 +75,18 @@ func TestNotificationRepository_CRUD(t *testing.T) {
 	if err != nil || unreadAfter != 0 {
 		t.Fatalf("Expected 0 unread notifications after mark, got %d", unreadAfter)
 	}
+
+	recent, err := repo.ListRecentNotifications(ctx, 10, 0)
+	if err != nil || len(recent) != 1 {
+		t.Fatalf("Expected 1 recent notification, got %v (err: %v)", len(recent), err)
+	}
+
+	if err := repo.DeleteNotification(ctx, "notif-001"); err != nil {
+		t.Fatalf("Failed to delete notification: %v", err)
+	}
+
+	recentAfterDel, err := repo.ListRecentNotifications(ctx, 10, 0)
+	if err != nil || len(recentAfterDel) != 0 {
+		t.Fatalf("Expected 0 recent notifications after delete, got %d", len(recentAfterDel))
+	}
 }

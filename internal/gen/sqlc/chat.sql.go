@@ -151,9 +151,9 @@ func (q *Queries) CreateConversation(ctx context.Context, arg CreateConversation
 }
 
 const createMessage = `-- name: CreateMessage :one
-INSERT INTO chat_messages (id, conversation_id, sender, content, sources_json, images_json, feedback, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-RETURNING id, conversation_id, sender, content, sources_json, images_json, feedback, created_at
+INSERT INTO chat_messages (id, conversation_id, sender, content, sources_json, images_json, feedback, can_escalate, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING id, conversation_id, sender, content, sources_json, images_json, feedback, created_at, can_escalate
 `
 
 type CreateMessageParams struct {
@@ -164,6 +164,7 @@ type CreateMessageParams struct {
 	SourcesJson    string         `json:"sources_json"`
 	ImagesJson     string         `json:"images_json"`
 	Feedback       sql.NullString `json:"feedback"`
+	CanEscalate    int64          `json:"can_escalate"`
 	CreatedAt      time.Time      `json:"created_at"`
 }
 
@@ -176,6 +177,7 @@ func (q *Queries) CreateMessage(ctx context.Context, arg CreateMessageParams) (C
 		arg.SourcesJson,
 		arg.ImagesJson,
 		arg.Feedback,
+		arg.CanEscalate,
 		arg.CreatedAt,
 	)
 	var i ChatMessage
@@ -188,6 +190,7 @@ func (q *Queries) CreateMessage(ctx context.Context, arg CreateMessageParams) (C
 		&i.ImagesJson,
 		&i.Feedback,
 		&i.CreatedAt,
+		&i.CanEscalate,
 	)
 	return i, err
 }
@@ -637,21 +640,33 @@ func (q *Queries) ListConversationIDsByUserID(ctx context.Context, arg ListConve
 }
 
 const listMessagesByConversationID = `-- name: ListMessagesByConversationID :many
-SELECT id, conversation_id, sender, content, sources_json, images_json, feedback, created_at
+SELECT id, conversation_id, sender, content, sources_json, images_json, feedback, can_escalate, created_at
 FROM chat_messages
 WHERE conversation_id = ?
 ORDER BY created_at ASC
 `
 
-func (q *Queries) ListMessagesByConversationID(ctx context.Context, conversationID string) ([]ChatMessage, error) {
+type ListMessagesByConversationIDRow struct {
+	ID             string         `json:"id"`
+	ConversationID string         `json:"conversation_id"`
+	Sender         string         `json:"sender"`
+	Content        string         `json:"content"`
+	SourcesJson    string         `json:"sources_json"`
+	ImagesJson     string         `json:"images_json"`
+	Feedback       sql.NullString `json:"feedback"`
+	CanEscalate    int64          `json:"can_escalate"`
+	CreatedAt      time.Time      `json:"created_at"`
+}
+
+func (q *Queries) ListMessagesByConversationID(ctx context.Context, conversationID string) ([]ListMessagesByConversationIDRow, error) {
 	rows, err := q.query(ctx, q.listMessagesByConversationIDStmt, listMessagesByConversationID, conversationID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ChatMessage{}
+	items := []ListMessagesByConversationIDRow{}
 	for rows.Next() {
-		var i ChatMessage
+		var i ListMessagesByConversationIDRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.ConversationID,
@@ -660,6 +675,7 @@ func (q *Queries) ListMessagesByConversationID(ctx context.Context, conversation
 			&i.SourcesJson,
 			&i.ImagesJson,
 			&i.Feedback,
+			&i.CanEscalate,
 			&i.CreatedAt,
 		); err != nil {
 			return nil, err

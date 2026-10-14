@@ -27,7 +27,7 @@ func TestRAGService_LexPosteriorEmergencyOverride(t *testing.T) {
 	}
 
 	ragRepo := repositories.NewRAGRepository(db, cache.NewRamCache())
-	ragSvc := services.NewRAGService(ragRepo)
+	ragSvc := services.NewRAGService(ragRepo, nil, nil, nil)
 	ctx := context.Background()
 
 	docOriginal := &models.Document{
@@ -154,7 +154,7 @@ func TestRAGService_LexSpecialisCohortSpecific(t *testing.T) {
 	}
 
 	ragRepo := repositories.NewRAGRepository(db, cache.NewRamCache())
-	ragSvc := services.NewRAGService(ragRepo)
+	ragSvc := services.NewRAGService(ragRepo, nil, nil, nil)
 	ctx := context.Background()
 
 	docGeneric := &models.Document{
@@ -259,3 +259,119 @@ func TestRAGService_LexSpecialisCohortSpecific(t *testing.T) {
 		}
 	}
 }
+
+// TestRAGService_GetDocumentDetailByIdentifier verifies document detail resolution and full content assembly.
+func TestRAGService_GetDocumentDetailByIdentifier(t *testing.T) {
+	db, err := sql.Open("sqlite", ":memory:?_pragma=foreign_keys(ON)")
+	if err != nil {
+		t.Fatalf("failed to open sqlite: %v", err)
+	}
+	defer db.Close()
+
+	if err := database.ApplySchema(db); err != nil {
+		t.Fatalf("failed to apply schema: %v", err)
+	}
+
+	ragRepo := repositories.NewRAGRepository(db, cache.NewRamCache())
+	ragSvc := services.NewRAGService(ragRepo, nil, nil, nil)
+	ctx := context.Background()
+
+	doc := &models.Document{
+		ID:               "DOC_QD_22012",
+		DocCode:          "QD_22012",
+		Title:            "Quy che hoc vu va khao thi",
+		Type:             "QUY_CHE",
+		Domain:           "DAO_TAO",
+		ValidityTier:     "CORE_PERMANENT",
+		Status:           "ACTIVE",
+		PublishDate:      "2023-01-01",
+		AcademicYear:     "2023-2024",
+		Semester:         "ALL",
+		ApplicableCohort: "ALL",
+		PriorityLevel:    80,
+		FilePath:         "qd_22012.md",
+	}
+
+	chunks := []*models.DocumentChunk{
+		{
+			ID:               "chk_part_1",
+			DocumentID:       "DOC_QD_22012",
+			ChunkIndex:       0,
+			ChunkType:        "RULE_BODY",
+			Content:          "Phan 1: Quy dinh chung",
+			Status:           "ACTIVE",
+			Domain:           "DAO_TAO",
+			ApplicableCohort: "ALL",
+			AcademicYear:     "2023-2024",
+			PriorityLevel:    80,
+		},
+		{
+			ID:               "chk_part_2",
+			DocumentID:       "DOC_QD_22012",
+			ChunkIndex:       1,
+			ChunkType:        "RULE_BODY",
+			Content:          "Phan 2: Chuong trinh dao tao",
+			Status:           "ACTIVE",
+			Domain:           "DAO_TAO",
+			ApplicableCohort: "ALL",
+			AcademicYear:     "2023-2024",
+			PriorityLevel:    80,
+		},
+	}
+
+	if err := ragSvc.IngestDocument(ctx, doc, chunks, nil, nil); err != nil {
+		t.Fatalf("failed to ingest doc: %v", err)
+	}
+
+	detailByID, err := ragSvc.GetDocumentDetail(ctx, "DOC_QD_22012")
+	if err != nil || detailByID.Document.ID != doc.ID {
+		t.Fatalf("failed to retrieve document by ID: %v", err)
+	}
+	if detailByID.FullContent != "Phan 1: Quy dinh chung\n\nPhan 2: Chuong trinh dao tao" {
+		t.Fatalf("unexpected full content: %q", detailByID.FullContent)
+	}
+
+	detailByTitle, err := ragSvc.GetDocumentDetail(ctx, "Quy che hoc vu va khao thi")
+	if err != nil || detailByTitle.Document.ID != doc.ID {
+		t.Fatalf("failed to retrieve document by title: %v", err)
+	}
+
+	detailByCode, err := ragSvc.GetDocumentDetail(ctx, "QD_22012")
+	if err != nil || detailByCode.Document.ID != doc.ID {
+		t.Fatalf("failed to retrieve document by code: %v", err)
+	}
+}
+
+// TestRAGService_CourseCodeExactMatch verifies that queries containing course codes prioritize matching chunks.
+func TestRAGService_CourseCodeExactMatch(t *testing.T) {
+	db, err := sql.Open("sqlite", "../../data/tluagent.db")
+	if err != nil {
+		t.Skip("skipping db test:", err)
+	}
+	defer db.Close()
+
+	if err := db.Ping(); err != nil {
+		t.Skip("skipping test: database file not accessible:", err)
+	}
+
+	repo := repositories.NewRAGRepository(db, cache.NewRamCache())
+	svc := services.NewRAGService(repo, cache.NewRamCache(), nil, nil)
+	ctx := context.Background()
+
+	res, err := svc.Search(ctx, models.RAGSearchParams{
+		Query:         "Theo quy định học phí miễn giảm khóa 38, học phần FTO1201 Cơ sở văn hóa Việt Nam của ngành Quản trị dịch vụ du lịch - lữ hành khi chuyển đổi được miễn giảm bao nhiêu tiền?",
+		StudentCohort: "K38",
+		TopK:          5,
+	}, nil)
+	if err != nil {
+		t.Fatalf("search failed: %v", err)
+	}
+	if len(res) == 0 {
+		t.Fatal("expected at least 1 search result, got 0")
+	}
+	if res[0].ChunkID != "chk_DOC_THONG_BAO_22013_7ebb8c77_172" {
+		t.Fatalf("expected top result to be chk_DOC_THONG_BAO_22013_7ebb8c77_172, got %s", res[0].ChunkID)
+	}
+}
+
+

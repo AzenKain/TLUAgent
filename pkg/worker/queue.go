@@ -175,7 +175,7 @@ func (q *Queue) process(job Job) {
 	start := time.Now()
 	var lastErr error
 	for attempt := 1; attempt <= 3; attempt++ {
-		ctx, cancel := context.WithTimeout(q.ctx, time.Hour)
+		ctx, cancel := context.WithTimeout(q.ctx, 4*time.Hour)
 		err := handler(ctx, job.ID, job.Payload)
 		cancel()
 		if err == nil {

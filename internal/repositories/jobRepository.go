@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"sort"
+	"strconv"
 	"strings"
 
 	"golang.org/x/sync/singleflight"
@@ -57,7 +58,11 @@ func (r *jobRepository) InvalidateJobCache(ctx context.Context, id string) {
 	if r.c == nil {
 		return
 	}
-	_ = r.c.Del(ctx, cache.BuildKey("job", "id", id))
+	if id != "" {
+		_ = r.c.Del(ctx, cache.BuildKey("job", "id", id))
+	}
+	_ = r.c.DelByPattern(ctx, "job_count*")
+	_ = r.c.DelByPattern(ctx, "job_ids*")
 }
 
 func (r *jobRepository) GetJob(ctx context.Context, id string) (*models.JobEntity, error) {
@@ -172,6 +177,7 @@ func (r *jobRepository) CreateJob(ctx context.Context, id, jobType, status, payl
 	if r.c != nil && !r.inTx {
 		_ = r.c.Set(ctx, cache.BuildKey("job", "id", id), job, constants.NormalCacheDuration)
 	}
+	r.InvalidateJobCache(ctx, id)
 	return job, nil
 }
 
@@ -232,14 +238,32 @@ func (r *jobRepository) ListJobs(ctx context.Context, status, jobType string, li
 		return []*models.JobEntity{}, 0, nil
 	}
 
-	ids, err := r.q.ListFilteredJobIDs(ctx, sqlc.ListFilteredJobIDsParams{
-		Status: status,
-		Type:   jobType,
-		Limit:  limit,
-		Offset: offset,
-	})
-	if err != nil {
-		return nil, 0, err
+	idsKey := cache.BuildKey("job_ids", status, jobType, strconv.FormatInt(limit, 10), strconv.FormatInt(offset, 10))
+	var ids []string
+	if r.c != nil && !r.inTx {
+		_ = r.c.Get(ctx, idsKey, &ids)
+	}
+
+	if len(ids) == 0 {
+		v, err, _ := r.sfg.Do(idsKey, func() (any, error) {
+			foundIDs, err := r.q.ListFilteredJobIDs(ctx, sqlc.ListFilteredJobIDsParams{
+				Status: status,
+				Type:   jobType,
+				Limit:  limit,
+				Offset: offset,
+			})
+			if err != nil {
+				return nil, err
+			}
+			if r.c != nil && !r.inTx {
+				_ = r.c.Set(ctx, idsKey, foundIDs, constants.ShortCacheDuration)
+			}
+			return foundIDs, nil
+		})
+		if err != nil {
+			return nil, 0, err
+		}
+		ids = v.([]string)
 	}
 
 	jobs, err := r.GetJobsByIDs(ctx, ids)

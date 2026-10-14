@@ -2,12 +2,13 @@ package controllers
 
 import (
 	"net/http"
+	"slices"
 
 	"tluagent-web/internal/dtos/request"
 	"tluagent-web/internal/dtos/response"
-	"tluagent-web/internal/models"
 	"tluagent-web/internal/services"
 	"tluagent-web/pkg/apperrors"
+	"tluagent-web/pkg/constants"
 	"tluagent-web/pkg/guardrail"
 	"tluagent-web/pkg/validator"
 )
@@ -57,7 +58,7 @@ func (c *InquiryController) CreateInquiry(w http.ResponseWriter, r *http.Request
 
 	writeJSONResponse(w, http.StatusCreated, response.CommonResponse{
 		Status: true,
-		Data:   toInquiryResponse(inq),
+		Data:   inq,
 	})
 }
 
@@ -77,9 +78,21 @@ func (c *InquiryController) GetInquiryDetail(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	claims := getUserClaims(r)
+	if claims == nil {
+		apperrors.HandleError(w, apperrors.New(apperrors.ErrUnauthorized, "Unauthorized"))
+		return
+	}
+
+	isAdvisorOrAdmin := slices.Contains(claims.Roles, constants.RoleTypeAdmin) || slices.Contains(claims.Roles, constants.RoleTypeAdvisor)
+	if !isAdvisorOrAdmin && inq.UserID != claims.UId {
+		apperrors.HandleError(w, apperrors.New(apperrors.ErrForbidden, "Forbidden"))
+		return
+	}
+
 	writeJSONResponse(w, http.StatusOK, response.CommonResponse{
 		Status: true,
-		Data:   toInquiryResponse(inq),
+		Data:   inq,
 	})
 }
 
@@ -108,20 +121,13 @@ func (c *InquiryController) GetStudentInquiries(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	res := make([]*response.InquiryResponse, 0, len(items))
-	for _, item := range items {
-		res = append(res, toInquiryResponse(item))
-	}
-
-	page := dto.GetPage()
-	limit := dto.GetLimit(20)
 	writeJSONResponse(w, http.StatusOK, response.CommonResponse{
 		Status: true,
-		Data: map[string]any{
-			"items": res,
-			"total": total,
-			"page":  page,
-			"limit": limit,
+		Data: &response.InquiryListResponse{
+			Items: items,
+			Total: total,
+			Page:  dto.GetPage(),
+			Limit: dto.GetLimit(20),
 		},
 	})
 }
@@ -145,20 +151,13 @@ func (c *InquiryController) GetTeacherInquiries(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	res := make([]*response.InquiryResponse, 0, len(items))
-	for _, item := range items {
-		res = append(res, toInquiryResponse(item))
-	}
-
-	page := dto.GetPage()
-	limit := dto.GetLimit(20)
 	writeJSONResponse(w, http.StatusOK, response.CommonResponse{
 		Status: true,
-		Data: map[string]any{
-			"items": res,
-			"total": total,
-			"page":  page,
-			"limit": limit,
+		Data: &response.InquiryListResponse{
+			Items: items,
+			Total: total,
+			Page:  dto.GetPage(),
+			Limit: dto.GetLimit(20),
 		},
 	})
 }
@@ -196,7 +195,7 @@ func (c *InquiryController) AnswerInquiry(w http.ResponseWriter, r *http.Request
 
 	writeJSONResponse(w, http.StatusOK, response.CommonResponse{
 		Status: true,
-		Data:   toInquiryResponse(answered),
+		Data:   answered,
 	})
 }
 
@@ -228,32 +227,4 @@ func (c *InquiryController) ExpireInquiry(w http.ResponseWriter, r *http.Request
 		Status:  true,
 		Message: "Inquiry marked as expired successfully",
 	})
-}
-
-func toInquiryResponse(m *models.AdvisoryInquiry) *response.InquiryResponse {
-	if m == nil {
-		return nil
-	}
-	return &response.InquiryResponse{
-		ID:                m.ID,
-		UserID:            m.UserID,
-		ConversationID:    m.ConversationID,
-		StudentName:       m.StudentName,
-		StudentCode:       m.StudentCode,
-		StudentClass:      m.StudentClass,
-		Question:          m.Question,
-		Context:           m.Context,
-		Status:            string(m.Status),
-		TeacherID:         m.TeacherID,
-		TeacherName:       m.TeacherName,
-		TeacherReply:      m.TeacherReply,
-		AnsweredAt:        m.AnsweredAt,
-		KnowledgeChunkID:  m.KnowledgeChunkID,
-		SupersededByDocID: m.SupersededByDocID,
-		IsExpired:         m.IsExpired,
-		ExpiredReason:     m.ExpiredReason,
-		ExpiredAt:         m.ExpiredAt,
-		CreatedAt:         m.CreatedAt,
-		UpdatedAt:         m.UpdatedAt,
-	}
 }

@@ -87,14 +87,18 @@ func GetLLMEncryptionKey() []byte {
 	llmKeyOnce.Do(func() {
 		envKey := strings.TrimSpace(os.Getenv("LLM_ENCRYPTION_KEY"))
 		if envKey != "" {
-			hash := sha256.Sum256([]byte(envKey))
+			hash := sha256.Sum256([]byte(envKey + ":tluagent:llm:salt:v1"))
 			llmSecretKey = hash[:]
 			return
 		}
 
 		dataDir := config.GetConfigWithDefault("DATA_DIR", "./data")
-		_ = os.MkdirAll(dataDir, 0700)
-		secretPath := filepath.Join(dataDir, ".llm_secret")
+		absDataDir, err := filepath.Abs(dataDir)
+		if err != nil {
+			absDataDir = dataDir
+		}
+		_ = os.MkdirAll(absDataDir, 0700)
+		secretPath := filepath.Join(absDataDir, ".llm_secret")
 
 		if content, err := os.ReadFile(secretPath); err == nil && len(content) == 32 {
 			llmSecretKey = content
@@ -108,7 +112,11 @@ func GetLLMEncryptionKey() []byte {
 			return
 		}
 
-		_ = os.WriteFile(secretPath, generated, 0600)
+		if err := os.WriteFile(secretPath, generated, 0600); err != nil {
+			hash := sha256.Sum256([]byte(config.GetJWTSecret() + "-llm-persistent-fallback-salt"))
+			llmSecretKey = hash[:]
+			return
+		}
 		llmSecretKey = generated
 	})
 

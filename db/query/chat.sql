@@ -44,12 +44,12 @@ DELETE FROM chat_conversations
 WHERE id = ?;
 
 -- name: CreateMessage :one
-INSERT INTO chat_messages (id, conversation_id, sender, content, sources_json, images_json, feedback, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO chat_messages (id, conversation_id, sender, content, sources_json, images_json, feedback, can_escalate, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING *;
 
 -- name: ListMessagesByConversationID :many
-SELECT id, conversation_id, sender, content, sources_json, images_json, feedback, created_at
+SELECT id, conversation_id, sender, content, sources_json, images_json, feedback, can_escalate, created_at
 FROM chat_messages
 WHERE conversation_id = ?
 ORDER BY created_at ASC;

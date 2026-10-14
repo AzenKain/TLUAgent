@@ -137,14 +137,18 @@ func TestRateLimiter_SpoofedForwardedForDoesNotBypassWithoutTrustedProxy(t *test
 	}
 }
 
-func TestRateLimiter_ClientMapCapFallsClosed(t *testing.T) {
+func TestRateLimiter_ClientMapCapEvictsOldest(t *testing.T) {
 	limiter := NewRateLimiter(1000, time.Minute)
 	handler := limiter.Middleware()(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 
 	limiter.mu.Lock()
 	for i := 0; i < maxTrackedClients; i++ {
 		key := "198.51.100." + strconv.Itoa(i%250) + ":" + strconv.Itoa(i)
-		limiter.clients[key] = &clientLimit{count: 1, resetTime: time.Now().Add(time.Minute)}
+		limiter.clients[key] = &clientLimit{
+			count:     1,
+			resetTime: time.Now().Add(time.Minute),
+			lastSeen:  time.Now().Add(-time.Duration(maxTrackedClients-i) * time.Second),
+		}
 	}
 	limiter.mu.Unlock()
 
@@ -153,7 +157,7 @@ func TestRateLimiter_ClientMapCapFallsClosed(t *testing.T) {
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusTooManyRequests {
-		t.Fatalf("New client should be rejected when the client map is full, got %d", rec.Code)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("New client should be accepted via LRU eviction when the client map is full, got %d", rec.Code)
 	}
 }

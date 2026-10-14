@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"slices"
 	"strings"
 
 	"github.com/google/uuid"
@@ -72,6 +73,24 @@ func (r *roleService) GetPermissions(ctx context.Context) ([]*response.Permissio
 	return models.PermissionsToResponse(permissions), nil
 }
 
+func (r *roleService) isCallerAdmin(ctx context.Context) bool {
+	claims := PermissionContextFrom(ctx)
+	if claims == nil {
+		return true
+	}
+	if slices.Contains(claims.Roles, constants.RoleTypeAdmin) {
+		return true
+	}
+	if r.permissionCache != nil && r.permissionCache.IsAdmin(claims.RoleIDs, claims.Roles) {
+		return true
+	}
+	return false
+}
+
+func (r *roleService) getCallerClaims(ctx context.Context) *response.JWTClaims {
+	return PermissionContextFrom(ctx)
+}
+
 func (r *roleService) CreateRole(ctx context.Context, dto *request.CreateRoleDto) (*response.RoleResponse, error) {
 	name := strings.ToUpper(strings.TrimSpace(dto.Name))
 	if name == "" {
@@ -79,6 +98,10 @@ func (r *roleService) CreateRole(ctx context.Context, dto *request.CreateRoleDto
 	}
 	if name == constants.RoleTypeAdmin.String() || name == constants.RoleTypeBanned.String() || name == constants.RoleTypeGuest.String() || name == constants.RoleTypeStudent.String() || name == constants.RoleTypeAdvisor.String() {
 		return nil, apperrors.New(apperrors.ErrBadRequest, "Cannot use reserved system role name")
+	}
+
+	if dto.AutoAssign && !r.isCallerAdmin(ctx) {
+		return nil, apperrors.New(apperrors.ErrForbidden, "Only administrators can configure auto-assigned roles")
 	}
 
 	tx, err := r.txManager.BeginTx(ctx, nil)
@@ -142,6 +165,9 @@ func (r *roleService) UpdateRole(ctx context.Context, id string, dto *request.Up
 	autoAssign := dto.AutoAssign
 	if existing.IsBanned || strings.EqualFold(existing.Name, string(constants.RoleTypeGuest)) {
 		autoAssign = false
+	}
+	if autoAssign != existing.AutoAssign && autoAssign && !r.isCallerAdmin(ctx) {
+		return nil, apperrors.New(apperrors.ErrForbidden, "Only administrators can configure auto-assigned roles")
 	}
 
 	var role *models.RoleEntity
@@ -225,6 +251,23 @@ func (r *roleService) DeleteRole(ctx context.Context, id string) error {
 		return apperrors.New(apperrors.ErrForbidden, "System roles cannot be deleted")
 	}
 
+	claims := r.getCallerClaims(ctx)
+	if claims != nil && !r.isCallerAdmin(ctx) {
+		if slices.Contains(claims.RoleIDs, id) || slices.Contains(claims.Roles, constants.RoleType(role.Name)) {
+			return apperrors.New(apperrors.ErrForbidden, "Cannot delete a role assigned to caller")
+		}
+		if perms, err := r.roleRepo.GetRolePermissions(ctx, id); err == nil {
+			for _, p := range perms {
+				if p.Effect == "deny" {
+					return apperrors.New(apperrors.ErrForbidden, "Cannot delete a role with deny constraints")
+				}
+				if r.permissionCache != nil && !r.permissionCache.CanRoles(claims.RoleIDs, claims.Roles, p.PermissionKey, nil) {
+					return apperrors.New(apperrors.ErrForbidden, "Cannot delete a role containing unpossessed permissions")
+				}
+			}
+		}
+	}
+
 	if err := r.roleRepo.Delete(ctx, id); err != nil {
 		return apperrors.New(apperrors.ErrInternalError, "Failed to delete role")
 	}
@@ -274,6 +317,16 @@ func (r *roleService) replacePermissions(ctx context.Context, txRepo repositorie
 	validKeys := make(map[string]struct{}, len(catalog))
 	for _, permission := range catalog {
 		validKeys[permission.Key] = struct{}{}
+	}
+
+	claims := r.getCallerClaims(ctx)
+	if claims != nil && !r.isCallerAdmin(ctx) && r.permissionCache != nil {
+		for _, item := range dto {
+			key := strings.TrimSpace(item.PermissionKey)
+			if !r.permissionCache.CanRoles(claims.RoleIDs, claims.Roles, key, nil) {
+				return apperrors.New(apperrors.ErrForbidden, "Cannot grant permission not possessed: "+key)
+			}
+		}
 	}
 
 	permissions := make([]*models.RolePermissionEntity, 0, len(dto))

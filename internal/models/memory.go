@@ -3,6 +3,7 @@ package models
 import (
 	"time"
 
+	"tluagent-web/internal/dtos/response"
 	"tluagent-web/internal/gen/sqlc"
 )
 
@@ -31,6 +32,24 @@ func (p *StudentProfile) FromSqlc(row sqlc.StudentAcademicProfile) *StudentProfi
 	p.AdvisorNotes = row.AdvisorNotes
 	p.UpdatedAt = row.UpdatedAt
 	return p
+}
+
+// ToResponse converts a StudentProfile domain model to response DTO.
+func (p *StudentProfile) ToResponse() *response.StudentProfileResponse {
+	if p == nil {
+		return nil
+	}
+	return &response.StudentProfileResponse{
+		UserID:           p.UserID,
+		Major:            p.Major,
+		Cohort:           p.Cohort,
+		AcademicStanding: p.AcademicStanding,
+		CompletedCredits: p.CompletedCredits,
+		CumulativeGPA:    p.CumulativeGPA,
+		TargetGPA:        p.TargetGPA,
+		AdvisorNotes:     p.AdvisorNotes,
+		UpdatedAt:        p.UpdatedAt,
+	}
 }
 
 // ToSqlcUpsertParams converts the profile into sqlc upsert parameters.
@@ -76,6 +95,40 @@ func (m *UserMemoryItem) FromSqlc(row sqlc.UserMemory) *UserMemoryItem {
 	m.CreatedAt = row.CreatedAt
 	m.UpdatedAt = row.UpdatedAt
 	return m
+}
+
+// ToResponse converts a UserMemoryItem domain model to response DTO.
+func (m *UserMemoryItem) ToResponse() *response.UserMemoryItemResponse {
+	if m == nil {
+		return nil
+	}
+	return &response.UserMemoryItemResponse{
+		ID:          m.ID,
+		UserID:      m.UserID,
+		Category:    m.Category,
+		MemoryKey:   m.MemoryKey,
+		MemoryValue: m.MemoryValue,
+		Confidence:  m.Confidence,
+		Source:      m.Source,
+		IsActive:    m.IsActive,
+		CreatedAt:   m.CreatedAt,
+		UpdatedAt:   m.UpdatedAt,
+	}
+}
+
+// UserMemoriesToResponse converts a batch of UserMemoryItem to response DTOs.
+func UserMemoriesToResponse(items []*UserMemoryItem) []*response.UserMemoryItemResponse {
+	if items == nil {
+		return nil
+	}
+	out := make([]*response.UserMemoryItemResponse, 0, len(items))
+	for _, item := range items {
+		if item == nil {
+			continue
+		}
+		out = append(out, item.ToResponse())
+	}
+	return out
 }
 
 // ToSqlcUpsertParams converts the memory item into sqlc upsert parameters.

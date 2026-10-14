@@ -29,6 +29,7 @@ import {
   Brain,
   CheckCircle2,
   Send,
+  Zap,
 } from 'lucide-react';
 import { chatService, type ChatMessage } from '@/services/chatService';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
@@ -39,8 +40,12 @@ import { useShallow } from 'zustand/react/shallow';
 import { useTranslation } from 'react-i18next';
 import { LanguageSwitcher } from '@/components/common/LanguageSwitcher';
 import { Modal } from '@/components/common/Modal';
+import { ConfirmModal } from '@/components/common/ConfirmModal';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { inquiryService } from '@/services/inquiryService';
+import { TranscriptConfirmationCard } from '@/components/chat/TranscriptConfirmationCard';
+import { RoadmapCard } from '@/components/chat/RoadmapCard';
+import { DocumentViewerModal } from '@/components/common/DocumentViewerModal';
 import katex from 'katex';
 
 function escapeHtml(value: string): string {
@@ -94,7 +99,10 @@ function renderInlineMarkdown(value: string): string {
   });
 
   const links: { label: string; url: string }[] = [];
-  const textWithPlaceholders = textWithoutCodes.replace(/\[([^\]]+)\]\(((?:https?:\/\/|\/)[^\s)]+)\)/g, (_, label, url) => {
+  const textWithPlaceholders = textWithoutCodes.replace(/\[([^\]]+)\]\(((?:https?:\/\/|\/)[^\s)]+)\)/g, (fullMatch, label, url) => {
+    if (url.startsWith('//') || url.startsWith('/\\')) {
+      return fullMatch;
+    }
     const idx = links.length;
     links.push({ label, url });
     return `@@@MDLINK${idx}@@@`;
@@ -109,17 +117,20 @@ function renderInlineMarkdown(value: string): string {
 
   html = html.replace(
     /(^|[\s(])(https?:\/\/[^\s)<>]+?)([.,;:!?]?(?:[\s)]|$))/g,
-    '$1<a href="$2" target="_blank" rel="noopener noreferrer" class="text-indigo-600 dark:text-indigo-400 underline hover:text-indigo-500 transition-colors font-medium break-all">$2</a>$3',
+    '$1<a href="$2" target="_blank" rel="noopener noreferrer" class="text-tlu-blue dark:text-blue-400 underline hover:text-tlu-navy transition-colors font-medium break-all">$2</a>$3',
   );
 
   for (let i = 0; i < codes.length; i++) {
     const safeCode = escapeHtml(codes[i]);
-    const codeTag = `<code class="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 font-mono text-[13px] text-indigo-600 dark:text-indigo-400">${safeCode}</code>`;
+    const codeTag = `<code class="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 font-mono text-[13px] text-tlu-navy dark:text-blue-300 font-semibold">${safeCode}</code>`;
     html = html.split(`@@@MDCODE${i}@@@`).join(codeTag);
   }
 
   for (let i = 0; i < links.length; i++) {
     const { label, url } = links[i];
+    if (url.startsWith('//') || url.startsWith('/\\')) {
+      continue;
+    }
     let safeLabel = escapeHtml(label);
     safeLabel = safeLabel
       .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
@@ -127,7 +138,7 @@ function renderInlineMarkdown(value: string): string {
       .replace(/\*(.+?)\*/g, '<em>$1</em>')
       .replace(/_(.+?)_/g, '<em>$1</em>');
     const safeUrl = encodeURI(url);
-    const linkTag = `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer" class="text-indigo-600 dark:text-indigo-400 underline hover:text-indigo-500 transition-colors font-medium break-all">${safeLabel}</a>`;
+    const linkTag = `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer" class="text-tlu-blue dark:text-blue-400 underline hover:text-tlu-navy transition-colors font-medium break-all">${safeLabel}</a>`;
     html = html.split(`@@@MDLINK${i}@@@`).join(linkTag);
   }
 
@@ -435,11 +446,16 @@ function parseMarkdownBlocks(content: string): MarkdownBlock[] {
     }
 
     if (i <= prevI) {
-      blocks.push({
-        type: 'p',
-        lines: [lines[i].trim() || lines[i]],
-      });
-      i = prevI + 1;
+      if (i < lines.length && lines[i] !== undefined) {
+        const fallback = (lines[i] ?? '').trim();
+        if (fallback) {
+          blocks.push({
+            type: 'p',
+            lines: [fallback],
+          });
+        }
+      }
+      i = Math.max(i + 1, prevI + 1);
     }
   }
 
@@ -449,7 +465,7 @@ function parseMarkdownBlocks(content: string): MarkdownBlock[] {
 function FormattedMessageContent({ content, isStreaming }: { content: string; isStreaming?: boolean }) {
   if (!content) {
     if (isStreaming) {
-      return <span className="inline-block w-1.5 h-4 ml-0.5 rounded-xs bg-indigo-500 animate-pulse align-middle" />;
+      return <span className="inline-block w-1.5 h-4 ml-0.5 rounded-xs bg-tlu-blue animate-pulse align-middle" />;
     }
     return null;
   }
@@ -458,7 +474,7 @@ function FormattedMessageContent({ content, isStreaming }: { content: string; is
   const blocks = parseMarkdownBlocks(normalized);
 
   return (
-    <div className="space-y-3 leading-relaxed text-sm break-words">
+    <div className="space-y-3 leading-relaxed text-sm wrap-break-word">
       {blocks.map((b, idx) => {
         if (b.type === 'code') {
           return (
@@ -566,7 +582,7 @@ function FormattedMessageContent({ content, isStreaming }: { content: string; is
           return (
             <blockquote
               key={idx}
-              className="border-l-3 border-indigo-500 pl-3 py-1.5 my-2 text-slate-600 dark:text-slate-400 bg-slate-50/60 dark:bg-slate-800/30 rounded-r-lg"
+              className="border-l-3 border-tlu-blue pl-3 py-1.5 my-2 text-slate-600 dark:text-slate-400 bg-slate-50/60 dark:bg-slate-800/30 rounded-r-lg"
               dangerouslySetInnerHTML={{
                 __html: renderInlineMarkdown(b.lines.join('\n')).replace(/\n/g, '<br />'),
               }}
@@ -610,7 +626,7 @@ function FormattedMessageContent({ content, isStreaming }: { content: string; is
       })}
 
       {isStreaming && (
-        <span className="inline-block w-1.5 h-4 ml-0.5 rounded-xs bg-indigo-500 animate-pulse align-middle" />
+        <span className="inline-block w-1.5 h-4 ml-0.5 rounded-xs bg-tlu-blue animate-pulse align-middle" />
       )}
     </div>
   );
@@ -731,7 +747,25 @@ export const ChatAdvisoryPage: React.FC = () => {
 
   const [editingSessionId, setEditingSessionId] = React.useState<string | null>(null);
   const [editTitle, setEditTitle] = React.useState('');
+  const [sessionToDelete, setSessionToDelete] = useState<string | null>(null);
+  const [isDeletingSession, setIsDeletingSession] = useState(false);
   const [isDrawerOpen, setIsDrawerOpen] = React.useState(false);
+  const [alertModalMessage, setAlertModalMessage] = useState<string | null>(null);
+
+  const handleConfirmDeleteSession = async () => {
+    if (!sessionToDelete) return;
+    try {
+      setIsDeletingSession(true);
+      await deleteSession(sessionToDelete);
+      setSessionToDelete(null);
+    } catch {
+      // handled
+    } finally {
+      setIsDeletingSession(false);
+    }
+  };
+  const [viewingDocIdentifier, setViewingDocIdentifier] = useState<string | null>(null);
+  const [docViewerOpen, setDocViewerOpen] = useState(false);
   const [isEscalateModalOpen, setIsEscalateModalOpen] = useState(false);
   const [escalateStudentName, setEscalateStudentName] = useState('');
   const [escalateStudentCode, setEscalateStudentCode] = useState('');
@@ -848,19 +882,29 @@ export const ChatAdvisoryPage: React.FC = () => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    const maxAllowed = selectedModel?.max_images || 5;
-    if (attachedImages.length >= maxAllowed) {
-      alert(t('chat.max_images_reached', { max: maxAllowed }));
+    const maxAllowed = selectedModel?.max_images || 10;
+    const maxSizeBytes = 10 * 1024 * 1024;
+
+    const remainingSlots = maxAllowed - attachedImages.length;
+    if (remainingSlots <= 0) {
+      setAlertModalMessage(t('chat.max_images_reached', { max: maxAllowed }));
+      e.target.value = '';
       return;
     }
 
-    const file = files[0];
-    const reader = new FileReader();
-    reader.addEventListener('load', () => {
-      const base64 = reader.result as string;
-      addAttachedImage(base64);
-    });
-    reader.readAsDataURL(file);
+    const filesToProcess = Array.from(files).slice(0, remainingSlots);
+    for (const file of filesToProcess) {
+      if (file.size > maxSizeBytes) {
+        setAlertModalMessage(t('common.file_too_large'));
+        continue;
+      }
+      const reader = new FileReader();
+      reader.addEventListener('load', () => {
+        const base64 = reader.result as string;
+        addAttachedImage(base64);
+      });
+      reader.readAsDataURL(file);
+    }
     e.target.value = '';
   };
 
@@ -1018,6 +1062,12 @@ export const ChatAdvisoryPage: React.FC = () => {
           onCanEscalate: (canEscalate) => {
             updateMessage(botMsgId, { canEscalate });
           },
+          onRoadmap: (roadmap) => {
+            updateMessage(botMsgId, { roadmap });
+          },
+          onCompact: () => {
+            updateMessage(botMsgId, { isCompacted: true });
+          },
           onRehydrateRequired: async () => {
             const rehydrateHistory = messages
               .filter((m) => m.id !== 'welcome' && m.id !== botMsgId)
@@ -1039,6 +1089,8 @@ export const ChatAdvisoryPage: React.FC = () => {
                   onToolCall: (tc) => updateMessageToolCall(botMsgId, tc),
                   onSources: (sources) => updateMessage(botMsgId, { sources }),
                   onCanEscalate: (canEscalate) => updateMessage(botMsgId, { canEscalate }),
+                  onRoadmap: (roadmap) => updateMessage(botMsgId, { roadmap }),
+                  onCompact: () => updateMessage(botMsgId, { isCompacted: true }),
                   onDone: (ts, returnedSessionId) => {
                     if (ts) updateMessage(botMsgId, { timestamp: ts });
                     if (returnedSessionId && activeSessionId !== returnedSessionId) {
@@ -1107,25 +1159,25 @@ export const ChatAdvisoryPage: React.FC = () => {
   const suggestions = [
     {
       icon: BookOpen,
-      color: 'text-blue-500 bg-blue-50 dark:bg-blue-950/50 border-blue-200 dark:border-blue-900',
+      color: 'text-tlu-blue bg-blue-50 dark:bg-blue-950/50 border-blue-200 dark:border-blue-900',
       title: t('chat.suggestion_1_title'),
       desc: t('chat.suggestion_1_desc'),
     },
     {
       icon: Award,
-      color: 'text-amber-500 bg-amber-50 dark:bg-amber-950/50 border-amber-200 dark:border-amber-900',
+      color: 'text-tlu-red bg-rose-50 dark:bg-rose-950/50 border-rose-200 dark:border-rose-900',
       title: t('chat.suggestion_2_title'),
       desc: t('chat.suggestion_2_desc'),
     },
     {
       icon: Calculator,
-      color: 'text-emerald-500 bg-emerald-50 dark:bg-emerald-950/50 border-emerald-200 dark:border-emerald-900',
+      color: 'text-emerald-600 bg-emerald-50 dark:bg-emerald-950/50 border-emerald-200 dark:border-emerald-900',
       title: t('chat.suggestion_3_title'),
       desc: t('chat.suggestion_3_desc'),
     },
     {
       icon: GraduationCap,
-      color: 'text-violet-500 bg-violet-50 dark:bg-violet-950/50 border-violet-200 dark:border-violet-900',
+      color: 'text-tlu-cyan bg-cyan-50 dark:bg-cyan-950/50 border-cyan-200 dark:border-cyan-900',
       title: t('chat.suggestion_4_title'),
       desc: t('chat.suggestion_4_desc'),
     },
@@ -1134,7 +1186,7 @@ export const ChatAdvisoryPage: React.FC = () => {
   const hasMessages = messages.length > 0 && !(messages.length === 1 && messages[0].id === 'welcome');
 
   return (
-    <div className="flex h-dvh w-full overflow-hidden bg-white dark:bg-[#131314] text-slate-900 dark:text-slate-100 select-text">
+    <div className="flex h-dvh w-full overflow-hidden bg-[#F8FAFC] dark:bg-[#0B1021] text-slate-900 dark:text-slate-100 select-text">
       {/* Collapsible Chat Sidebar */}
       {isDrawerOpen && (
         <div
@@ -1144,38 +1196,54 @@ export const ChatAdvisoryPage: React.FC = () => {
       )}
       <aside
         aria-label={t('chat.recent_history')}
-        className={`fixed inset-y-0 left-0 z-50 h-full w-72 max-w-[85vw] bg-[#f9fafb] dark:bg-[#18191a] border-r border-slate-200/80 dark:border-slate-800 flex flex-col shrink-0 transform transition-all duration-300 md:relative md:z-30 md:max-w-none ${
+        className={`fixed inset-y-0 left-0 z-50 h-full w-72 max-w-[85vw] bg-white dark:bg-[#111A35] border-r border-slate-200/80 dark:border-blue-900/30 flex flex-col shrink-0 transform transition-all duration-300 md:relative md:z-30 md:max-w-none ${
           isDrawerOpen ? 'translate-x-0 visible' : '-translate-x-full invisible md:translate-x-0 md:visible'
         } ${
           isSidebarOpen ? 'md:w-64' : 'md:w-0 md:overflow-hidden md:border-r-0'
         }`}
       >
-        <div className="p-3.5 flex items-center justify-between border-b border-slate-200/60 dark:border-slate-800/80">
-          <button
-            onClick={() => {
-              createNewChat();
-              setIsDrawerOpen(false);
-            }}
-            className="flex-1 flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/80 text-xs font-semibold text-slate-800 dark:text-slate-200 shadow-xs hover:bg-slate-50 dark:hover:bg-slate-800 transition"
-          >
-            <Plus className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-            <span>{t('chat.new_chat')}</span>
-          </button>
-          <button
-            onClick={() => setIsDrawerOpen(false)}
-            title={t('chat.close_sidebar')}
-            aria-label={t('chat.close_sidebar')}
-            className="ml-2 flex h-11 w-11 items-center justify-center rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-800 transition md:hidden"
-          >
-            <X className="w-5 h-5" />
-          </button>
-          <button
-            onClick={toggleSidebar}
-            title={t('chat.close_sidebar')}
-            className="ml-2 hidden h-11 w-11 items-center justify-center rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-800 transition md:flex"
-          >
-            <PanelLeftClose className="w-4 h-4" />
-          </button>
+        <div className="p-3.5 flex flex-col gap-3 border-b border-slate-200/60 dark:border-blue-900/30">
+          <div className="flex items-center gap-2.5 px-0.5">
+            <div className="w-8 h-8 rounded-lg bg-white p-1 border border-slate-200/80 shadow-xs flex items-center justify-center shrink-0">
+              <img src="/logo.png" alt="TLU Logo" className="w-full h-full object-contain" />
+            </div>
+            <div className="flex flex-col min-w-0">
+              <div className="font-bold text-xs tracking-tight text-tlu-navy dark:text-white uppercase leading-tight">
+                TLU AGENT
+              </div>
+              <div className="text-[10px] text-slate-400 font-medium truncate">
+                {t('sidebar.ai_advisor')}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <button
+              onClick={() => {
+                createNewChat();
+                setIsDrawerOpen(false);
+              }}
+              className="flex-1 flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 text-xs font-semibold text-slate-800 dark:text-slate-200 shadow-xs hover:border-tlu-blue dark:hover:border-tlu-blue hover:bg-white transition cursor-pointer"
+            >
+              <Plus className="w-4 h-4 text-tlu-blue" />
+              <span>{t('chat.new_chat')}</span>
+            </button>
+            <button
+              onClick={() => setIsDrawerOpen(false)}
+              title={t('chat.close_sidebar')}
+              aria-label={t('chat.close_sidebar')}
+              className="ml-2 flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition md:hidden"
+            >
+              <X className="w-4 h-4" />
+            </button>
+            <button
+              onClick={toggleSidebar}
+              title={t('chat.close_sidebar')}
+              className="ml-2 hidden h-9 w-9 items-center justify-center rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition md:flex"
+            >
+              <PanelLeftClose className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         {/* Sessions list */}
@@ -1205,7 +1273,7 @@ export const ChatAdvisoryPage: React.FC = () => {
                   }}
                   className={`group relative flex items-center justify-between px-3 py-2 rounded-xl text-xs cursor-pointer transition ${
                     isActive
-                      ? 'bg-slate-200/80 dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-medium'
+                      ? 'bg-blue-50 dark:bg-blue-950/50 text-tlu-navy dark:text-tlu-cyan font-semibold border-l-2 border-tlu-blue'
                       : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/50 hover:text-slate-900 dark:hover:text-slate-200'
                   }`}
                 >
@@ -1226,7 +1294,7 @@ export const ChatAdvisoryPage: React.FC = () => {
                             setEditingSessionId(null);
                           }
                         }}
-                        className="flex-1 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg px-2 py-1 text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        className="flex-1 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg px-2 py-1 text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-tlu-blue"
                         autoFocus
                       />
                       <button
@@ -1258,17 +1326,18 @@ export const ChatAdvisoryPage: React.FC = () => {
                             setEditTitle(s.title || '');
                           }}
                           title={t('chat.rename_chat')}
-                          className="p-1.5 rounded-lg hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 text-slate-400 transition"
+                          className="p-1.5 rounded-lg hover:text-tlu-blue hover:bg-blue-50 dark:hover:bg-blue-950/40 text-slate-400 transition"
                         >
                           <Edit3 className="w-4 h-4" />
                         </button>
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            deleteSession(s.id);
+                            setSessionToDelete(s.id);
                           }}
                           title={t('chat.delete_chat')}
-                          className="p-1.5 rounded-lg hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-slate-400 transition"
+                          aria-label={t('chat.delete_chat')}
+                          className="p-1.5 rounded-lg hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-slate-400 transition cursor-pointer"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -1293,7 +1362,7 @@ export const ChatAdvisoryPage: React.FC = () => {
             </p>
             <Link
               to="/login"
-              className="mt-2 inline-flex items-center gap-1 text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:underline"
+              className="mt-2 inline-flex items-center gap-1 text-[11px] font-semibold text-tlu-blue dark:text-blue-400 hover:underline"
             >
               <LogIn className="w-3 h-3" />
               <span>{t('chat.login')}</span>
@@ -1308,7 +1377,7 @@ export const ChatAdvisoryPage: React.FC = () => {
               {canManage && (
                 <Link
                   to="/admin"
-                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 transition"
+                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-tlu-navy dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/50 transition"
                 >
                   <LayoutDashboard className="w-4 h-4" />
                   <span>{t('chat.admin_portal')}</span>
@@ -1316,7 +1385,7 @@ export const ChatAdvisoryPage: React.FC = () => {
               )}
               <div className="flex items-center justify-between p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800">
                 <Link to="/profile" className="flex items-center gap-2.5 min-w-0 flex-1">
-                  <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-indigo-600 to-violet-500 text-white flex items-center justify-center text-xs font-bold uppercase shrink-0">
+                  <div className="w-7 h-7 rounded-full bg-tlu-navy text-white flex items-center justify-center text-xs font-bold uppercase shrink-0 shadow-xs">
                     {user.avatar_url ? (
                       <img src={user.avatar_url} alt="" className="w-full h-full rounded-full object-cover" />
                     ) : (
@@ -1333,7 +1402,7 @@ export const ChatAdvisoryPage: React.FC = () => {
                 <button
                   onClick={() => logout()}
                   title={t('chat.logout')}
-                  className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/40 transition"
+                  className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/40 transition cursor-pointer"
                 >
                   <LogOut className="w-4 h-4" />
                 </button>
@@ -1352,7 +1421,7 @@ export const ChatAdvisoryPage: React.FC = () => {
       {/* Main Chat Workspace */}
       <div className="flex-1 flex flex-col min-w-0 h-full relative">
         {/* Top Header Bar */}
-        <header className="h-14 px-3 sm:px-4 lg:px-6 border-b border-slate-100 dark:border-slate-800/80 flex items-center justify-between gap-2 shrink-0 bg-white/80 dark:bg-[#131314]/80 backdrop-blur-md z-20">
+        <header className="h-14 px-3 sm:px-4 lg:px-6 border-b border-slate-200/60 dark:border-blue-900/30 flex items-center justify-between gap-2 shrink-0 bg-white/90 dark:bg-[#111A35]/90 backdrop-blur-md z-20">
           <div className="flex min-w-0 flex-1 items-center gap-1.5 sm:gap-3">
             <button
               onClick={() => setIsDrawerOpen(true)}
@@ -1376,17 +1445,17 @@ export const ChatAdvisoryPage: React.FC = () => {
             <div className="relative min-w-0 max-w-full" ref={modelDropdownRef}>
               <button
                 onClick={() => setIsModelDropdownOpen(!isModelDropdownOpen)}
-                className="flex min-w-0 max-w-full items-center gap-2 px-2.5 sm:px-3 py-2 sm:py-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800/80 text-xs sm:text-sm font-semibold transition border border-slate-200/60 dark:border-slate-800 text-slate-800 dark:text-slate-200"
+                className="flex min-w-0 max-w-full items-center gap-2 px-2.5 sm:px-3 py-2 sm:py-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800/80 text-xs sm:text-sm font-semibold transition border border-slate-200/80 dark:border-blue-900/40 text-slate-800 dark:text-slate-200 bg-white/50 dark:bg-slate-900/50 cursor-pointer"
               >
-                <div className="w-5 h-5 rounded-full bg-gradient-to-tr from-blue-500 via-indigo-500 to-purple-600 text-white flex items-center justify-center shrink-0">
-                  <Sparkles className="w-3 h-3" />
+                <div className="w-5 h-5 rounded-md bg-white p-0.5 border border-slate-200 shadow-2xs flex items-center justify-center shrink-0">
+                  <img src="/logo.png" alt="TLU Model" className="w-full h-full object-contain" />
                 </div>
                 <span className="truncate">{selectedModel ? selectedModel.name : t('chat.advisor_name')}</span>
                 <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
               </button>
 
               {isModelDropdownOpen && (
-                <div className="absolute left-0 mt-2 w-80 max-w-[calc(100vw_-_2.5rem)] rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl p-2 z-50 animate-in fade-in zoom-in-95 duration-100">
+                <div className="absolute left-0 mt-2 w-80 max-w-[calc(100vw-2.5rem)] rounded-2xl bg-white dark:bg-[#111A35] border border-slate-200 dark:border-blue-900/40 shadow-xl p-2 z-50 animate-in fade-in zoom-in-95 duration-100">
                   <div className="px-3 py-2 text-xs font-semibold text-slate-400 uppercase tracking-wider">
                     {t('chat.select_model')}
                   </div>
@@ -1398,9 +1467,9 @@ export const ChatAdvisoryPage: React.FC = () => {
                           setSelectedModel(m);
                           setIsModelDropdownOpen(false);
                         }}
-                        className={`w-full text-left px-3 py-2.5 rounded-xl text-sm transition flex flex-col gap-0.5 ${
+                        className={`w-full text-left px-3 py-2.5 rounded-xl text-sm transition flex flex-col gap-0.5 cursor-pointer ${
                           selectedModel?.id === m.id
-                            ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 font-medium'
+                            ? 'bg-blue-50 dark:bg-blue-950/60 text-tlu-blue dark:text-tlu-cyan font-medium'
                             : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300'
                         }`}
                       >
@@ -1433,12 +1502,12 @@ export const ChatAdvisoryPage: React.FC = () => {
               <div className="relative" ref={userMenuRef}>
                 <button
                   onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
-                  className="flex h-11 w-11 items-center justify-center rounded-full border border-slate-200/80 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 transition sm:h-auto sm:w-auto sm:justify-start sm:gap-2 sm:p-1 sm:pl-2.5"
+                  className="flex h-11 w-11 items-center justify-center rounded-full border border-slate-200/80 dark:border-blue-900/30 hover:bg-slate-100 dark:hover:bg-slate-800 transition sm:h-auto sm:w-auto sm:justify-start sm:gap-2 sm:p-1 sm:pl-2.5 cursor-pointer"
                 >
                   <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 hidden sm:inline">
                     {user.full_name?.split(' ').pop()}
                   </span>
-                  <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-indigo-600 to-violet-500 text-white flex items-center justify-center font-bold text-xs uppercase">
+                  <div className="w-7 h-7 rounded-full bg-tlu-navy text-white flex items-center justify-center font-bold text-xs uppercase shadow-xs">
                     {user.avatar_url ? (
                       <img src={user.avatar_url} alt="" className="w-full h-full rounded-full object-cover" />
                     ) : (
@@ -1448,7 +1517,7 @@ export const ChatAdvisoryPage: React.FC = () => {
                 </button>
 
                 {isUserMenuOpen && (
-                  <div className="absolute right-0 mt-2 w-56 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl p-2 z-50 animate-in fade-in zoom-in-95 duration-100">
+                  <div className="absolute right-0 mt-2 w-56 rounded-2xl bg-white dark:bg-[#111A35] border border-slate-200 dark:border-blue-900/40 shadow-xl p-2 z-50 animate-in fade-in zoom-in-95 duration-100">
                     <div className="px-3 py-2 border-b border-slate-100 dark:border-slate-800">
                       <div className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">
                         {user.full_name}
@@ -1463,9 +1532,9 @@ export const ChatAdvisoryPage: React.FC = () => {
                             setIsUserMenuOpen(false);
                             navigate('/admin');
                           }}
-                          className="w-full text-left px-3 py-2 rounded-xl text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center gap-2 transition"
+                          className="w-full text-left px-3 py-2 rounded-xl text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center gap-2 transition cursor-pointer"
                         >
-                          <LayoutDashboard className="w-4 h-4 text-indigo-500" />
+                          <LayoutDashboard className="w-4 h-4 text-tlu-blue" />
                           <span>{t('chat.admin_portal')}</span>
                         </button>
                       )}
@@ -1474,7 +1543,7 @@ export const ChatAdvisoryPage: React.FC = () => {
                           setIsUserMenuOpen(false);
                           navigate('/profile');
                         }}
-                        className="w-full text-left px-3 py-2 rounded-xl text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center gap-2 transition"
+                        className="w-full text-left px-3 py-2 rounded-xl text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center gap-2 transition cursor-pointer"
                       >
                         <UserIcon className="w-4 h-4 text-slate-400" />
                         <span>{t('chat.my_profile')}</span>
@@ -1484,7 +1553,7 @@ export const ChatAdvisoryPage: React.FC = () => {
                           setIsUserMenuOpen(false);
                           logout();
                         }}
-                        className="w-full text-left px-3 py-2 rounded-xl text-xs font-medium text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 flex items-center gap-2 transition"
+                        className="w-full text-left px-3 py-2 rounded-xl text-xs font-medium text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 flex items-center gap-2 transition cursor-pointer"
                       >
                         <LogOut className="w-4 h-4 text-rose-500" />
                         <span>{t('chat.logout')}</span>
@@ -1498,7 +1567,7 @@ export const ChatAdvisoryPage: React.FC = () => {
                 to="/login"
                 title={t('chat.login')}
                 aria-label={t('chat.login')}
-                className="flex h-11 w-11 items-center justify-center rounded-full bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm transition sm:h-auto sm:w-auto sm:gap-1.5 sm:px-4 sm:py-2"
+                className="flex h-11 w-11 items-center justify-center rounded-full bg-tlu-navy hover:bg-tlu-navy-light dark:bg-tlu-blue dark:hover:bg-[#1541B8] text-white shadow-sm transition sm:h-auto sm:w-auto sm:gap-1.5 sm:px-4 sm:py-2"
               >
                 <LogIn className="w-4 h-4" />
                 <span className="hidden sm:inline font-semibold text-xs">{t('chat.login')}</span>
@@ -1510,13 +1579,12 @@ export const ChatAdvisoryPage: React.FC = () => {
         {/* Conversation Viewport */}
         <div className="flex-1 overflow-y-auto px-3 py-4 sm:px-4 sm:py-6 scroll-smooth">
           {!hasMessages ? (
-            /* Google Gemini Welcome Hero */
+            /* TLU Welcome Hero */
             <div className="max-w-2xl mx-auto flex flex-col items-center justify-center min-h-[50vh] sm:min-h-[65vh] text-center px-2 sm:px-4 animate-in fade-in duration-300">
               <div className="relative mb-6">
-                <div className="w-16 h-16 rounded-3xl bg-gradient-to-tr from-blue-500 via-indigo-500 to-purple-600 flex items-center justify-center text-white shadow-xl shadow-indigo-500/25">
-                  <Sparkles className="w-9 h-9" />
+                <div className="w-24 h-24 rounded-2xl bg-white p-2.5 border border-slate-200/80 dark:border-blue-900/40 shadow-md flex items-center justify-center">
+                  <img src="/logo.png" alt="Thang Long University Logo" className="w-full h-full object-contain" />
                 </div>
-                <div className="absolute -inset-1 rounded-3xl bg-gradient-to-tr from-blue-500 to-purple-600 opacity-20 blur-lg pointer-events-none" />
               </div>
 
               <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-100 mb-2">
@@ -1533,13 +1601,13 @@ export const ChatAdvisoryPage: React.FC = () => {
                     <button
                       key={idx}
                       onClick={() => handleExecuteSend(s.desc)}
-                      className="p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/40 hover:bg-slate-100 dark:hover:bg-slate-800/80 hover:border-indigo-300 dark:hover:border-indigo-700 transition flex items-start gap-3 text-left group"
+                      className="p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white/70 dark:bg-[#111A35]/60 hover:bg-white dark:hover:bg-[#111A35] hover:border-tlu-blue dark:hover:border-tlu-blue transition flex items-start gap-3 text-left group cursor-pointer shadow-2xs"
                     >
                       <div className={`p-2.5 rounded-xl shrink-0 border ${s.color}`}>
                         <Icon className="w-4 h-4" />
                       </div>
                       <div className="min-w-0">
-                        <div className="text-xs font-bold text-slate-800 dark:text-slate-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition mb-0.5">
+                        <div className="text-xs font-bold text-slate-800 dark:text-slate-200 group-hover:text-tlu-blue dark:group-hover:text-tlu-cyan transition mb-0.5">
                           {s.title}
                         </div>
                         <div className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-2 leading-relaxed">
@@ -1570,14 +1638,14 @@ export const ChatAdvisoryPage: React.FC = () => {
                       className={`flex gap-2.5 sm:gap-4 ${isUser ? 'justify-end' : 'justify-start'}`}
                     >
                       {!isUser && (
-                        <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-500 via-indigo-500 to-purple-600 flex items-center justify-center text-white shrink-0 mt-0.5 shadow-sm">
-                          <Sparkles className="w-4 h-4" />
+                        <div className="w-8 h-8 rounded-xl bg-white p-1 border border-slate-200/80 dark:border-blue-900/40 shadow-2xs flex items-center justify-center shrink-0 mt-0.5">
+                          <img src="/logo.png" alt="TLU Assistant" className="w-full h-full object-contain" />
                         </div>
                       )}
 
                       <div className={`flex flex-col min-w-0 max-w-[85%] sm:max-w-[78%] ${isUser ? 'items-end' : 'items-start'}`}>
                         {isUser ? (
-                          <div className="px-4 py-3 rounded-2xl rounded-tr-xs bg-indigo-600 text-white shadow-xs">
+                          <div className="px-4 py-3 rounded-2xl rounded-tr-xs bg-tlu-blue text-white shadow-xs">
                             {m.images && m.images.length > 0 && (
                               <div className="flex flex-wrap gap-2 mb-2">
                                 {m.images.map((img, i) => (
@@ -1590,19 +1658,25 @@ export const ChatAdvisoryPage: React.FC = () => {
                                 ))}
                               </div>
                             )}
-                            <div className="text-sm whitespace-pre-wrap break-words leading-relaxed">{m.text}</div>
+                            <div className="text-sm whitespace-pre-wrap wrap-break-word leading-relaxed">{m.text}</div>
                           </div>
                         ) : (
                           <div className="w-full space-y-2">
+                            {m.isCompacted && (
+                              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs text-amber-700 dark:text-amber-300 w-fit mb-1">
+                                <Zap className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                                <span className="font-medium">{t('chat.context_compacted_notice')}</span>
+                              </div>
+                            )}
                             {m.toolCalls && m.toolCalls.length > 0 && (
                               <div className="flex flex-col gap-1.5 mb-2">
                                 {m.toolCalls.map((tc, idx) => (
                                   <div
                                     key={idx}
-                                    className="inline-flex items-center gap-2 px-2.5 py-1 rounded-lg bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200/60 dark:border-indigo-800/50 text-xs text-indigo-700 dark:text-indigo-300 w-fit"
+                                    className="inline-flex items-center gap-2 px-2.5 py-1 rounded-lg bg-blue-50/70 dark:bg-blue-950/40 border border-blue-200/60 dark:border-blue-800/50 text-xs text-blue-700 dark:text-blue-300 w-fit"
                                   >
                                     {tc.status === 'running' ? (
-                                      <RefreshCw className="w-3.5 h-3.5 animate-spin text-indigo-500 shrink-0" />
+                                      <RefreshCw className="w-3.5 h-3.5 animate-spin text-tlu-blue shrink-0" />
                                     ) : (
                                       <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
                                     )}
@@ -1625,16 +1699,16 @@ export const ChatAdvisoryPage: React.FC = () => {
                                 <button
                                   type="button"
                                   onClick={() => toggleReasoning(m.id)}
-                                  className="w-full px-3 py-2 flex items-center justify-between text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100/50 dark:hover:bg-slate-800/40 transition select-none"
+                                  className="w-full px-3 py-2 flex items-center justify-between text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100/50 dark:hover:bg-slate-800/40 transition select-none cursor-pointer"
                                 >
                                   <div className="flex items-center gap-2 font-medium">
-                                    <Brain className={`w-3.5 h-3.5 ${isReasoningActive ? 'text-purple-500 animate-pulse' : 'text-purple-500'}`} />
+                                    <Brain className={`w-3.5 h-3.5 ${isReasoningActive ? 'text-amber-500 animate-pulse' : 'text-amber-500'}`} />
                                     <span>
                                       {isReasoningActive ? t('chat.thinking_in_progress') : t('chat.thinking_process')}
                                     </span>
                                     {isReasoningActive ? (
-                                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-purple-100 dark:bg-purple-950/60 text-purple-600 dark:text-purple-300 animate-pulse">
-                                        <span className="w-1.5 h-1.5 rounded-full bg-purple-500 animate-ping" />
+                                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 animate-pulse">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping" />
                                         <span>{t('chat.reasoning_streaming')}</span>
                                       </span>
                                     ) : (
@@ -1656,7 +1730,7 @@ export const ChatAdvisoryPage: React.FC = () => {
                                   >
                                     {m.reasoning}
                                     {isReasoningActive && (
-                                      <span className="inline-block w-1.5 h-3 ml-0.5 bg-purple-500 animate-pulse align-middle" />
+                                      <span className="inline-block w-1.5 h-3 ml-0.5 bg-amber-500 animate-pulse align-middle" />
                                     )}
                                   </div>
                                 )}
@@ -1665,13 +1739,17 @@ export const ChatAdvisoryPage: React.FC = () => {
 
                             <div className="px-1 py-0.5">
                               {m.text === '' && isLoading && !m.reasoning ? (
-                                <div className="flex items-center gap-2 text-xs text-slate-400 py-1">
-                                  <LoadingSpinner size="sm" />
+                                <div className="flex items-center gap-2.5 text-xs text-slate-500 dark:text-slate-400 py-1 font-medium">
+                                  <div className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-slate-100 dark:bg-slate-800">
+                                    <span className="h-1.5 w-1.5 rounded-full bg-tlu-blue dark:bg-tlu-cyan animate-bounce [animation-delay:-0.32s]" />
+                                    <span className="h-1.5 w-1.5 rounded-full bg-tlu-blue dark:bg-tlu-cyan animate-bounce [animation-delay:-0.16s]" />
+                                    <span className="h-1.5 w-1.5 rounded-full bg-tlu-blue dark:bg-tlu-cyan animate-bounce" />
+                                  </div>
                                   <span>{t('chat.thinking')}</span>
                                 </div>
                               ) : m.text === '' && isLoading && m.reasoning ? (
                                 <div className="flex items-center gap-2 text-xs text-slate-400 py-1">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-purple-500 animate-ping" />
+                                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping" />
                                   <span className="text-slate-400 dark:text-slate-500 text-[11px] italic">
                                     {t('chat.generating_response')}
                                   </span>
@@ -1693,28 +1771,67 @@ export const ChatAdvisoryPage: React.FC = () => {
                                 </div>
                                 <div className="flex flex-wrap gap-2">
                                   {m.sources.map((s, idx) => (
-                                    <div
+                                    <button
                                       key={idx}
-                                      className="px-2.5 py-1 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 text-[11px] text-slate-600 dark:text-slate-300 flex items-center gap-1.5"
+                                      type="button"
+                                      onClick={() => {
+                                        setViewingDocIdentifier(s);
+                                        setDocViewerOpen(true);
+                                      }}
+                                      className="group inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-blue-50/80 hover:border-tlu-blue dark:bg-slate-800/80 dark:hover:bg-blue-950/40 dark:hover:border-blue-500 border border-slate-200 dark:border-slate-700/60 text-[11px] text-slate-600 hover:text-tlu-blue dark:text-slate-300 dark:hover:text-blue-300 transition-all cursor-pointer shadow-2xs text-left"
+                                      title={t('chat.view_document_tooltip', { title: s })}
                                     >
-                                      <span className="font-semibold text-indigo-600 dark:text-indigo-400">
+                                      <BookOpen className="w-3.5 h-3.5 text-tlu-blue dark:text-tlu-cyan shrink-0 group-hover:scale-110 transition-transform" />
+                                      <span className="font-semibold text-tlu-blue dark:text-tlu-cyan shrink-0">
                                         [{idx + 1}]
                                       </span>
-                                      <span className="truncate max-w-[200px]">{s}</span>
-                                    </div>
+                                      <span className="truncate max-w-60 font-medium">{s}</span>
+                                    </button>
                                   ))}
                                 </div>
                               </div>
+                            )}
+
+                            {/* Transcript Diff Confirmation Card */}
+                            {m.transcriptDiff && (
+                              <TranscriptConfirmationCard
+                                diff={m.transcriptDiff}
+                                extractedGrades={m.extractedGrades}
+                                actionState={m.transcriptActionState}
+                                onConfirmSuccess={() =>
+                                   updateMessage(m.id, { transcriptActionState: 'confirmed' })
+                                }
+                                onCancel={() =>
+                                   updateMessage(m.id, { transcriptActionState: 'cancelled' })
+                                }
+                                onChatOption={(courseCodes) => {
+                                  const prompt = `${t('transcript.chat_prefill_prompt')}${courseCodes.join(', ')}: `;
+                                  setInput(prompt);
+                                  textareaRef.current?.focus();
+                                }}
+                              />
+                            )}
+
+                            {/* DAG Optimized Roadmap Card */}
+                            {m.roadmap && (
+                              <RoadmapCard
+                                roadmap={m.roadmap}
+                                onViewFullRoadmap={() => navigate('/student/roadmap')}
+                                onQuickAction={(text) => {
+                                  setInput(text);
+                                  textareaRef.current?.focus();
+                                }}
+                              />
                             )}
 
                             {/* Escalation Suggestion Banner */}
                             {shouldSuggestEscalation(m) &&
                               (!isLoading || messages[messages.length - 1]?.id !== m.id) &&
                               questionsPassed < 2 && (
-                                <div className="mt-3.5 rounded-2xl border border-indigo-200/80 dark:border-indigo-900/60 bg-gradient-to-r from-indigo-50/90 via-purple-50/50 to-indigo-50/90 dark:from-indigo-950/40 dark:via-purple-950/20 dark:to-indigo-950/40 p-3.5 shadow-xs">
+                                <div className="mt-3.5 rounded-2xl border border-blue-200/80 dark:border-blue-900/40 bg-linear-to-r from-blue-50/90 via-slate-50 to-blue-50/90 dark:from-[#111A35] dark:via-[#111A35]/80 dark:to-[#111A35] p-3.5 shadow-2xs">
                                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                                     <div className="flex items-start gap-2.5">
-                                      <div className="p-2 rounded-xl bg-indigo-600/10 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 shrink-0 mt-0.5">
+                                      <div className="p-2 rounded-xl bg-tlu-navy/10 text-tlu-navy dark:text-tlu-cyan shrink-0 mt-0.5">
                                         <GraduationCap className="w-4 h-4" />
                                       </div>
                                       <div>
@@ -1735,7 +1852,7 @@ export const ChatAdvisoryPage: React.FC = () => {
                                           ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 cursor-not-allowed'
                                           : questionsPassed >= 1
                                           ? 'bg-slate-200/60 dark:bg-slate-800 text-slate-400 dark:text-slate-500 border border-slate-300/40 dark:border-slate-700/40 cursor-not-allowed opacity-60'
-                                          : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-600/20 cursor-pointer'
+                                          : 'bg-tlu-navy hover:bg-tlu-navy-light dark:bg-tlu-blue dark:hover:bg-blue-600 text-white shadow-blue-900/20 cursor-pointer'
                                       }`}
                                     >
                                       {isEscalated ? (
@@ -1779,7 +1896,7 @@ export const ChatAdvisoryPage: React.FC = () => {
                                   title={t('chat.helpful')}
                                   className={`p-1.5 rounded-lg transition ${
                                     feedbackMap[m.id] === 'up'
-                                      ? 'text-indigo-600 bg-indigo-50 dark:bg-indigo-950'
+                                      ? 'text-tlu-navy bg-blue-50 dark:text-blue-300 dark:bg-blue-950'
                                       : 'hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
                                   }`}
                                 >
@@ -1815,7 +1932,7 @@ export const ChatAdvisoryPage: React.FC = () => {
                                       ? 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 cursor-not-allowed'
                                       : questionsPassed >= 2
                                       ? 'text-slate-300 dark:text-slate-600 cursor-not-allowed opacity-50'
-                                      : 'hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950'
+                                      : 'hover:text-tlu-blue dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950'
                                   }`}
                                 >
                                   {isEscalated ? (
@@ -1870,6 +1987,7 @@ export const ChatAdvisoryPage: React.FC = () => {
               <input
                 ref={fileInputRef}
                 type="file"
+                multiple
                 accept="image/*"
                 className="hidden"
                 onChange={handleImageSelect}
@@ -1910,9 +2028,9 @@ export const ChatAdvisoryPage: React.FC = () => {
                   onClick={() => handleSend()}
                   disabled={!input.trim() && attachedImages.length === 0}
                   title={t('chat.send_prompt')}
-                  className={`flex h-11 w-11 items-center justify-center rounded-full transition shrink-0 shadow-sm ${
+                  className={`flex h-11 w-11 items-center justify-center rounded-full transition shrink-0 shadow-sm cursor-pointer ${
                     input.trim() || attachedImages.length > 0
-                      ? 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                      ? 'bg-tlu-navy hover:bg-tlu-navy-light dark:bg-tlu-blue dark:hover:bg-[#1541B8] text-white'
                       : 'bg-slate-200 dark:bg-slate-800 text-slate-400 cursor-not-allowed'
                   }`}
                 >
@@ -1947,8 +2065,8 @@ export const ChatAdvisoryPage: React.FC = () => {
             </p>
 
             {hasAutoFilled && (
-              <div className="flex items-center gap-2 rounded-xl bg-indigo-500/10 border border-indigo-500/30 p-2.5 text-xs text-indigo-400">
-                <Sparkles className="w-4 h-4 shrink-0 text-indigo-400" />
+              <div className="flex items-center gap-2 rounded-xl bg-blue-500/10 border border-blue-500/30 p-2.5 text-xs text-tlu-navy dark:text-blue-400">
+                <Sparkles className="w-4 h-4 shrink-0 text-tlu-blue" />
                 <span>{t('inquiries.auto_filled_hint')}</span>
               </div>
             )}
@@ -1966,7 +2084,7 @@ export const ChatAdvisoryPage: React.FC = () => {
                   value={escalateStudentName}
                   onChange={(e) => handleNameChange(e.target.value)}
                   placeholder={t('inquiries.student_name_placeholder')}
-                  className={`mt-1 w-full rounded-xl border bg-slate-900 p-2.5 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
+                  className={`mt-1 w-full rounded-xl border bg-slate-900 p-2.5 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-tlu-blue ${
                     formSubmitted && !escalateStudentName.trim()
                       ? 'border-rose-500/80 ring-1 ring-rose-500/50'
                       : 'border-slate-700'
@@ -1989,7 +2107,7 @@ export const ChatAdvisoryPage: React.FC = () => {
                   value={escalateStudentCode}
                   onChange={(e) => handleCodeChange(e.target.value)}
                   placeholder={t('inquiries.student_code_placeholder')}
-                  className={`mt-1 w-full rounded-xl border bg-slate-900 p-2.5 text-sm text-slate-200 uppercase font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
+                  className={`mt-1 w-full rounded-xl border bg-slate-900 p-2.5 text-sm text-slate-200 uppercase font-mono focus:outline-none focus:ring-2 focus:ring-tlu-blue ${
                     formSubmitted && !escalateStudentCode.trim()
                       ? 'border-rose-500/80 ring-1 ring-rose-500/50'
                       : 'border-slate-700'
@@ -2012,7 +2130,7 @@ export const ChatAdvisoryPage: React.FC = () => {
                   value={escalateStudentClass}
                   onChange={(e) => handleClassChange(e.target.value)}
                   placeholder={t('inquiries.student_class_placeholder')}
-                  className={`mt-1 w-full rounded-xl border bg-slate-900 p-2.5 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
+                  className={`mt-1 w-full rounded-xl border bg-slate-900 p-2.5 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-tlu-blue ${
                     formSubmitted && !escalateStudentClass.trim()
                       ? 'border-rose-500/80 ring-1 ring-rose-500/50'
                       : 'border-slate-700'
@@ -2039,7 +2157,7 @@ export const ChatAdvisoryPage: React.FC = () => {
                   setEscalateQuestion(e.target.value);
                 }}
                 placeholder={t('inquiries.escalate_question_placeholder')}
-                className={`mt-1 w-full rounded-xl border bg-slate-900 p-2.5 text-sm text-slate-200 font-normal leading-relaxed focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
+                className={`mt-1 w-full rounded-xl border bg-slate-900 p-2.5 text-sm text-slate-200 font-normal leading-relaxed focus:outline-none focus:ring-2 focus:ring-tlu-blue ${
                   formSubmitted && !escalateQuestion.trim()
                     ? 'border-rose-500/80 ring-1 ring-rose-500/50'
                     : 'border-slate-700'
@@ -2059,7 +2177,7 @@ export const ChatAdvisoryPage: React.FC = () => {
                 value={escalateContext}
                 onChange={(e) => setEscalateContext(e.target.value)}
                 placeholder={t('inquiries.escalate_context_placeholder')}
-                className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-900 p-2.5 text-xs text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-900 p-2.5 text-xs text-slate-200 focus:outline-none focus:ring-2 focus:ring-tlu-blue"
               />
             </div>
 
@@ -2081,7 +2199,7 @@ export const ChatAdvisoryPage: React.FC = () => {
                   isSubmittingEscalate
                 }
                 onClick={handleSendEscalate}
-                className="flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-lg shadow-indigo-600/20 hover:bg-indigo-500 disabled:opacity-50"
+                className="flex items-center gap-2 rounded-xl bg-tlu-navy hover:bg-tlu-navy-light dark:bg-tlu-blue dark:hover:bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-md shadow-blue-900/20 disabled:opacity-50"
               >
                 <Send className="w-4 h-4" />
                 <span>{t('inquiries.escalate_submit')}</span>
@@ -2090,6 +2208,36 @@ export const ChatAdvisoryPage: React.FC = () => {
           </div>
         </Modal>
       )}
+
+      <DocumentViewerModal
+        isOpen={docViewerOpen}
+        onClose={() => {
+          setDocViewerOpen(false);
+          setViewingDocIdentifier(null);
+        }}
+        documentIdentifier={viewingDocIdentifier}
+      />
+
+      <ConfirmModal
+        isOpen={Boolean(alertModalMessage)}
+        onClose={() => setAlertModalMessage(null)}
+        title={t('common.error')}
+        message={alertModalMessage || ''}
+        variant="warning"
+        confirmText={t('common.close')}
+      />
+
+      <ConfirmModal
+        isOpen={Boolean(sessionToDelete)}
+        onClose={() => setSessionToDelete(null)}
+        onConfirm={handleConfirmDeleteSession}
+        title={t('chat.delete_session_title')}
+        message={t('chat.delete_session_confirm')}
+        variant="danger"
+        confirmText={t('common.delete')}
+        cancelText={t('common.cancel')}
+        isLoading={isDeletingSession}
+      />
     </div>
   );
 };

@@ -5,7 +5,6 @@ import (
 
 	"tluagent-web/internal/dtos/request"
 	"tluagent-web/internal/dtos/response"
-	"tluagent-web/internal/models"
 	"tluagent-web/internal/services"
 	"tluagent-web/pkg/apperrors"
 	"tluagent-web/pkg/validator"
@@ -46,18 +45,13 @@ func (c *NotificationController) ListNotifications(w http.ResponseWriter, r *htt
 		return
 	}
 
-	res := make([]*response.NotificationResponse, 0, len(items))
-	for _, item := range items {
-		res = append(res, toNotificationResponse(item))
-	}
-
 	writeJSONResponse(w, http.StatusOK, response.CommonResponse{
 		Status: true,
-		Data: map[string]any{
-			"items":        res,
-			"unread_count": unread,
-			"page":         dto.GetPage(),
-			"limit":        dto.GetLimit(20),
+		Data: &response.NotificationListResponse{
+			Items:       items,
+			UnreadCount: unread,
+			Page:        dto.GetPage(),
+			Limit:       dto.GetLimit(20),
 		},
 	})
 }
@@ -132,20 +126,4 @@ func (c *NotificationController) GetUnreadCount(w http.ResponseWriter, r *http.R
 			UnreadCount: count,
 		},
 	})
-}
-
-func toNotificationResponse(m *models.UserNotification) *response.NotificationResponse {
-	if m == nil {
-		return nil
-	}
-	return &response.NotificationResponse{
-		ID:        m.ID,
-		UserID:    m.UserID,
-		InquiryID: m.InquiryID,
-		Title:     m.Title,
-		Content:   m.Content,
-		Type:      m.Type,
-		IsRead:    m.IsRead,
-		CreatedAt: m.CreatedAt,
-	}
 }

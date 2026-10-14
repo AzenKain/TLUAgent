@@ -6,6 +6,7 @@ import (
 	"math"
 	"time"
 
+	"tluagent-web/internal/dtos/response"
 	"tluagent-web/internal/gen/sqlc"
 	"tluagent-web/pkg/convert"
 )
@@ -32,6 +33,50 @@ type Document struct {
 	CharCount        int    `json:"char_count"`
 	CreatedAt        string `json:"created_at"`
 	UpdatedAt        string `json:"updated_at"`
+}
+
+// ToResponse converts a Document domain model to a response DTO.
+func (d *Document) ToResponse() *response.DocumentResponse {
+	if d == nil {
+		return nil
+	}
+	return &response.DocumentResponse{
+		ID:               d.ID,
+		DocCode:          d.DocCode,
+		Type:             d.Type,
+		Title:            d.Title,
+		Domain:           d.Domain,
+		ValidityTier:     d.ValidityTier,
+		Status:           d.Status,
+		SupersededByID:   d.SupersededByID,
+		DepartmentCode:   d.DepartmentCode,
+		PublishDate:      d.PublishDate,
+		EffectiveFrom:    d.EffectiveFrom,
+		EffectiveTo:      d.EffectiveTo,
+		AcademicYear:     d.AcademicYear,
+		Semester:         d.Semester,
+		ApplicableCohort: d.ApplicableCohort,
+		PriorityLevel:    d.PriorityLevel,
+		FilePath:         d.FilePath,
+		CharCount:        d.CharCount,
+		CreatedAt:        d.CreatedAt,
+		UpdatedAt:        d.UpdatedAt,
+	}
+}
+
+// DocumentsToResponse converts a batch of Document to response DTOs.
+func DocumentsToResponse(items []*Document) []*response.DocumentResponse {
+	if items == nil {
+		return nil
+	}
+	out := make([]*response.DocumentResponse, 0, len(items))
+	for _, item := range items {
+		if item == nil {
+			continue
+		}
+		out = append(out, item.ToResponse())
+	}
+	return out
 }
 
 // FromSqlc converts a sqlc Document row to a Document model pointer.
@@ -100,6 +145,53 @@ type DocumentRule struct {
 	CreatedAt      string `json:"created_at"`
 }
 
+// ToResponse converts a DocumentRule domain model to a response DTO.
+func (dr *DocumentRule) ToResponse() *response.DocumentRuleResponse {
+	if dr == nil {
+		return nil
+	}
+	return &response.DocumentRuleResponse{
+		ID:             dr.ID,
+		DocumentID:     dr.DocumentID,
+		RuleIndex:      dr.RuleIndex,
+		Chapter:        dr.Chapter,
+		ArticleNumber:  dr.ArticleNumber,
+		Title:          dr.Title,
+		Content:        dr.Content,
+		Status:         dr.Status,
+		SupersededByID: dr.SupersededByID,
+		CreatedAt:      dr.CreatedAt,
+	}
+}
+
+// FromSqlc converts a sqlc.DocumentRule row to a domain model.
+func (dr *DocumentRule) FromSqlc(r sqlc.DocumentRule) *DocumentRule {
+	chapter := ""
+	if r.Chapter.Valid {
+		chapter = r.Chapter.String
+	}
+	artNum := ""
+	if r.ArticleNumber.Valid {
+		artNum = r.ArticleNumber.String
+	}
+	superID := ""
+	if r.SupersededByID.Valid {
+		superID = r.SupersededByID.String
+	}
+	return &DocumentRule{
+		ID:             r.ID,
+		DocumentID:     r.DocumentID,
+		RuleIndex:      int(r.RuleIndex),
+		Chapter:        chapter,
+		ArticleNumber:  artNum,
+		Title:          r.Title,
+		Content:        r.Content,
+		Status:         r.Status,
+		SupersededByID: superID,
+		CreatedAt:      r.CreatedAt.Format("2006-01-02 15:04:05"),
+	}
+}
+
 // DocumentChunk represents a searchable text fragment with dense vector embedding.
 type DocumentChunk struct {
 	ID               string    `json:"id"`
@@ -115,6 +207,43 @@ type DocumentChunk struct {
 	PriorityLevel    int       `json:"priority_level"`
 	Embedding        []float32 `json:"embedding,omitempty"`
 	CreatedAt        string    `json:"created_at"`
+}
+
+// ToResponse converts a DocumentChunk domain model to a response DTO.
+func (dc *DocumentChunk) ToResponse() *response.DocumentChunkResponse {
+	if dc == nil {
+		return nil
+	}
+	return &response.DocumentChunkResponse{
+		ID:               dc.ID,
+		DocumentID:       dc.DocumentID,
+		RuleID:           dc.RuleID,
+		ChunkIndex:       dc.ChunkIndex,
+		ChunkType:        dc.ChunkType,
+		Content:          dc.Content,
+		Status:           dc.Status,
+		Domain:           dc.Domain,
+		ApplicableCohort: dc.ApplicableCohort,
+		AcademicYear:     dc.AcademicYear,
+		PriorityLevel:    dc.PriorityLevel,
+		Embedding:        dc.Embedding,
+		CreatedAt:        dc.CreatedAt,
+	}
+}
+
+// DocumentChunksToResponse converts a batch of DocumentChunk to response DTOs.
+func DocumentChunksToResponse(items []*DocumentChunk) []*response.DocumentChunkResponse {
+	if items == nil {
+		return nil
+	}
+	out := make([]*response.DocumentChunkResponse, 0, len(items))
+	for _, item := range items {
+		if item == nil {
+			continue
+		}
+		out = append(out, item.ToResponse())
+	}
+	return out
 }
 
 // FromSqlc converts a sqlc DocumentChunk row to a DocumentChunk model pointer.
@@ -191,6 +320,36 @@ type KGNode struct {
 	CreatedAt string `json:"created_at"`
 }
 
+// ToResponse converts a KGNode domain model to a response DTO.
+func (n *KGNode) ToResponse() *response.KGNodeResponse {
+	if n == nil {
+		return nil
+	}
+	return &response.KGNodeResponse{
+		ID:        n.ID,
+		NodeType:  n.NodeType,
+		Name:      n.Name,
+		Code:      n.Code,
+		Status:    n.Status,
+		CreatedAt: n.CreatedAt,
+	}
+}
+
+// KGNodesToResponse converts a batch of KGNode to response DTOs.
+func KGNodesToResponse(items []*KGNode) []*response.KGNodeResponse {
+	if items == nil {
+		return nil
+	}
+	out := make([]*response.KGNodeResponse, 0, len(items))
+	for _, item := range items {
+		if item == nil {
+			continue
+		}
+		out = append(out, item.ToResponse())
+	}
+	return out
+}
+
 // FromSqlc converts a sqlc KgNode row to a KGNode model pointer.
 func (n *KGNode) FromSqlc(row sqlc.KgNode) *KGNode {
 	n.ID = row.ID
@@ -211,6 +370,37 @@ type KGEdge struct {
 	Weight       float64 `json:"weight"`
 	Status       string  `json:"status"`
 	CreatedAt    string  `json:"created_at"`
+}
+
+// ToResponse converts a KGEdge domain model to a response DTO.
+func (e *KGEdge) ToResponse() *response.KGEdgeResponse {
+	if e == nil {
+		return nil
+	}
+	return &response.KGEdgeResponse{
+		ID:           e.ID,
+		SourceNodeID: e.SourceNodeID,
+		TargetNodeID: e.TargetNodeID,
+		RelationType: e.RelationType,
+		Weight:       e.Weight,
+		Status:       e.Status,
+		CreatedAt:    e.CreatedAt,
+	}
+}
+
+// KGEdgesToResponse converts a batch of KGEdge to response DTOs.
+func KGEdgesToResponse(items []*KGEdge) []*response.KGEdgeResponse {
+	if items == nil {
+		return nil
+	}
+	out := make([]*response.KGEdgeResponse, 0, len(items))
+	for _, item := range items {
+		if item == nil {
+			continue
+		}
+		out = append(out, item.ToResponse())
+	}
+	return out
 }
 
 // FromSqlc converts a sqlc KgEdge row to a KGEdge model pointer.
@@ -239,6 +429,36 @@ type SupersessionAuditLog struct {
 	CreatedAt       string `json:"created_at"`
 }
 
+// ToResponse converts a SupersessionAuditLog domain model to a response DTO.
+func (l *SupersessionAuditLog) ToResponse() *response.SupersessionAuditLogResponse {
+	if l == nil {
+		return nil
+	}
+	return &response.SupersessionAuditLogResponse{
+		ID:              l.ID,
+		ActiveDocID:     l.ActiveDocID,
+		SupersededDocID: l.SupersededDocID,
+		RuleType:        l.RuleType,
+		Reason:          l.Reason,
+		CreatedAt:       l.CreatedAt,
+	}
+}
+
+// SupersessionAuditLogsToResponse converts a batch of SupersessionAuditLog to response DTOs.
+func SupersessionAuditLogsToResponse(items []*SupersessionAuditLog) []*response.SupersessionAuditLogResponse {
+	if items == nil {
+		return nil
+	}
+	out := make([]*response.SupersessionAuditLogResponse, 0, len(items))
+	for _, item := range items {
+		if item == nil {
+			continue
+		}
+		out = append(out, item.ToResponse())
+	}
+	return out
+}
+
 // FromSqlc converts a sqlc SupersessionAuditLog row to a SupersessionAuditLog model pointer.
 func (l *SupersessionAuditLog) FromSqlc(row sqlc.SupersessionAuditLog) *SupersessionAuditLog {
 	l.ID = row.ID
@@ -257,6 +477,22 @@ type DocumentDetail struct {
 	Supersedes   []*Document             `json:"supersedes,omitempty"`
 	Chunks       []*DocumentChunk        `json:"chunks"`
 	AuditLogs    []*SupersessionAuditLog `json:"audit_logs"`
+	FullContent  string                  `json:"full_content"`
+}
+
+// ToResponse converts a DocumentDetail domain model to a response DTO.
+func (dd *DocumentDetail) ToResponse() *response.DocumentDetailResponse {
+	if dd == nil {
+		return nil
+	}
+	return &response.DocumentDetailResponse{
+		Document:     dd.Document.ToResponse(),
+		SupersededBy: dd.SupersededBy.ToResponse(),
+		Supersedes:   DocumentsToResponse(dd.Supersedes),
+		Chunks:       DocumentChunksToResponse(dd.Chunks),
+		AuditLogs:    SupersessionAuditLogsToResponse(dd.AuditLogs),
+		FullContent:  dd.FullContent,
+	}
 }
 
 // KnowledgeGraphData encapsulates nodes and edges for graph visualization.
@@ -265,14 +501,44 @@ type KnowledgeGraphData struct {
 	Edges []*KGEdge `json:"edges"`
 }
 
+// ToResponse converts a KnowledgeGraphData domain model to a response DTO.
+func (kgd *KnowledgeGraphData) ToResponse() *response.KnowledgeGraphDataResponse {
+	if kgd == nil {
+		return nil
+	}
+	return &response.KnowledgeGraphDataResponse{
+		Nodes: KGNodesToResponse(kgd.Nodes),
+		Edges: KGEdgesToResponse(kgd.Edges),
+	}
+}
+
 // KnowledgeStats encapsulates high-level metrics for the RAG knowledge graph.
 type KnowledgeStats struct {
-	TotalDocuments      int `json:"total_documents"`
-	ActiveDocuments     int `json:"active_documents"`
-	SupersededDocuments int `json:"superseded_documents"`
-	TotalChunks         int `json:"total_chunks"`
-	TotalNodes          int `json:"total_nodes"`
-	TotalEdges          int `json:"total_edges"`
+	TotalDocuments            int `json:"total_documents"`
+	ActiveDocuments           int `json:"active_documents"`
+	SupersededDocuments       int `json:"superseded_documents"`
+	PartiallyAmendedDocuments int `json:"partially_amended_documents"`
+	ArchivedDocuments         int `json:"archived_documents"`
+	TotalChunks               int `json:"total_chunks"`
+	TotalNodes                int `json:"total_nodes"`
+	TotalEdges                int `json:"total_edges"`
+}
+
+// ToResponse converts a KnowledgeStats domain model to a response DTO.
+func (ks *KnowledgeStats) ToResponse() *response.KnowledgeStatsResponse {
+	if ks == nil {
+		return nil
+	}
+	return &response.KnowledgeStatsResponse{
+		TotalDocuments:            ks.TotalDocuments,
+		ActiveDocuments:           ks.ActiveDocuments,
+		SupersededDocuments:       ks.SupersededDocuments,
+		PartiallyAmendedDocuments: ks.PartiallyAmendedDocuments,
+		ArchivedDocuments:         ks.ArchivedDocuments,
+		TotalChunks:               ks.TotalChunks,
+		TotalNodes:                ks.TotalNodes,
+		TotalEdges:                ks.TotalEdges,
+	}
 }
 
 // RAGSearchParams encapsulates query criteria for hybrid retrieval.
@@ -299,6 +565,41 @@ type RAGSearchResultItem struct {
 	BM25Score        float32 `json:"bm25_score"`
 	PriorityLevel    int     `json:"priority_level"`
 	FinalScore       float32 `json:"final_score"`
+}
+
+// ToResponse converts a RAGSearchResultItem domain model to a response DTO.
+func (r *RAGSearchResultItem) ToResponse() *response.RAGSearchResultItemResponse {
+	if r == nil {
+		return nil
+	}
+	return &response.RAGSearchResultItemResponse{
+		ChunkID:          r.ChunkID,
+		DocumentID:       r.DocumentID,
+		DocTitle:         r.DocTitle,
+		DocType:          r.DocType,
+		Domain:           r.Domain,
+		ApplicableCohort: r.ApplicableCohort,
+		Content:          r.Content,
+		VectorSim:        r.VectorSim,
+		BM25Score:        r.BM25Score,
+		PriorityLevel:    r.PriorityLevel,
+		FinalScore:       r.FinalScore,
+	}
+}
+
+// RAGSearchResultsToResponse converts a batch of RAGSearchResultItem to response DTOs.
+func RAGSearchResultsToResponse(items []*RAGSearchResultItem) []*response.RAGSearchResultItemResponse {
+	if items == nil {
+		return nil
+	}
+	out := make([]*response.RAGSearchResultItemResponse, 0, len(items))
+	for _, item := range items {
+		if item == nil {
+			continue
+		}
+		out = append(out, item.ToResponse())
+	}
+	return out
 }
 
 // EncodeVectorBlob serializes a float32 slice into IEEE 754 little-endian binary bytes.

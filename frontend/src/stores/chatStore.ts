@@ -208,6 +208,7 @@ export const useChatStore = create<ChatState>()(
               images: m.images,
               sources: m.sources,
               feedback: m.feedback,
+              canEscalate: Boolean(m.can_escalate),
               timestamp: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             }));
             const feedbacks: Record<string, 'up' | 'down'> = {};

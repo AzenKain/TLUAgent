@@ -1,9 +1,8 @@
 package controllers
 
 import (
-	"encoding/json"
+	"context"
 	"fmt"
-	"io"
 	"net/http"
 	"time"
 
@@ -48,12 +47,12 @@ func (c *ChatController) HandleChat(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeJSONResponse(w, http.StatusMethodNotAllowed, response.CommonResponse{
 			Status:  false,
-			Message: "Method not allowed",
+			Message: "method not allowed",
 		})
 		return
 	}
 
-	ctx, cancel := requestContext(r, defaultRequestTimeout)
+	ctx, cancel := requestContext(r, longRequestTimeout)
 	defer cancel()
 
 	var req request.ChatRequest
@@ -74,26 +73,44 @@ func (c *ChatController) HandleChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	for _, h := range req.History {
+		if chk := guardrail.CheckQuery(h.Content); chk.Decision == guardrail.DecisionBlockedInjection {
+			writeJSONResponse(w, http.StatusOK, response.ChatResponse{
+				Query:     req.Query,
+				Reply:     chk.Response,
+				Timestamp: time.Now().Format("15:04:05"),
+			})
+			return
+		}
+	}
+
 	uid := getUserID(r)
+	if uid != "" && uid != "0" && req.SessionID != "" && c.chatSessionService != nil {
+		if err := c.chatSessionService.ValidateSessionOwnership(ctx, req.SessionID, uid); err != nil {
+			apperrors.HandleError(w, err)
+			return
+		}
+	}
 	res, err := c.advisoryService.Consult(ctx, uid, &req)
 	if err != nil {
 		log.Error().Err(err).Msg("failed to process advisory consultation")
 		writeJSONResponse(w, http.StatusInternalServerError, response.CommonResponse{
 			Status:  false,
-			Message: "Internal server error",
+			Message: "an error occurred while processing inquiry",
 		})
 		return
 	}
 
 	if uid != "" && uid != "0" && c.chatSessionService != nil {
 		sessID, recErr := c.chatSessionService.RecordExchange(ctx, &request.RecordChatExchangeDto{
-			SessionID:  req.SessionID,
-			UserID:     uid,
-			ModelID:    req.ModelID,
-			UserQuery:  req.Query,
-			BotReply:   res.Reply,
-			UserImages: req.Images,
-			BotSources: res.Sources,
+			SessionID:   req.SessionID,
+			UserID:      uid,
+			ModelID:     req.ModelID,
+			UserQuery:   req.Query,
+			BotReply:    res.Reply,
+			UserImages:  req.Images,
+			BotSources:  res.Sources,
+			CanEscalate: res.CanEscalate,
 		})
 		if recErr != nil {
 			log.Error().Err(recErr).Msg("failed to record chat exchange")
@@ -117,7 +134,7 @@ func (c *ChatController) HandleChatStream(w http.ResponseWriter, r *http.Request
 	if r.Method != http.MethodPost {
 		writeJSONResponse(w, http.StatusMethodNotAllowed, response.CommonResponse{
 			Status:  false,
-			Message: "Method not allowed",
+			Message: "method not allowed",
 		})
 		return
 	}
@@ -140,11 +157,22 @@ func (c *ChatController) HandleChatStream(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	for _, h := range req.History {
+		if chk := guardrail.CheckQuery(h.Content); chk.Decision == guardrail.DecisionBlockedInjection {
+			writeJSONResponse(w, http.StatusOK, response.ChatResponse{
+				Query:     req.Query,
+				Reply:     chk.Response,
+				Timestamp: time.Now().Format("15:04:05"),
+			})
+			return
+		}
+	}
+
 	releaseStream, ok := c.tryAcquireStream(r)
 	if !ok {
 		writeJSONResponse(w, http.StatusTooManyRequests, response.CommonResponse{
 			Status:  false,
-			Message: "Too many concurrent streaming requests. Please wait a moment.",
+			Message: "too many concurrent chat requests; please try again later",
 		})
 		return
 	}
@@ -157,9 +185,17 @@ func (c *ChatController) HandleChatStream(w http.ResponseWriter, r *http.Request
 	if !ok {
 		writeJSONResponse(w, http.StatusInternalServerError, response.CommonResponse{
 			Status:  false,
-			Message: "Streaming unsupported by response writer",
+			Message: "streaming not supported",
 		})
 		return
+	}
+
+	uid := getUserID(r)
+	if uid != "" && uid != "0" && req.SessionID != "" && c.chatSessionService != nil {
+		if err := c.chatSessionService.ValidateSessionOwnership(ctx, req.SessionID, uid); err != nil {
+			apperrors.HandleError(w, err)
+			return
+		}
 	}
 
 	w.Header().Set("Content-Type", "text/event-stream")
@@ -167,9 +203,10 @@ func (c *ChatController) HandleChatStream(w http.ResponseWriter, r *http.Request
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("X-Accel-Buffering", "no")
 	w.WriteHeader(http.StatusOK)
+	rc := http.NewResponseController(w)
+	_ = rc.SetWriteDeadline(time.Time{})
 	flusher.Flush()
 
-	uid := getUserID(r)
 	if (uid == "" || uid == "0") && req.SessionID != "" && len(req.History) == 0 {
 		if !c.advisoryService.HasGuestSession(ctx, req.SessionID) {
 			rehydratePayload, _ := jsonx.Marshal(services.StreamEvent{
@@ -200,7 +237,7 @@ func (c *ChatController) HandleChatStream(w http.ResponseWriter, r *http.Request
 		log.Error().Err(err).Msg("failed in advisory streaming")
 		errPayload, _ := jsonx.Marshal(services.StreamEvent{
 			Type:    "error",
-			Message: "Consultation stream encountered an error",
+			Message: "an error occurred during conversation; please try again",
 		})
 		_, _ = fmt.Fprintf(w, "data: %s\n\n", errPayload)
 		flusher.Flush()
@@ -208,16 +245,20 @@ func (c *ChatController) HandleChatStream(w http.ResponseWriter, r *http.Request
 	}
 
 	var sessionID string
+	recordCtx, recordCancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer recordCancel()
+
 	if uid != "" && uid != "0" && c.chatSessionService != nil {
 		var recErr error
-		sessionID, recErr = c.chatSessionService.RecordExchange(ctx, &request.RecordChatExchangeDto{
-			SessionID:  req.SessionID,
-			UserID:     uid,
-			ModelID:    req.ModelID,
-			UserQuery:  req.Query,
-			BotReply:   res.Reply,
-			UserImages: req.Images,
-			BotSources: res.Sources,
+		sessionID, recErr = c.chatSessionService.RecordExchange(recordCtx, &request.RecordChatExchangeDto{
+			SessionID:   req.SessionID,
+			UserID:      uid,
+			ModelID:     req.ModelID,
+			UserQuery:   req.Query,
+			BotReply:    res.Reply,
+			UserImages:  req.Images,
+			BotSources:  res.Sources,
+			CanEscalate: res.CanEscalate,
 		})
 		if recErr != nil {
 			log.Error().Err(recErr).Msg("failed to record stream chat exchange")
@@ -227,7 +268,7 @@ func (c *ChatController) HandleChatStream(w http.ResponseWriter, r *http.Request
 		if sessionID == "" {
 			sessionID = generateGuestSessionID()
 		}
-		c.advisoryService.RecordGuestExchange(ctx, sessionID, req.Query, res.Reply)
+		c.advisoryService.RecordGuestExchange(recordCtx, sessionID, req.Query, res.Reply)
 	}
 
 	donePayload, _ := jsonx.Marshal(services.StreamEvent{
@@ -247,7 +288,7 @@ func (c *ChatController) HandleListSessions(w http.ResponseWriter, r *http.Reque
 
 	uid := getUserID(r)
 	if uid == "" || uid == "0" {
-		apperrors.HandleError(w, apperrors.New(apperrors.ErrUnauthorized, "Unauthorized"))
+		apperrors.HandleError(w, apperrors.New(apperrors.ErrUnauthorized, "unauthorized"))
 		return
 	}
 
@@ -277,7 +318,7 @@ func (c *ChatController) HandleCreateSession(w http.ResponseWriter, r *http.Requ
 
 	uid := getUserID(r)
 	if uid == "" || uid == "0" {
-		apperrors.HandleError(w, apperrors.New(apperrors.ErrUnauthorized, "Unauthorized"))
+		apperrors.HandleError(w, apperrors.New(apperrors.ErrUnauthorized, "unauthorized"))
 		return
 	}
 
@@ -298,7 +339,7 @@ func (c *ChatController) HandleCreateSession(w http.ResponseWriter, r *http.Requ
 
 	writeJSONResponse(w, http.StatusCreated, response.CommonResponse{
 		Status:  true,
-		Message: "Session created successfully",
+		Message: "chat session created successfully",
 		Data:    conv,
 	})
 }
@@ -310,13 +351,13 @@ func (c *ChatController) HandleGetSession(w http.ResponseWriter, r *http.Request
 
 	uid := getUserID(r)
 	if uid == "" || uid == "0" {
-		apperrors.HandleError(w, apperrors.New(apperrors.ErrUnauthorized, "Unauthorized"))
+		apperrors.HandleError(w, apperrors.New(apperrors.ErrUnauthorized, "unauthorized"))
 		return
 	}
 
 	sessionID := r.PathValue("id")
 	if sessionID == "" {
-		apperrors.HandleError(w, apperrors.New(apperrors.ErrBadRequest, "Missing session ID"))
+		apperrors.HandleError(w, apperrors.New(apperrors.ErrBadRequest, "missing conversation session id"))
 		return
 	}
 
@@ -339,13 +380,13 @@ func (c *ChatController) HandleUpdateSessionTitle(w http.ResponseWriter, r *http
 
 	uid := getUserID(r)
 	if uid == "" || uid == "0" {
-		apperrors.HandleError(w, apperrors.New(apperrors.ErrUnauthorized, "Unauthorized"))
+		apperrors.HandleError(w, apperrors.New(apperrors.ErrUnauthorized, "unauthorized"))
 		return
 	}
 
 	sessionID := r.PathValue("id")
 	if sessionID == "" {
-		apperrors.HandleError(w, apperrors.New(apperrors.ErrBadRequest, "Missing session ID"))
+		apperrors.HandleError(w, apperrors.New(apperrors.ErrBadRequest, "missing conversation session id"))
 		return
 	}
 
@@ -365,7 +406,7 @@ func (c *ChatController) HandleUpdateSessionTitle(w http.ResponseWriter, r *http
 
 	writeJSONResponse(w, http.StatusOK, response.CommonResponse{
 		Status:  true,
-		Message: "Session title updated successfully",
+		Message: "session title updated successfully",
 	})
 }
 
@@ -376,13 +417,13 @@ func (c *ChatController) HandleDeleteSession(w http.ResponseWriter, r *http.Requ
 
 	uid := getUserID(r)
 	if uid == "" || uid == "0" {
-		apperrors.HandleError(w, apperrors.New(apperrors.ErrUnauthorized, "Unauthorized"))
+		apperrors.HandleError(w, apperrors.New(apperrors.ErrUnauthorized, "unauthorized"))
 		return
 	}
 
 	sessionID := r.PathValue("id")
 	if sessionID == "" {
-		apperrors.HandleError(w, apperrors.New(apperrors.ErrBadRequest, "Missing session ID"))
+		apperrors.HandleError(w, apperrors.New(apperrors.ErrBadRequest, "missing conversation session id"))
 		return
 	}
 
@@ -393,7 +434,7 @@ func (c *ChatController) HandleDeleteSession(w http.ResponseWriter, r *http.Requ
 
 	writeJSONResponse(w, http.StatusOK, response.CommonResponse{
 		Status:  true,
-		Message: "Session deleted successfully",
+		Message: "session deleted successfully",
 	})
 }
 
@@ -404,13 +445,13 @@ func (c *ChatController) HandleMessageFeedback(w http.ResponseWriter, r *http.Re
 
 	uid := getUserID(r)
 	if uid == "" || uid == "0" {
-		apperrors.HandleError(w, apperrors.New(apperrors.ErrUnauthorized, "Unauthorized"))
+		apperrors.HandleError(w, apperrors.New(apperrors.ErrUnauthorized, "unauthorized"))
 		return
 	}
 
 	messageID := r.PathValue("id")
 	if messageID == "" {
-		apperrors.HandleError(w, apperrors.New(apperrors.ErrBadRequest, "Missing message ID"))
+		apperrors.HandleError(w, apperrors.New(apperrors.ErrBadRequest, "missing message id"))
 		return
 	}
 
@@ -430,7 +471,7 @@ func (c *ChatController) HandleMessageFeedback(w http.ResponseWriter, r *http.Re
 
 	writeJSONResponse(w, http.StatusOK, response.CommonResponse{
 		Status:  true,
-		Message: "Feedback updated successfully",
+		Message: "message feedback updated successfully",
 	})
 }
 
@@ -453,17 +494,21 @@ func (c *ChatController) HandleGuestLeave(w http.ResponseWriter, r *http.Request
 	if r.Method != http.MethodPost {
 		writeJSONResponse(w, http.StatusMethodNotAllowed, response.CommonResponse{
 			Status:  false,
-			Message: "Method not allowed",
+			Message: "method not allowed",
 		})
 		return
 	}
 	var payload struct {
-		SessionID string `json:"session_id"`
+		SessionID string `json:"session_id" validate:"required,min=1,max=128"`
 	}
-	body, _ := io.ReadAll(r.Body)
-	_ = json.Unmarshal(body, &payload)
+	if errs := validator.ValidateBodyDto(r, &payload); len(errs) > 0 {
+		writeValidationError(w, errs)
+		return
+	}
+	ctx, cancel := requestContext(r, defaultRequestTimeout)
+	defer cancel()
 	if payload.SessionID != "" {
-		c.advisoryService.EvictGuestSession(r.Context(), payload.SessionID)
+		c.advisoryService.EvictGuestSession(ctx, payload.SessionID)
 	}
 	w.WriteHeader(http.StatusOK)
 }

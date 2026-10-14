@@ -32,8 +32,8 @@ func setupRAGTestController(t *testing.T) (*controllers.RAGController, repositor
 
 	ramCache := cache.NewRamCache()
 	ragRepo := repositories.NewRAGRepository(db, ramCache)
-	ragService := services.NewRAGService(ragRepo)
-	ragCtrl := controllers.NewRAGController(ragService, ragRepo)
+	ragService := services.NewRAGService(ragRepo, ramCache, nil, nil)
+	ragCtrl := controllers.NewRAGController(ragService)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/admin/documents", ragCtrl.HandleGetDocuments)
