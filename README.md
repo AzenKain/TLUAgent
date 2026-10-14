@@ -1,7 +1,6 @@
 # TLUAgent - Hệ thống AI cố vấn học vụ thông minh và điều hành học vụ TLU
 
-> **Đồ án tốt nghiệp** ngành Công nghệ thông tin — Trường Đại học Thăng Long (TLU).  
-> **Tác giả**: Đỗ Duy Khánh.
+> **Đồ án tốt nghiệp** ngành Công nghệ thông tin — Trường Đại học Thăng Long (TLU).
 
 Hệ thống AI cố vấn học vụ và nền tảng hỗ trợ điều hành học vụ dành cho sinh viên và ban quản lý học vụ Trường Đại học Thăng Long. Hệ thống tích hợp mô hình ngôn ngữ lớn (Multimodal LLM), động cơ tìm kiếm **RAG Hybrid**, **Đồ thị tri thức (Knowledge Graph)** tự động loại trừ văn bản hết hiệu lực, bộ rà soát bãi bỏ quy chế **Regulatory Dissection Engine**, phân hệ **TLUClaw** quản trị học vụ bằng ngôn ngữ tự nhiên, pipeline **Crawler & Job Scheduler** tự động hóa dữ liệu từ cổng thông tin trường, và **Cổng lộ trình học tập cá nhân hóa**.
 
@@ -11,7 +10,7 @@ Hệ thống AI cố vấn học vụ và nền tảng hỗ trợ điều hành 
 
 - **Chuẩn hóa tri thức học vụ phân mảnh**: Tích hợp dữ liệu từ 16 khóa đào tạo (K24 - K39), hàng trăm quyết định, thông báo, quy chế đào tạo tín chỉ và sổ tay sinh viên vào một cơ sở dữ liệu đồng nhất.
 - **Triệt tiêu nguy cơ áp dụng quy chế cũ (Zero Hallucination & Lex Posterior)**: Tự động phát hiện và loại bỏ các văn bản đã bị sửa đổi hoặc thay thế (`SUPERSEDED`), đảm bảo sinh viên và cố vấn luôn tiếp cận thông tin có hiệu lực pháp lý cao nhất theo thứ tự thời gian ban hành.
-- **Tự động hóa thu thập dữ liệu học vụ**: Pipeline crawler tự động thu thập thông báo, tin tức và sổ tay sinh viên từ website trường (`thanglong.edu.vn`), tự bóc tách tệp PDF đính kèm/Google Drive thuần trong bộ nhớ RAM và vector hóa tức thì.
+- **Tự động hóa thu thập dữ liệu học vụ**: Pipeline crawler tự động thu thập thông báo, tin tức và sổ tay sinh viên từ cổng thông tin đào tạo của nhà trường, tự bóc tách tệp PDF đính kèm/Google Drive thuần trong bộ nhớ RAM và vector hóa tức thì.
 - **Cá nhân hóa lộ trình học tập theo thời gian thực**: Phân tích bảng điểm cá nhân, tính toán đồ thị môn tiên quyết (DAG) và gợi ý phân bổ môn học từng kỳ nhằm tối ưu thời gian tốt nghiệp (3.5 - 4.5 năm).
 - **Trợ lý điều hành học vụ TLUClaw**: Hỗ trợ quản trị viên bóc tách tài liệu chương trình đào tạo đa định dạng (Excel 25+ sheet, Word, PDF, CSV), so sánh sai khác (Diff), tính toán phạm vi ảnh hưởng (Blast Radius), thực hiện cập nhật theo quy trình 2 pha an toàn có thể hoàn tác (Rollback).
 - **Đóng gói độc lập (Single-Binary)**: Đóng gói toàn bộ backend Go, frontend React 19 và CSDL SQLite WAL trong một tệp thực thi duy nhất, không phụ thuộc môi trường ngoài.
@@ -27,17 +26,17 @@ Hệ thống AI cố vấn học vụ và nền tảng hỗ trợ điều hành 
   - Trích dẫn chính xác số hiệu văn bản, ngày ban hành, điều khoản và trích đoạn quy chế gốc.
 - **Giao thức phản biện Socratic (làm rõ khóa và ngành)**:
   - Tuyệt đối không phỏng đoán khóa học (Kxx) hay ngành học khi tư vấn chương trình đào tạo, môn thay thế, chuẩn đầu ra hay học phí.
-  - Tự động đối chiếu 3 tầng bộ nhớ: Hồ sơ sinh viên $\rightarrow$ Ký ức dài hạn $\rightarrow$ Lịch sử hội thoại. Nếu thiếu thông tin, AI chủ động hỏi lại sinh viên trước khi đưa ra câu trả lời.
+  - Tự động đối chiếu 3 tầng bộ nhớ: Hồ sơ sinh viên → Ký ức dài hạn → Lịch sử hội thoại. Nếu thiếu thông tin, AI chủ động hỏi lại sinh viên trước khi đưa ra câu trả lời.
 - **Bóc tách bảng điểm qua ảnh (Multimodal LLM & Transcript Diff)**:
   - Cho phép tải lên đồng thời nhiều ảnh chụp màn hình bảng điểm từ cổng thông tin đào tạo (xử lý trực tiếp qua LLM đa phương thức, không cần engine OCR ngoài).
   - Trích xuất điểm tự động, tính GPA/CPA hệ 10 và hệ 4.
   - **Thẻ xác nhận tương tác (Interactive Confirmation Card)**: Đối chiếu điểm mới và điểm cũ, gắn nhãn `NEW` (môn mới), `UPGRADED` (cải thiện), `UNCHANGED` (giữ nguyên); hỗ trợ lưu vào hồ sơ với 1 thao tác hoặc tiếp tục tư vấn.
 - **Tư vấn quy chế học vụ đặc thù Thăng Long**:
-  - *Chuỗi tiếng Anh bậc thang (`GE111` $\rightarrow$ `GE333`)*: Bắt buộc học tuần tự, cảnh báo không được học song song các cấp độ trong cùng một kỳ.
+  - *Chuỗi tiếng Anh bậc thang (`GE111` → `GE333`)*: Bắt buộc học tuần tự, cảnh báo không được học song song các cấp độ trong cùng một kỳ.
   - *Cơ chế thác nước 5 tín chỉ tự do*: Tự động gom linh hoạt từ môn ngoại khoa, ngoại ngữ bổ sung, hoặc tín chỉ chuyên ngành học vượt định mức.
-  - *Cảnh báo hạ bậc bằng tốt nghiệp*: Theo dõi ngưỡng an toàn 5% tín chỉ thi lại ($\approx 6.5$ tín chỉ cho chương trình 130 tín chỉ) đối với sinh viên có học lực khá, giỏi, xuất sắc.
+  - *Cảnh báo hạ bậc bằng tốt nghiệp*: Theo dõi ngưỡng an toàn 5% tín chỉ thi lại (~6.5 tín chỉ đối với chương trình 130 tín chỉ) đối với sinh viên có học lực khá, giỏi, xuất sắc.
   - *Quy chế thi nâng điểm*: Kiểm tra điều kiện môn điểm 4.0 - 5.4 (D/D+) và giới hạn 02 học kỳ liên tiếp.
-  - *Môn học thay thế*: Tra cứu quan hệ thay thế 2 chiều ($A \leftrightarrow B$), phi bắc cầu theo khóa ($\le$ K35 phân theo chuyên ngành; K36–K37 áp dụng toàn khoa CNTT).
+  - *Môn học thay thế*: Tra cứu quan hệ thay thế 2 chiều (`A ↔ B`), phi bắc cầu theo khóa (≤ K35 phân theo chuyên ngành; K36–K37 áp dụng toàn khoa CNTT).
 - **Chuyển tiếp thắc mắc học vụ (Inquiry escalation)**:
   - Chuyển tiếp các câu hỏi học vụ phức tạp hoặc khiếu nại điểm lên giảng viên / ban cố vấn chuyên trách.
   - Hệ thống thông báo in-app cập nhật tiến độ giải quyết cho sinh viên.
@@ -103,16 +102,16 @@ Hệ thống AI cố vấn học vụ và nền tảng hỗ trợ điều hành 
 ### 2.5. Hệ thống thu thập dữ liệu học vụ tự động
 - **Truy cập tại**: `/admin/jobs`
 - **Bộ thu thập dữ liệu tự động (`pkg/crawler`)**:
-  - Thu thập trực tiếp từ cổng thông tin trường (`thanglong.edu.vn`) cho 3 phân hệ:
+  - Thu thập trực tiếp từ cổng thông tin đào tạo của nhà trường cho 3 phân hệ:
     - **Thông báo (`/thong-bao`)**: 378 trang với 2,268 thông báo học vụ (6 bài/trang).
     - **Tin tức (`/tin-tuc`)**: 119 trang với 474 bài tin tức (4 bài/trang).
     - **Trang tĩnh (`TLUStaticRoutes`)**: 25 trang tĩnh sổ tay sinh viên, hướng dẫn học vụ, chuẩn đầu ra ngoại ngữ/tin học.
 - **Cơ chế cào đảo chiều theo thời gian (`reverse = true`)**:
-  - Nạp tài liệu theo thứ tự thời gian từ cũ nhất đến mới nhất (`oldest` $\rightarrow$ `newest`).
+  - Nạp tài liệu theo thứ tự thời gian từ cũ nhất đến mới nhất (`oldest` → `newest`).
   - Bảo đảm tính nhân quả thời gian, làm tiền đề cho bộ phát hiện bãi bỏ quy chế hoạt động chính xác.
 - **Cắt mốc thời gian tăng dần (`max_time_days`)**:
-  - Tự động phát hiện bài mốc trong quá khứ ($t < \text{now} - \text{max\_time\_days}$) và cào tiến dần về hiện tại, dừng sớm (early exit) giúp các lần chạy định kỳ hoàn thành trong vài giây.
-- **Bộ lọc định danh RAM siêu tốc ($O(1)$ Deduplication)**:
+  - Tự động phát hiện bài mốc trong quá khứ (mốc thời gian `t < now - max_time_days`) và cào tiến dần về hiện tại, dừng sớm (early exit) giúp các lần chạy định kỳ hoàn thành trong vài giây.
+- **Bộ lọc định danh RAM siêu tốc (O(1) Deduplication)**:
   - Tải sẵn toàn bộ định danh văn bản trong cơ sở dữ liệu vào RAM khi bắt đầu chạy.
   - So khớp ngay tại trang danh sách phân trang theo ID, Node ID, URL và tiêu đề; bỏ qua tức thì các bài đã có mà không gửi yêu cầu mạng hay truy vấn cơ sở dữ liệu.
 - **Trích xuất thuần trong RAM và tải PDF tự động (`pkg/pipeline`)**:
@@ -138,7 +137,7 @@ Hệ thống AI cố vấn học vụ và nền tảng hỗ trợ điều hành 
   - Tìm kiếm văn bản ứng viên bị bãi bỏ bằng FTS5 BM25 kết hợp Vector Search và so khớp tiêu đề.
   - Đánh dấu trạng thái `SUPERSEDED`, ghi nhận liên kết `SUPERSEDES` trên đồ thị tri thức và lưu nhật ký `supersession_audit_log`.
 - **Bộ nhớ kế thừa quan hệ bãi bỏ (Supersession lineage)**:
-  - Xử lý quan hệ bắc cầu bãi bỏ: Nếu $A \rightarrow B$ và $B \rightarrow C$ thì $A$ tự động thay thế cả $C$.
+  - Xử lý quan hệ bắc cầu bãi bỏ: Nếu A → B và B → C thì A tự động thay thế cả C.
 - **Bộ nén ngữ cảnh tự động (`pkg/compactor`)**:
   - Tự động nén và tóm tắt lịch sử hội thoại nhiều bước của Agent, bảo đảm không bị tràn cửa sổ ngữ cảnh (Context Window) khi rà soát kho văn bản lớn.
 - **Rà soát theo dòng thời gian ban hành (`AuditCorpusChronological`)**:
@@ -262,8 +261,7 @@ go build -o ../bin/server ./cmd/server
 
 ---
 
-## 6. Thông tin đồ án và tác quyền
+## 5. Thông tin đồ án và bản quyền
 
 * **Tên đồ án**: Nghiên cứu, xây dựng hệ thống AI Cố vấn học vụ và Điều hành học vụ thông minh cho Trường Đại học Thăng Long.
-* **Sinh viên thực hiện**: Đỗ Duy Khánh.
 * **Tính chất dự án**: Đây là sản phẩm **Đồ án tốt nghiệp đại học**, phục vụ mục đích nghiên cứu, học thuật và thử nghiệm ứng dụng thực tiễn trong công tác hỗ trợ sinh viên và quản trị học vụ.
