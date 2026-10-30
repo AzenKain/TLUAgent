@@ -184,6 +184,10 @@ INSERT INTO supersession_audit_log (active_doc_id, superseded_doc_id, rule_type,
 VALUES (?, ?, ?, ?, ?)
 RETURNING *;
 
+-- name: DeleteAuditLogPair :exec
+DELETE FROM supersession_audit_log
+WHERE active_doc_id = ? AND superseded_doc_id = ?;
+
 -- name: ListAuditLogsByDocID :many
 SELECT id, active_doc_id, superseded_doc_id, rule_type, reason, created_at
 FROM supersession_audit_log
@@ -282,6 +286,11 @@ WHERE rule_id = ?;
 -- name: UpdateDocumentChunksByDocIDStatus :exec
 UPDATE document_chunks
 SET status = ?
+WHERE document_id = ?;
+
+-- name: UpdateChunksCohortByDocumentID :exec
+UPDATE document_chunks
+SET applicable_cohort = ?
 WHERE document_id = ?;
 
 -- name: DeleteChunksByDocumentID :exec
@@ -441,3 +450,17 @@ WHERE NOT EXISTS (
 GROUP BY l.active_doc_id, l.superseded_doc_id
 ORDER BY MIN(l.id) ASC
 LIMIT ?;
+
+-- name: GetDocumentAuditFingerprint :one
+SELECT fingerprint FROM document_audit_state WHERE document_id = ?;
+
+-- name: UpsertDocumentAuditFingerprint :exec
+INSERT INTO document_audit_state (document_id, fingerprint, audited_at)
+VALUES (?, ?, CURRENT_TIMESTAMP)
+ON CONFLICT(document_id) DO UPDATE SET fingerprint = excluded.fingerprint, audited_at = CURRENT_TIMESTAMP;
+
+-- name: CountDocumentAuditStates :one
+SELECT COUNT(*) FROM document_audit_state;
+
+-- name: ClearDocumentAuditStates :exec
+DELETE FROM document_audit_state;

@@ -1050,6 +1050,9 @@ export const ChatAdvisoryPage: React.FC = () => {
           onChunk: (chunk) => {
             appendMessageChunk(botMsgId, chunk);
           },
+          onReset: () => {
+            updateMessage(botMsgId, { text: '' });
+          },
           onReasoning: (chunk) => {
             appendMessageReasoning(botMsgId, chunk);
           },
@@ -1085,6 +1088,7 @@ export const ChatAdvisoryPage: React.FC = () => {
                 activeSessionId || undefined,
                 {
                   onChunk: (chunk) => appendMessageChunk(botMsgId, chunk),
+                  onReset: () => updateMessage(botMsgId, { text: '' }),
                   onReasoning: (chunk) => appendMessageReasoning(botMsgId, chunk),
                   onToolCall: (tc) => updateMessageToolCall(botMsgId, tc),
                   onSources: (sources) => updateMessage(botMsgId, { sources }),

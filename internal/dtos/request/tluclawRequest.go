@@ -13,6 +13,9 @@ type TLUClawChatRequest struct {
 	Message     string                 `json:"message" validate:"required,min=1,max=10000"`
 	Images      []string               `json:"images,omitempty" validate:"omitempty,max=10"`
 	Attachments []TLUClawAttachmentDTO `json:"attachments,omitempty" validate:"omitempty,max=10"`
+
+	ThinkingEnabled *bool  `json:"thinking_enabled,omitempty"`
+	EffortLevel     string `json:"effort_level,omitempty" validate:"omitempty,oneof=low medium high"`
 }
 
 // TLUClawConfirmRequest encapsulates validation parameters to commit a staged snapshot.

@@ -61,13 +61,6 @@ export const inquiryService = {
     return res.data.data;
   },
 
-  async getStudentInquiries(page = 1, limit = 20): Promise<{ items: InquiryDTO[]; total: number }> {
-    const res = await apiClient.get<CommonResponse<{ items: InquiryDTO[]; total: number }>>('/student/inquiries', {
-      params: { page, limit },
-    });
-    return res.data.data;
-  },
-
   async getTeacherInquiries(status = '', search = '', page = 1, limit = 20): Promise<{ items: InquiryDTO[]; total: number }> {
     const res = await apiClient.get<CommonResponse<{ items: InquiryDTO[]; total: number }>>('/advisor/inquiries', {
       params: { status, search, page, limit },

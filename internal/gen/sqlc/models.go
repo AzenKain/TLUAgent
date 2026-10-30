@@ -183,6 +183,12 @@ type Document struct {
 	UpdatedAt        time.Time      `json:"updated_at"`
 }
 
+type DocumentAuditState struct {
+	DocumentID  string    `json:"document_id"`
+	Fingerprint string    `json:"fingerprint"`
+	AuditedAt   time.Time `json:"audited_at"`
+}
+
 type DocumentChunk struct {
 	ID               string         `json:"id"`
 	DocumentID       string         `json:"document_id"`

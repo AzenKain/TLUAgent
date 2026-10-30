@@ -58,7 +58,11 @@ export interface TLUClawChatRequest {
   message: string;
   images?: string[];
   attachments?: TLUClawAttachment[];
+  thinking_enabled?: boolean;
+  effort_level?: TLUClawEffortLevel;
 }
+
+export type TLUClawEffortLevel = 'low' | 'medium' | 'high';
 
 export interface TLUClawChatResponse {
   session_id: string;

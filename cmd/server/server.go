@@ -151,6 +151,18 @@ func NewServer(addr string) *Server {
 	go func() {
 		repairCtx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cancel()
+		if n, err := ragSvc.RepairDocumentCohorts(repairCtx); err != nil {
+			log.Warn().Err(err).Msg("Document cohort repair failed")
+		} else if n > 0 {
+			log.Info().Int("documents", n).Msg("Narrowed notices to the cohorts declared in their body")
+		}
+
+		if res, err := ragSvc.RepairInvalidSupersessions(repairCtx); err != nil {
+			log.Warn().Err(err).Msg("Invalid supersession repair failed")
+		} else if res.Reverted > 0 || res.Downgraded > 0 {
+			log.Info().Int("reverted", res.Reverted).Int("downgraded", res.Downgraded).Msg("Corrected unjustified document supersessions")
+		}
+
 		if dup, err := ragSvc.RepairDuplicateDocuments(repairCtx); err != nil {
 			log.Warn().Err(err).Msg("Duplicate document repair failed")
 		} else if dup.Superseded > 0 {

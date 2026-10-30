@@ -178,6 +178,7 @@ type CurriculumStatsResponse struct {
 	Curriculums   int64 `json:"curriculums"`
 	Courses       int64 `json:"courses"`
 	Substitutions int64 `json:"substitutions"`
+	Prerequisites int64 `json:"prerequisites"`
 }
 
 // CurriculumCourseListResponse is a paginated envelope of curriculum courses.

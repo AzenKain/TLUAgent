@@ -10,7 +10,9 @@ import (
 	"tluagent-web/pkg/guardrail"
 )
 
-// GuardrailQuery inspects incoming requests and blocks prompt injections before reaching route handlers.
+const guardrailBodyLimit = 10 << 20
+
+// GuardrailQuery blocks injection attempts in query strings and JSON bodies before they reach handlers.
 func GuardrailQuery() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -24,9 +26,13 @@ func GuardrailQuery() func(http.Handler) http.Handler {
 			if r.Method == http.MethodPost || r.Method == http.MethodPut || r.Method == http.MethodPatch {
 				contentType := r.Header.Get("Content-Type")
 				if strings.Contains(contentType, "application/json") && r.Body != nil {
-					limitedBody := http.MaxBytesReader(w, r.Body, 1<<20)
+					limitedBody := http.MaxBytesReader(w, r.Body, guardrailBodyLimit)
 					bodyBytes, err := io.ReadAll(limitedBody)
-					if err == nil && len(bodyBytes) > 0 {
+					if err != nil {
+						http.Error(w, "Request body too large", http.StatusRequestEntityTooLarge)
+						return
+					}
+					if len(bodyBytes) > 0 {
 						r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 						var payload struct {
 							Query       string `json:"query"`

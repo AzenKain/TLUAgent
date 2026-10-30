@@ -35,6 +35,26 @@ const getProgressPercent = (job: JobDTO): number => {
   return Math.min(100, Math.max(0, Math.round((job.progress / job.total) * 100)));
 };
 
+const readPayloadFlag = (payload: string, flag: string): boolean => {
+  try {
+    return Boolean((JSON.parse(payload) as Record<string, unknown>)[flag]);
+  } catch {
+    return false;
+  }
+};
+
+const writePayloadFlag = (payload: string, flag: string, value: boolean): string => {
+  let parsed: Record<string, unknown> = {};
+  try {
+    parsed = JSON.parse(payload) as Record<string, unknown>;
+  } catch {
+    parsed = {};
+  }
+  if (value) parsed[flag] = true;
+  else delete parsed[flag];
+  return JSON.stringify(parsed, null, 2);
+};
+
 export const JobManagePage: React.FC = () => {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
@@ -57,7 +77,6 @@ export const JobManagePage: React.FC = () => {
   const [scheduleForm, setScheduleForm] = useState<UpsertJobScheduleDTO>({
     name: '',
     job_type: 'crawl_notices',
-    cron_expr: '',
     interval_sec: 3600,
     payload_json: '{}',
     is_active: true,
@@ -76,6 +95,7 @@ export const JobManagePage: React.FC = () => {
     { value: 'crawl_static_pages', labelKey: 'jobs.type_crawl_static_pages' },
     { value: 'clean_corpus', labelKey: 'jobs.type_clean_corpus' },
     { value: 'supersede_check', labelKey: 'jobs.type_supersede_check' },
+    { value: 'reextract_documents', labelKey: 'jobs.type_reextract_documents' },
   ];
 
   const getJobTypeLabel = (type: string) => {
@@ -186,8 +206,7 @@ export const JobManagePage: React.FC = () => {
     setScheduleForm({
       name: '',
       job_type: defaultType,
-      cron_expr: '',
-      interval_sec: 3600,
+        interval_sec: 3600,
       payload_json: defaultPayload,
       is_active: true,
     });
@@ -216,7 +235,6 @@ export const JobManagePage: React.FC = () => {
     setScheduleForm({
       name: s.name,
       job_type: targetType,
-      cron_expr: s.cron_expr || '',
       interval_sec: s.interval_sec || (s.interval_minutes ? s.interval_minutes * 60 : 3600),
       payload_json: s.payload_json || '{}',
       is_active: s.enabled ?? s.is_active,
@@ -543,7 +561,7 @@ export const JobManagePage: React.FC = () => {
                           {getJobTypeLabel(s.task_type || s.job_type)}
                         </td>
                         <td className="px-6 py-4 text-xs text-slate-300">
-                          {s.interval_minutes ? `${s.interval_minutes}m` : s.interval_sec ? `${Math.round(s.interval_sec / 60)}m` : s.cron_expr || '-'}
+                          {s.interval_minutes ? `${s.interval_minutes}m` : s.interval_sec ? `${Math.round(s.interval_sec / 60)}m` : '-'}
                         </td>
                         <td className="px-6 py-4">
                           {(s.enabled ?? s.is_active) ? (
@@ -664,19 +682,11 @@ export const JobManagePage: React.FC = () => {
                 </pre>
               </div>
             )}
-            {selectedJob.result_json && (
-              <div>
-                <label className="text-xs font-semibold uppercase text-slate-400">{t('jobs.result')}</label>
-                <pre className="mt-1 max-h-40 overflow-y-auto rounded-lg bg-slate-950 p-3 font-mono text-xs text-emerald-400">
-                  {selectedJob.result_json}
-                </pre>
-              </div>
-            )}
-            {(selectedJob.error_msg || selectedJob.error_message) && (
+            {selectedJob.error_msg && (
               <div>
                 <label className="text-xs font-semibold uppercase text-slate-400">{t('jobs.error')}</label>
                 <pre className="mt-1 max-h-40 overflow-y-auto rounded-lg bg-slate-950 p-3 font-mono text-xs text-rose-400">
-                  {selectedJob.error_msg || selectedJob.error_message}
+                  {selectedJob.error_msg}
                 </pre>
               </div>
             )}
@@ -908,6 +918,31 @@ export const JobManagePage: React.FC = () => {
                     </p>
                   </div>
                 </div>
+              </div>
+            )}
+
+            {(triggerType === 'supersede_check' || triggerType === 'reextract_documents') && (
+              <div className="space-y-2 rounded-xl border border-slate-700 bg-slate-900/50 p-3">
+                {(triggerType === 'supersede_check'
+                  ? [{ flag: 'full', label: 'jobs.opt_full_audit', help: 'jobs.opt_full_audit_help' }]
+                  : [
+                      { flag: 'dry_run', label: 'jobs.opt_dry_run', help: 'jobs.opt_dry_run_help' },
+                      { flag: 'force', label: 'jobs.opt_force', help: 'jobs.opt_force_help' },
+                    ]
+                ).map((opt) => (
+                  <label key={opt.flag} className="flex items-start gap-2 text-xs text-slate-200 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={readPayloadFlag(triggerPayload, opt.flag)}
+                      onChange={(e) => setTriggerPayload(writePayloadFlag(triggerPayload, opt.flag, e.target.checked))}
+                      className="mt-0.5"
+                    />
+                    <span>
+                      <span className="font-semibold">{t(opt.label)}</span>
+                      <span className="block text-[11px] text-slate-400">{t(opt.help)}</span>
+                    </span>
+                  </label>
+                ))}
               </div>
             )}
 

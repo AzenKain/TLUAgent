@@ -42,6 +42,7 @@ type RoadmapOptimizationRequest struct {
 	TargetGraduationTerm int                     `json:"target_graduation_term" validate:"gte=1,lte=20"`
 	Transcript           []StudentCourseGrade    `json:"transcript" validate:"omitempty,dive"`
 	QuizAnswers          *PersonalityQuizAnswers `json:"quiz_answers,omitempty" validate:"omitempty"`
+	SummerCourses        []string                `json:"summer_courses,omitempty" validate:"omitempty,max=20,dive,max=50"`
 }
 
 // ScheduledCourse represents a planned course inside a future semester.

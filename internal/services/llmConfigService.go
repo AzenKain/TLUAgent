@@ -1050,8 +1050,18 @@ func (s *llmConfigService) SyncLLMManager(ctx context.Context) error {
 					IsActive:     nr.NodeIsActive == 1,
 				}
 
+				if nr.ThinkingEnabled == 1 {
+					enabled := true
+					node.Thinking = &enabled
+					node.Effort = strings.TrimSpace(nr.EffortLevel)
+					if nr.ThinkingBudget > 0 {
+						budget := int(nr.ThinkingBudget)
+						node.ThinkBudget = &budget
+					}
+				}
+
 				switch chainType {
-				case llm.ChainTypeChat:
+				case llm.ChainTypeChat, llm.ChainTypeAudit:
 					if p, err := s.manager.Get(nr.ProviderID); err == nil {
 						node.Provider = p
 					}
@@ -1338,6 +1348,13 @@ func (s *llmConfigService) DeleteChain(ctx context.Context, id string) error {
 	return nil
 }
 
+func modelTypeForChain(chainType string) string {
+	if chainType == string(llm.ChainTypeAudit) {
+		return string(llm.ChainTypeChat)
+	}
+	return chainType
+}
+
 func (s *llmConfigService) AddChainNode(ctx context.Context, chainID string, req request.AddChainNodeRequest) (response.LLMChainNodeResponse, error) {
 	chain, err := s.repo.GetChain(ctx, chainID)
 	if err != nil {
@@ -1349,7 +1366,7 @@ func (s *llmConfigService) AddChainNode(ctx context.Context, chainID string, req
 		return response.LLMChainNodeResponse{}, fmt.Errorf("model not found: %w", err)
 	}
 
-	if model.ModelType != chain.ChainType {
+	if model.ModelType != modelTypeForChain(chain.ChainType) {
 		return response.LLMChainNodeResponse{}, fmt.Errorf("model type '%s' does not match chain type '%s'", model.ModelType, chain.ChainType)
 	}
 
@@ -1569,7 +1586,7 @@ func (s *llmConfigService) TestModel(ctx context.Context, req request.TestLLMMod
 			return nil, errors.New("chain has no active nodes registered")
 		}
 
-		if chain.ChainType == string(llm.ChainTypeChat) {
+		if chain.ChainType == string(llm.ChainTypeChat) || chain.ChainType == string(llm.ChainTypeAudit) {
 			sysPrompt := req.SystemPrompt
 			if sysPrompt == "" {
 				sysPrompt = "You are an AI assistant. Answer concisely."

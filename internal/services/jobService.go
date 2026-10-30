@@ -105,11 +105,12 @@ func NewJobService(
 		repo:  repo,
 		queue: queue,
 		tasks: map[string]string{
-			constants.JobTypeCleanCorpus:      "Wipe RAG knowledge base and conflict audit logs",
-			constants.JobTypeCrawlNotices:     "End-to-end in-memory crawl, extraction, embedding, and supersession of announcements",
-			constants.JobTypeCrawlNews:        "End-to-end in-memory crawl, extraction, and embedding of news",
-			constants.JobTypeCrawlStaticPages: "End-to-end in-memory crawl of student handbook and regulation static pages",
-			constants.JobTypeSupersedeCheck:   "Agent-driven regulation conflict, amendment, and supersession evaluation",
+			constants.JobTypeCleanCorpus:        "Wipe RAG knowledge base and conflict audit logs",
+			constants.JobTypeCrawlNotices:       "End-to-end in-memory crawl, extraction, embedding, and supersession of announcements",
+			constants.JobTypeCrawlNews:          "End-to-end in-memory crawl, extraction, and embedding of news",
+			constants.JobTypeCrawlStaticPages:   "End-to-end in-memory crawl of student handbook and regulation static pages",
+			constants.JobTypeSupersedeCheck:     "Agent-driven regulation conflict, amendment, and supersession evaluation",
+			constants.JobTypeReextractDocuments: "Re-extract stored announcement attachments with table-aware parsing and vision OCR for corrupted text layers",
 		},
 		llmManager: llmManager,
 		ragService: ragService,
@@ -137,6 +138,16 @@ type crawlPayload struct {
 }
 
 // parseCrawlOptions reads the optional payload switches of the crawl jobs.
+func parseAuditFull(payload string) bool {
+	var p struct {
+		Full bool `json:"full"`
+	}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(payload)), &p); err != nil {
+		return false
+	}
+	return p.Full
+}
+
 func parseCrawlOptions(payload string) (fetchAttachments bool) {
 	var p crawlPayload
 	if err := json.Unmarshal([]byte(strings.TrimSpace(payload)), &p); err != nil {
@@ -193,14 +204,7 @@ func (s *jobService) registerHandlers() {
 
 	s.queue.RegisterHandler(constants.JobTypeCrawlNotices, func(ctx context.Context, jobID, payload string) error {
 		maxPages, maxTimeDays := parseCrawlPayload(payload)
-		return s.crawlCMSCollections(ctx, jobID, []cmsCrawlSource{{
-			Collection:      crawler.CMSCollectionAnnouncements,
-			DocType:         constants.DocTypeNotice,
-			IDPrefix:        "DOC_THONG_BAO_",
-			MinBody:         120,
-			FetchAttachment: parseCrawlOptions(payload),
-			AllowTitleOnly:  true,
-		}}, maxPages, maxTimeDays)
+		return s.crawlCMSCollections(ctx, jobID, []cmsCrawlSource{noticeCrawlSource(parseCrawlOptions(payload))}, maxPages, maxTimeDays)
 	})
 
 	s.queue.RegisterHandler(constants.JobTypeCrawlNews, func(ctx context.Context, jobID, payload string) error {
@@ -235,6 +239,8 @@ func (s *jobService) registerHandlers() {
 		}}, maxPages, maxTimeDays)
 	})
 
+	s.queue.RegisterHandler(constants.JobTypeReextractDocuments, s.reextractDocuments)
+
 	s.queue.RegisterHandler(constants.JobTypeSupersedeCheck, func(ctx context.Context, jobID, payload string) error {
 		if s.detector == nil || s.detector.Engine() == nil {
 			return nil
@@ -244,10 +250,76 @@ func (s *jobService) registerHandlers() {
 				log.Warn().Err(err).Msg("Knowledge graph repair before supersession audit failed")
 			}
 		}
-		return s.detector.Engine().AuditCorpusChronological(ctx, func(cur, total int64) {
+		return s.detector.Engine().AuditCorpus(ctx, AuditOptions{Full: parseAuditFull(payload)}, func(cur, total int64) {
 			_, _ = s.repo.UpdateJobProgress(ctx, jobID, cur, total)
 		})
 	})
+}
+
+const attachmentOverlapRunes = 150
+
+func noticeCrawlSource(fetchAttachments bool) cmsCrawlSource {
+	return cmsCrawlSource{
+		Collection:      crawler.CMSCollectionAnnouncements,
+		DocType:         constants.DocTypeNotice,
+		IDPrefix:        "DOC_THONG_BAO_",
+		MinBody:         120,
+		FetchAttachment: fetchAttachments,
+		AllowTitleOnly:  true,
+	}
+}
+
+func newCMSClient() (*crawler.CMSClient, error) {
+	return crawler.NewCMSClient(crawler.CMSConfig{
+		BaseURL: config.GetConfigWithDefault("CMS_API_BASE_URL", ""),
+		SiteURL: config.GetConfigWithDefault("CMS_SITE_URL", ""),
+		Locale:  config.GetConfigWithDefault("CMS_LOCALE", crawler.DefaultCMSLocale),
+		DelayMs: 60,
+	})
+}
+
+func (s *jobService) newAttachmentCrawler(client *crawler.CMSClient) (*crawler.Crawler, error) {
+	if strings.TrimSpace(client.SiteURL()) == "" {
+		return nil, fmt.Errorf("CMS_SITE_URL is required to download attachments")
+	}
+	return crawler.NewCrawler(crawler.Config{
+		BaseURL:         client.SiteURL(),
+		DelayMs:         60,
+		Concurrency:     3,
+		MaxRetries:      5,
+		IgnoredDriveIDs: TLUIgnoredDriveIDs,
+		VisionOCR:       s.visionOCRHandler(),
+	})
+}
+
+func cmsItemBody(ctx context.Context, source cmsCrawlSource, item *crawler.CMSItem, attachments *crawler.Crawler) string {
+	body := strings.TrimSpace(item.Body)
+	if source.FetchAttachment && attachments != nil && item.AttachmentURL != "" {
+		if attachmentText := attachments.AttachmentText(ctx, item.AttachmentURL); attachmentText != "" {
+			body = mergeBodyAndAttachment(body, attachmentText)
+		}
+	}
+	return body
+}
+
+// mergeBodyAndAttachment joins the page body with its attachment text unless one already contains the other.
+func mergeBodyAndAttachment(body, attachment string) string {
+	attachment = strings.TrimSpace(attachment)
+	bodyKey, attachmentKey := documentTitleKey(body), documentTitleKey(attachment)
+	switch {
+	case attachmentKey == "":
+		return body
+	case bodyKey == "":
+		return attachment
+	case strings.Contains(bodyKey, attachmentKey):
+		return body
+	case strings.Contains(attachmentKey, bodyKey):
+		return attachment
+	}
+	if prefix := []rune(attachmentKey); len(prefix) > attachmentOverlapRunes && strings.Contains(bodyKey, string(prefix[:attachmentOverlapRunes])) {
+		return body
+	}
+	return body + "\n\n" + attachment
 }
 
 type cmsCrawlSource struct {
@@ -281,29 +353,14 @@ func (s *jobService) crawlCMSCollections(ctx context.Context, jobID string, sour
 		return nil
 	}
 
-	client, err := crawler.NewCMSClient(crawler.CMSConfig{
-		BaseURL: config.GetConfigWithDefault("CMS_API_BASE_URL", ""),
-		SiteURL: config.GetConfigWithDefault("CMS_SITE_URL", ""),
-		Locale:  config.GetConfigWithDefault("CMS_LOCALE", crawler.DefaultCMSLocale),
-		DelayMs: 60,
-	})
+	client, err := newCMSClient()
 	if err != nil {
 		return err
 	}
 
 	var attachmentCrawler *crawler.Crawler
-	if needsAttachments(sources) && strings.TrimSpace(client.SiteURL()) == "" {
-		return fmt.Errorf("CMS_SITE_URL is required to download attachments")
-	}
 	if needsAttachments(sources) {
-		attachmentCrawler, err = crawler.NewCrawler(crawler.Config{
-			BaseURL:         client.SiteURL(),
-			DelayMs:         60,
-			Concurrency:     3,
-			MaxRetries:      5,
-			IgnoredDriveIDs: TLUIgnoredDriveIDs,
-			VisionOCR:       s.visionOCRHandler(),
-		})
+		attachmentCrawler, err = s.newAttachmentCrawler(client)
 		if err != nil {
 			return err
 		}
@@ -361,12 +418,7 @@ func (s *jobService) crawlCMSCollections(ctx context.Context, jobID string, sour
 					item = detail
 				}
 
-				body := strings.TrimSpace(item.Body)
-				if len([]rune(body)) < source.MinBody && source.FetchAttachment && attachmentCrawler != nil && item.AttachmentURL != "" {
-					if attachmentText := attachmentCrawler.AttachmentText(ctx, item.AttachmentURL); attachmentText != "" {
-						body = strings.TrimSpace(body + "\n\n" + attachmentText)
-					}
-				}
+				body := cmsItemBody(ctx, source, item, attachmentCrawler)
 				if len([]rune(body)) < source.MinBody {
 					if !source.AllowTitleOnly {
 						skipped++
@@ -464,7 +516,8 @@ func (s *jobService) visionOCRHandler() crawler.VisionOCRHandler {
 			})
 		}
 		resp, err := provider.Chat(ctx, &llm.ChatRequest{
-			Model: provider.DefaultModel(),
+			Model:            provider.DefaultModel(),
+			ThinkingDisabled: true,
 			Messages: []llm.Message{
 				{
 					Role:  llm.RoleUser,
@@ -505,6 +558,11 @@ func (s *jobService) processCrawledDocumentInMemory(ctx context.Context, item *c
 	}
 
 	docType, domain, cohort, academicYear := extractCrawledDocumentMetadata(item.ID, item.Title, item.Category, item.PublishDate)
+	if cohort == constants.DocCohortAll && strings.HasPrefix(item.ID, noticeDocIDPrefix) {
+		if scoped := extractScopeCohortFromBody(item.Content); scoped != "" {
+			cohort = scoped
+		}
+	}
 
 	doc := &models.Document{
 		ID:               item.ID,
@@ -523,43 +581,7 @@ func (s *jobService) processCrawledDocumentInMemory(ctx context.Context, item *c
 		CharCount:        len(item.Content),
 	}
 
-	chunkTexts := splitIntoChunks(item.Content, 1200, 150)
-	var embeddings [][]float32
-	if s.llmManager != nil && len(chunkTexts) > 0 {
-		batchSize := 32
-		for i := 0; i < len(chunkTexts); i += batchSize {
-			end := i + batchSize
-			if end > len(chunkTexts) {
-				end = len(chunkTexts)
-			}
-			batch, err := s.llmManager.ExecuteEmbedding(ctx, chunkTexts[i:end])
-			if err != nil {
-				break
-			}
-			embeddings = append(embeddings, batch...)
-		}
-	}
-
-	var chunks []*models.DocumentChunk
-	for idx, text := range chunkTexts {
-		var emb []float32
-		if idx < len(embeddings) {
-			emb = embeddings[idx]
-		}
-		chunks = append(chunks, &models.DocumentChunk{
-			ID:               fmt.Sprintf(constants.PrefixChunk+"%s_%d", doc.ID, idx),
-			DocumentID:       doc.ID,
-			ChunkIndex:       idx,
-			ChunkType:        constants.ChunkTypeContent,
-			Content:          text,
-			Status:           constants.DocStatusActive,
-			Domain:           domain,
-			ApplicableCohort: cohort,
-			AcademicYear:     academicYear,
-			PriorityLevel:    doc.PriorityLevel,
-			Embedding:        emb,
-		})
-	}
+	chunks := buildContentChunks(ctx, s.llmManager, doc, item.Content, constants.DocStatusActive)
 
 	docNode := &models.KGNode{
 		ID:       constants.PrefixDocNode + doc.ID,
@@ -687,6 +709,7 @@ func (s *jobService) ListTasks() []*response.JobTaskResponse {
 		constants.JobTypeCrawlNews,
 		constants.JobTypeCrawlStaticPages,
 		constants.JobTypeSupersedeCheck,
+		constants.JobTypeReextractDocuments,
 	}
 
 	result := make([]*response.JobTaskResponse, 0, len(s.tasks))
@@ -724,6 +747,8 @@ func (s *jobService) canonicalTaskType(t string) string {
 		return constants.JobTypeCrawlStaticPages
 	case "supersede.check", "supersede", "supersede_check":
 		return constants.JobTypeSupersedeCheck
+	case "reextract.documents", "reextract", "reextract_documents":
+		return constants.JobTypeReextractDocuments
 	default:
 		return strings.ReplaceAll(clean, ".", "_")
 	}
@@ -739,7 +764,7 @@ func (s *jobService) Trigger(ctx context.Context, jobType, payload string) (*res
 }
 
 func isCrawlerType(t string) bool {
-	return t == constants.JobTypeCrawlNotices || t == constants.JobTypeCrawlNews || t == constants.JobTypeCrawlStaticPages
+	return t == constants.JobTypeCrawlNotices || t == constants.JobTypeCrawlNews || t == constants.JobTypeCrawlStaticPages || t == constants.JobTypeReextractDocuments
 }
 
 func (s *jobService) triggerWithID(ctx context.Context, jobID, jobType, payload string) (*response.JobResponse, error) {

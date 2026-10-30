@@ -57,6 +57,15 @@ func (q *Queries) ClearAllKGNodes(ctx context.Context) error {
 	return err
 }
 
+const clearDocumentAuditStates = `-- name: ClearDocumentAuditStates :exec
+DELETE FROM document_audit_state
+`
+
+func (q *Queries) ClearDocumentAuditStates(ctx context.Context) error {
+	_, err := q.exec(ctx, q.clearDocumentAuditStatesStmt, clearDocumentAuditStates)
+	return err
+}
+
 const clearRegulationSupersessionAuditLogs = `-- name: ClearRegulationSupersessionAuditLogs :exec
 DELETE FROM supersession_audit_log
 WHERE superseded_doc_id IN (SELECT id FROM documents WHERE type IN ('QUY_CHE', 'QUY_DINH', 'QUYET_DINH', 'DE_AN', 'KE_HOACH', 'CTDT', 'SO_TAY'))
@@ -170,6 +179,17 @@ SELECT COUNT(*) FROM document_chunks
 
 func (q *Queries) CountChunksTotal(ctx context.Context) (int64, error) {
 	row := q.queryRow(ctx, q.countChunksTotalStmt, countChunksTotal)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countDocumentAuditStates = `-- name: CountDocumentAuditStates :one
+SELECT COUNT(*) FROM document_audit_state
+`
+
+func (q *Queries) CountDocumentAuditStates(ctx context.Context) (int64, error) {
+	row := q.queryRow(ctx, q.countDocumentAuditStatesStmt, countDocumentAuditStates)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -292,6 +312,21 @@ func (q *Queries) CreateSupersessionAuditRun(ctx context.Context, arg CreateSupe
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const deleteAuditLogPair = `-- name: DeleteAuditLogPair :exec
+DELETE FROM supersession_audit_log
+WHERE active_doc_id = ? AND superseded_doc_id = ?
+`
+
+type DeleteAuditLogPairParams struct {
+	ActiveDocID     string `json:"active_doc_id"`
+	SupersededDocID string `json:"superseded_doc_id"`
+}
+
+func (q *Queries) DeleteAuditLogPair(ctx context.Context, arg DeleteAuditLogPairParams) error {
+	_, err := q.exec(ctx, q.deleteAuditLogPairStmt, deleteAuditLogPair, arg.ActiveDocID, arg.SupersededDocID)
+	return err
 }
 
 const deleteChunksByDocumentID = `-- name: DeleteChunksByDocumentID :exec
@@ -518,6 +553,17 @@ func (q *Queries) GetChunksByIDs(ctx context.Context, ids []string) ([]DocumentC
 		return nil, err
 	}
 	return items, nil
+}
+
+const getDocumentAuditFingerprint = `-- name: GetDocumentAuditFingerprint :one
+SELECT fingerprint FROM document_audit_state WHERE document_id = ?
+`
+
+func (q *Queries) GetDocumentAuditFingerprint(ctx context.Context, documentID string) (string, error) {
+	row := q.queryRow(ctx, q.getDocumentAuditFingerprintStmt, getDocumentAuditFingerprint, documentID)
+	var fingerprint string
+	err := row.Scan(&fingerprint)
+	return fingerprint, err
 }
 
 const getDocumentByID = `-- name: GetDocumentByID :one
@@ -1584,6 +1630,22 @@ func (q *Queries) UpdateChunkStatus(ctx context.Context, arg UpdateChunkStatusPa
 	return err
 }
 
+const updateChunksCohortByDocumentID = `-- name: UpdateChunksCohortByDocumentID :exec
+UPDATE document_chunks
+SET applicable_cohort = ?
+WHERE document_id = ?
+`
+
+type UpdateChunksCohortByDocumentIDParams struct {
+	ApplicableCohort string `json:"applicable_cohort"`
+	DocumentID       string `json:"document_id"`
+}
+
+func (q *Queries) UpdateChunksCohortByDocumentID(ctx context.Context, arg UpdateChunksCohortByDocumentIDParams) error {
+	_, err := q.exec(ctx, q.updateChunksCohortByDocumentIDStmt, updateChunksCohortByDocumentID, arg.ApplicableCohort, arg.DocumentID)
+	return err
+}
+
 const updateDocumentChunksByDocIDStatus = `-- name: UpdateDocumentChunksByDocIDStatus :exec
 UPDATE document_chunks
 SET status = ?
@@ -1777,6 +1839,22 @@ func (q *Queries) UpsertDocument(ctx context.Context, arg UpsertDocumentParams) 
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const upsertDocumentAuditFingerprint = `-- name: UpsertDocumentAuditFingerprint :exec
+INSERT INTO document_audit_state (document_id, fingerprint, audited_at)
+VALUES (?, ?, CURRENT_TIMESTAMP)
+ON CONFLICT(document_id) DO UPDATE SET fingerprint = excluded.fingerprint, audited_at = CURRENT_TIMESTAMP
+`
+
+type UpsertDocumentAuditFingerprintParams struct {
+	DocumentID  string `json:"document_id"`
+	Fingerprint string `json:"fingerprint"`
+}
+
+func (q *Queries) UpsertDocumentAuditFingerprint(ctx context.Context, arg UpsertDocumentAuditFingerprintParams) error {
+	_, err := q.exec(ctx, q.upsertDocumentAuditFingerprintStmt, upsertDocumentAuditFingerprint, arg.DocumentID, arg.Fingerprint)
+	return err
 }
 
 const upsertDocumentChunk = `-- name: UpsertDocumentChunk :one

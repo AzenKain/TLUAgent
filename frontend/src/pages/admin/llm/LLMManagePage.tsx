@@ -741,7 +741,7 @@ export const LLMManagePage: React.FC = () => {
   const handleOpenAddNode = (c: LLMChainDTO) => {
     setSelectedChainForNode(c);
     const validModels = models.filter((m) => {
-      if (m.model_type !== c.chain_type) return false;
+      if (m.model_type !== (c.chain_type === 'audit' ? 'chat' : c.chain_type)) return false;
       if (c.chain_type === 'embedding' && c.nodes.length > 0) {
         return m.model_key === c.nodes[0].model_key;
       }
@@ -1572,7 +1572,7 @@ export const LLMManagePage: React.FC = () => {
                         </span>
                         <Badge
                           variant={
-                            chain.chain_type === 'chat'
+                            chain.chain_type === 'chat' || chain.chain_type === 'audit'
                               ? 'primary'
                               : chain.chain_type === 'rerank'
                               ? 'secondary'
@@ -1585,6 +1585,11 @@ export const LLMManagePage: React.FC = () => {
                         <Badge variant={chain.is_active ? 'success' : 'secondary'} size="sm">
                           {chain.is_active ? t('llm.active_badge') : t('llm.inactive_badge')}
                         </Badge>
+                        {chain.chain_type === 'audit' && chain.nodes.length === 0 && (
+                          <Badge variant="warning" size="sm">
+                            {t('llm.audit_chain_empty')}
+                          </Badge>
+                        )}
                       </div>
                       {chain.description && (
                         <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
@@ -3516,6 +3521,7 @@ export const LLMManagePage: React.FC = () => {
                 <option value="chat">{t('llm.chain_type_chat')}</option>
                 <option value="rerank">{t('llm.chain_type_rerank')}</option>
                 <option value="embedding">{t('llm.chain_type_embedding')}</option>
+                <option value="audit">{t('llm.chain_type_audit')}</option>
               </select>
             </div>
           </div>

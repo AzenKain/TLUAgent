@@ -29,6 +29,7 @@ import (
 	"tluagent-web/pkg/constants"
 	"tluagent-web/pkg/guardrail"
 	"tluagent-web/pkg/llm"
+	"tluagent-web/pkg/pipeline"
 )
 
 // RAGService provides hybrid retrieval, knowledge graph traversal, and document ingestion.
@@ -51,6 +52,12 @@ type RAGService interface {
 	WipeCorpus(ctx context.Context) error
 	RepairDocumentGraph(ctx context.Context, limit int) (*models.GraphRepairResult, error)
 	RepairDuplicateDocuments(ctx context.Context) (*models.DuplicateRepairResult, error)
+	RepairInvalidSupersessions(ctx context.Context) (*models.SupersessionRepairResult, error)
+	RepairDocumentCohorts(ctx context.Context) (int, error)
+	UpdateDocumentCohort(ctx context.Context, docID, cohort string) error
+	RevertSupersession(ctx context.Context, activeDocID, supersededDocID string) error
+	ListReextractCandidates(ctx context.Context, ids []string, minGarble float64) ([]*models.ReextractCandidate, error)
+	ReplaceDocumentContent(ctx context.Context, docID, content string) error
 }
 
 type ragService struct {
@@ -156,7 +163,23 @@ var vietnameseStopWords = map[string]bool{
 	"xin": true, "hỏi": true, "hãy": true, "giúp": true, "tôi": true, "em": true,
 }
 
-func scoreChunk(chunk *models.DocumentChunk, doc *models.Document, queryEmbedding []float32, queryTokens []string, minScore float32) *models.RAGSearchResultItem {
+const explicitCohortBoost = 0.08
+
+// explicitCohortMatch reports whether the chunk names the student's cohort instead of applying to all cohorts.
+func explicitCohortMatch(chunkCohort, studentCohort string) bool {
+	studentCohort = strings.ToUpper(strings.TrimSpace(studentCohort))
+	if studentCohort == "" || chunkCohort == "" || chunkCohort == constants.DocCohortAll {
+		return false
+	}
+	for _, c := range strings.Split(chunkCohort, ",") {
+		if strings.ToUpper(strings.TrimSpace(c)) == studentCohort {
+			return true
+		}
+	}
+	return false
+}
+
+func scoreChunk(chunk *models.DocumentChunk, doc *models.Document, queryEmbedding []float32, queryTokens []string, minScore float32, studentCohort string) *models.RAGSearchResultItem {
 	var vecSim float32
 	if len(queryEmbedding) > 0 && len(chunk.Embedding) > 0 {
 		vecSim = models.CosineSimilarity(queryEmbedding, chunk.Embedding)
@@ -248,6 +271,9 @@ func scoreChunk(chunk *models.DocumentChunk, doc *models.Document, queryEmbeddin
 	}
 	if finalScore < minThreshold {
 		return nil
+	}
+	if explicitCohortMatch(chunk.ApplicableCohort, studentCohort) {
+		finalScore += explicitCohortBoost
 	}
 
 	item := &models.RAGSearchResultItem{
@@ -403,7 +429,7 @@ func (s *ragService) executeSearch(ctx context.Context, params models.RAGSearchP
 				continue
 			}
 			doc := docCache[chunk.DocumentID]
-			if item := scoreChunk(chunk, doc, queryEmbedding, queryTokens, params.MinScore); item != nil {
+			if item := scoreChunk(chunk, doc, queryEmbedding, queryTokens, params.MinScore, params.StudentCohort); item != nil {
 				validResults = append(validResults, item)
 			}
 		}
@@ -433,7 +459,7 @@ func (s *ragService) executeSearch(ctx context.Context, params models.RAGSearchP
 						continue
 					}
 					d := docCache[c.DocumentID]
-					if item := scoreChunk(c, d, queryEmbedding, queryTokens, params.MinScore); item != nil {
+					if item := scoreChunk(c, d, queryEmbedding, queryTokens, params.MinScore, params.StudentCohort); item != nil {
 						local = append(local, item)
 					}
 				}
@@ -732,6 +758,81 @@ func (s *ragService) RepairDuplicateDocuments(ctx context.Context) (*models.Dupl
 
 func documentTitleKey(title string) string {
 	return strings.Join(strings.Fields(strings.ToLower(strings.TrimSpace(title))), " ")
+}
+
+// ListReextractCandidates returns the requested documents, or every document with corrupted or title-only stored text.
+func (s *ragService) ListReextractCandidates(ctx context.Context, ids []string, minGarble float64) ([]*models.ReextractCandidate, error) {
+	rows, err := s.ragRepo.ListAllDocumentIdentifiers(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list document identifiers: %w", err)
+	}
+	wanted := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		wanted[strings.TrimSpace(id)] = true
+	}
+
+	var out []*models.ReextractCandidate
+	for _, row := range rows {
+		if len(wanted) > 0 && !wanted[row.ID] {
+			continue
+		}
+		chunks, err := s.ragRepo.GetChunksByDocumentID(ctx, row.ID)
+		if err != nil {
+			return nil, fmt.Errorf("load chunks of %s: %w", row.ID, err)
+		}
+		parts := make([]string, 0, len(chunks))
+		for _, ch := range chunks {
+			parts = append(parts, ch.Content)
+		}
+		text := strings.Join(parts, "\n")
+		ratio := pipeline.TextGarbleRatio(text)
+		doc, err := s.ragRepo.GetDocumentByID(ctx, row.ID)
+		if err != nil {
+			return nil, fmt.Errorf("load document %s: %w", row.ID, err)
+		}
+		if len(wanted) == 0 && ratio < minGarble && !isTitleOnlyContent(text, doc.Title) {
+			continue
+		}
+		out = append(out, &models.ReextractCandidate{ID: row.ID, Title: doc.Title, PublishDate: doc.PublishDate, Text: text, GarbleRatio: ratio})
+	}
+	return out, nil
+}
+
+// ReplaceDocumentContent swaps a document's chunks for freshly extracted text while keeping its id, status and graph links.
+func (s *ragService) ReplaceDocumentContent(ctx context.Context, docID, content string) error {
+	if strings.TrimSpace(content) == "" {
+		return fmt.Errorf("empty content for document %s", docID)
+	}
+	doc, err := s.ragRepo.GetDocumentByID(ctx, docID)
+	if err != nil {
+		return fmt.Errorf("load document %s: %w", docID, err)
+	}
+	previous, err := s.ragRepo.GetChunksByDocumentID(ctx, docID)
+	if err != nil {
+		return fmt.Errorf("load chunks of %s: %w", docID, err)
+	}
+	status := constants.DocStatusActive
+	if len(previous) > 0 {
+		status = previous[0].Status
+	}
+
+	chunks := buildContentChunks(ctx, s.llmManager, doc, content, status)
+	if len(chunks) == 0 {
+		return fmt.Errorf("no chunks produced for document %s", docID)
+	}
+	if err := s.ragRepo.DeleteChunksByDocumentID(ctx, docID); err != nil {
+		return fmt.Errorf("delete old chunks: %w", err)
+	}
+	if err := s.ragRepo.UpsertChunksBatch(ctx, chunks); err != nil {
+		_ = s.ragRepo.UpsertChunksBatch(ctx, previous)
+		return fmt.Errorf("insert new chunks: %w", err)
+	}
+
+	doc.CharCount = len(content)
+	if _, err := s.ragRepo.UpsertDocument(ctx, doc); err != nil {
+		return fmt.Errorf("update document: %w", err)
+	}
+	return nil
 }
 
 func (s *ragService) IngestDocument(ctx context.Context, doc *models.Document, chunks []*models.DocumentChunk, nodes []*models.KGNode, edges []*models.KGEdge) error {

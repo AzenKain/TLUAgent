@@ -18,11 +18,15 @@ import {
   AlertTriangle,
   User as UserIcon,
   Users,
+  Brain,
+  LogOut,
 } from 'lucide-react';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { Badge } from '@/components/common/Badge';
 import { Modal } from '@/components/common/Modal';
 import { ConfirmModal } from '@/components/common/ConfirmModal';
+import { StudentMemoryModal } from '@/components/users/StudentMemoryModal';
+import { userService } from '@/services/userService';
 import { PasswordStrengthMeter } from '@/components/common/PasswordStrengthMeter';
 import { PageHeader } from '@/components/common/PageHeader';
 import { RefreshButton } from '@/components/common/RefreshButton';
@@ -53,6 +57,9 @@ interface UserRowActionsProps {
   onResetPass: (user: User) => void;
   onDelete: (user: User) => void;
   onRestore: (user: User) => void;
+  canViewMemory: boolean;
+  onViewMemory: (user: User) => void;
+  onRevokeSessions: (user: User) => void;
   variant: 'table' | 'card';
 }
 
@@ -69,6 +76,9 @@ const UserRowActions: React.FC<UserRowActionsProps> = ({
   onResetPass,
   onDelete,
   onRestore,
+  canViewMemory,
+  onViewMemory,
+  onRevokeSessions,
   variant,
 }) => {
   const { t } = useTranslation();
@@ -128,6 +138,26 @@ const UserRowActions: React.FC<UserRowActionsProps> = ({
           className={`${iconButtonClass} text-slate-500 hover:text-tlu-blue hover:bg-blue-50 dark:hover:bg-blue-950/40`}
         >
           <KeyRound className="w-4 h-4" />
+        </button>
+      )}
+      {canViewMemory && (
+        <button
+          onClick={() => onViewMemory(user)}
+          title={t('users.memory_action')}
+          aria-label={t('users.memory_action')}
+          className={`${iconButtonClass} text-slate-500 hover:text-violet-600 hover:bg-violet-50 dark:hover:bg-violet-950/40`}
+        >
+          <Brain className="w-4 h-4" />
+        </button>
+      )}
+      {canManageUsers && !isCurrent && (
+        <button
+          onClick={() => onRevokeSessions(user)}
+          title={t('users.revoke_sessions_action')}
+          aria-label={t('users.revoke_sessions_action')}
+          className={`${iconButtonClass} text-slate-500 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/40`}
+        >
+          <LogOut className="w-4 h-4" />
         </button>
       )}
       {canManageUsers && !isCurrent && !user.is_owner && (
@@ -190,6 +220,7 @@ export const UsersListPage: React.FC = () => {
 
   const canManageUsers = can('user.manage') || isAdmin;
   const canManageRoles = can('role.manage') || isAdmin;
+  const canViewMemory = can('memory.manage') || isAdmin;
 
   const {
     search,
@@ -376,6 +407,9 @@ export const UsersListPage: React.FC = () => {
 
   const [deletingUser, setDeletingUser] = React.useState<User | null>(null);
   const [actionError, setActionError] = React.useState<string | null>(null);
+  const [memoryUser, setMemoryUser] = React.useState<User | null>(null);
+  const [revokingUser, setRevokingUser] = React.useState<User | null>(null);
+  const [isRevoking, setIsRevoking] = React.useState(false);
 
   const handleDelete = async (u: User) => {
     setDeletingUser(u);
@@ -390,6 +424,20 @@ export const UsersListPage: React.FC = () => {
     } catch (err: unknown) {
       const errorMsg = getApiErrorMessage(err, t('users.error_delete_failed'));
       setActionError(errorMsg);
+    }
+  };
+
+  const confirmRevoke = async () => {
+    if (!revokingUser) return;
+    setIsRevoking(true);
+    try {
+      await userService.revokeSessions(revokingUser.id);
+      showToast(t('users.toast_sessions_revoked'));
+      setRevokingUser(null);
+    } catch (err: unknown) {
+      setActionError(getApiErrorMessage(err, t('users.error_revoke_failed')));
+    } finally {
+      setIsRevoking(false);
     }
   };
 
@@ -416,6 +464,9 @@ export const UsersListPage: React.FC = () => {
       onResetPass={openResetPassModal}
       onDelete={handleDelete}
       onRestore={handleRestore}
+      canViewMemory={canViewMemory}
+      onViewMemory={setMemoryUser}
+      onRevokeSessions={setRevokingUser}
       variant={variant}
     />
   );
@@ -964,6 +1015,18 @@ export const UsersListPage: React.FC = () => {
         variant="danger"
         isLoading={isDeleting}
       />
+
+      <ConfirmModal
+        isOpen={Boolean(revokingUser)}
+        onClose={() => setRevokingUser(null)}
+        onConfirm={confirmRevoke}
+        title={t('users.revoke_sessions_action')}
+        message={revokingUser ? t('users.confirm_revoke_sessions', { name: revokingUser.full_name }) : ''}
+        variant="warning"
+        isLoading={isRevoking}
+      />
+
+      <StudentMemoryModal user={memoryUser} onClose={() => setMemoryUser(null)} />
 
       <ConfirmModal
         isOpen={Boolean(actionError)}

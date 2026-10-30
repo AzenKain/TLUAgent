@@ -54,6 +54,7 @@ type DissectionRequest struct {
 	FilePath         string             `json:"file_path,omitempty"`
 	PriorityLevel    int                `json:"priority_level,omitempty"`
 	Candidates       []*models.Document `json:"-"`
+	FullContent      string             `json:"-"`
 }
 
 // SupersededArticleItem encapsulates an individual rule or clause marked for supersession.
@@ -111,8 +112,14 @@ type RegulatoryDissectionEngine struct {
 	sfg            *singleflight.Group
 
 	dissectFn      func(ctx context.Context, req *DissectionRequest) (*GranularSupersessionPlan, error)
+	auditFailed    *sync.Map
 	auditBatchSize int
 }
+
+const (
+	candidateExcerptRunes = 400
+	auditDocTimeout       = 8 * time.Minute
+)
 
 const (
 	DefaultAuditBatchSize = 200
@@ -126,6 +133,7 @@ func NewRegulatoryDissectionEngine(params EngineParams) *RegulatoryDissectionEng
 		q = sqlc.New(params.DB)
 	}
 	return &RegulatoryDissectionEngine{
+		auditFailed:    &sync.Map{},
 		q:              q,
 		ragRepo:        params.RAGRepo,
 		curriculumRepo: params.CurriculumRepo,
@@ -154,6 +162,36 @@ func compactDissectionHistory(ctx context.Context, msgs []llm.Message) []llm.Mes
 }
 
 // ExecuteDissectionLoop executes multi-turn tool verification to construct an article-level supersession plan.
+func needsInspection(p *request.RegulatoryProposeGranularSupersessionArgs, inspected map[string]bool) bool {
+	action := SupersessionAction(strings.TrimSpace(p.ActionType))
+	if action != ActionFullSupersede && action != ActionPartialAmend {
+		return false
+	}
+	return !inspected[strings.TrimSpace(p.TargetDocID)]
+}
+
+func (e *RegulatoryDissectionEngine) candidateExcerpt(ctx context.Context, docID string) string {
+	if e.ragRepo == nil {
+		return ""
+	}
+	chunks, err := e.ragRepo.GetChunksByDocumentID(ctx, docID)
+	if err != nil || len(chunks) == 0 {
+		return ""
+	}
+	text := strings.Join(strings.Fields(chunks[0].Content), " ")
+	if runes := []rune(text); len(runes) > candidateExcerptRunes {
+		text = string(runes[:candidateExcerptRunes]) + "..."
+	}
+	return text
+}
+
+func firstOrEmpty(values []string) string {
+	if len(values) == 0 {
+		return ""
+	}
+	return values[0]
+}
+
 func (e *RegulatoryDissectionEngine) ExecuteDissectionLoop(ctx context.Context, req *DissectionRequest) (*GranularSupersessionPlan, error) {
 	if req == nil {
 		return nil, fmt.Errorf("nil dissection request")
@@ -182,12 +220,16 @@ func (e *RegulatoryDissectionEngine) ExecuteDissectionLoop(ctx context.Context, 
 				}
 			}
 		}
+		fallbackAction, fallbackNote := e.reviewSupersessionAction(ctx, req, ActionFullSupersede, firstOrEmpty(candidateIDs))
+		if fallbackAction == ActionNone {
+			return e.buildDefaultPlan(req, parsedArticles, ActionNone, "", "", fallbackNote, nil, nil, []string{req.ApplicableCohort}, "LOW"), nil
+		}
 		if len(candidateIDs) > 0 {
 			risk := "MEDIUM"
 			if len(candidateIDs) > 1 {
 				risk = "HIGH"
 			}
-			action := ActionFullSupersede
+			action := fallbackAction
 			plan := e.buildDefaultPlan(req, parsedArticles, action, candidateIDs[0], candidateTitles[0], "Bãi bỏ các quy chế đang hiệu lực cùng lĩnh vực", nil, nil, []string{req.ApplicableCohort}, risk)
 			plan.BlastRadius.SupersededDocIDs = candidateIDs
 			plan.BlastRadius.SupersededDocNames = candidateTitles
@@ -214,14 +256,27 @@ func (e *RegulatoryDissectionEngine) ExecuteDissectionLoop(ctx context.Context, 
 
 	systemPrompt := agent.PromptRegulatoryDissection(req.NewDocID)
 
+	evidenceText := req.FullContent
+	if evidenceText == "" {
+		evidenceText = req.Content
+	}
+	clauses := extractReplacementClauses(evidenceText)
+	clauseMatches := matchClausesToCandidates(clauses, req.Candidates, func(id string) string { return e.documentText(ctx, id) })
+	pinned := make(map[string]bool, len(clauseMatches))
+	for _, m := range clauseMatches {
+		pinned[m.Candidate.ID] = true
+	}
+	req.Candidates = e.rankCandidates(ctx, req.NewDocID, req.Candidates, pinned)
+
 	candSummary := ""
 	if len(req.Candidates) > 0 {
 		var sb strings.Builder
 		sb.WriteString("\n\nCANDIDATE EARLIER ACTIVE REGULATIONS (FOUND IN DATABASE FOR COMPARISON):\n")
 		for _, c := range req.Candidates {
-			sb.WriteString(fmt.Sprintf("- ID: %s | Title: %s | Cohort: %s | AcademicYear: %s\n", c.ID, c.Title, c.ApplicableCohort, c.AcademicYear))
+			sb.WriteString(fmt.Sprintf("- ID: %s | Title: %s | Published: %s | Status: %s | Cohort: %s | AcademicYear: %s\n  Excerpt: %s\n", c.ID, c.Title, c.PublishDate, c.Status, c.ApplicableCohort, c.AcademicYear, e.candidateExcerpt(ctx, c.ID)))
 		}
 		sb.WriteString("\nEvaluate whether incoming document supersedes (FULL_SUPERSEDE), partially amends (PARTIAL_AMEND), or coexists with (COEXIST_BY_COHORT) any of the above candidates. Submit your decision using propose_granular_supersession.\n")
+		sb.WriteString(formatEvidence(clauses, clauseMatches))
 		candSummary = sb.String()
 	}
 
@@ -244,6 +299,7 @@ Full Document Content:
 	}
 
 	maxTurns := 4
+	inspected := map[string]bool{}
 	var finalProposal *request.RegulatoryProposeGranularSupersessionArgs
 	temp := 0.1
 
@@ -262,8 +318,14 @@ Full Document Content:
 			Temperature: &temp,
 		}
 
-		resp, err := e.mgr.Chat(ctx, chatReq)
+		resp, err := e.mgr.ChatWithChain(ctx, llm.ChainTypeAudit, chatReq)
 		if err != nil || resp == nil {
+			if err != nil {
+				log.Warn().Err(err).Str("doc_id", req.NewDocID).Msg("Supersession audit LLM call failed")
+			}
+			if finalProposal == nil {
+				return nil, fmt.Errorf("audit model unavailable for %s: %v", req.NewDocID, err)
+			}
 			break
 		}
 
@@ -293,11 +355,23 @@ Full Document Content:
 		}
 
 		for _, tc := range resp.Message.ToolCalls {
+			if tc.Function.Name == "inspect_document_articles" {
+				var args request.RegulatoryInspectDocumentArticlesArgs
+				_ = json.Unmarshal([]byte(tc.Function.Arguments), &args)
+				if args.DocumentID == "" && len(req.Candidates) > 0 {
+					args.DocumentID = req.Candidates[0].ID
+				}
+				inspected[args.DocumentID] = true
+			}
 			toolOut, isProposal := e.executeToolCall(ctx, req, tc)
 			if isProposal {
 				var p request.RegulatoryProposeGranularSupersessionArgs
 				if err := json.Unmarshal([]byte(tc.Function.Arguments), &p); err == nil {
-					finalProposal = &p
+					if needsInspection(&p, inspected) && turn < maxTurns-1 {
+						toolOut = `{"status":"REJECTED","error":"Call inspect_document_articles for the target document and quote the conflicting provisions of both documents in reason before proposing FULL_SUPERSEDE or PARTIAL_AMEND."}`
+					} else {
+						finalProposal = &p
+					}
 				}
 			}
 			messages = append(messages, llm.Message{
@@ -336,6 +410,11 @@ Full Document Content:
 			targetDocID = ""
 			actionType = ActionNone
 		}
+		if actionType != ActionNone && needsInspection(finalProposal, inspected) {
+			reason = strings.TrimSpace(reason + " Ignored: the target document was never inspected, so no supersession is justified.")
+			targetDocID = ""
+			actionType = ActionNone
+		}
 
 		targetTitle := ""
 		if targetDocID != "" && e.ragRepo != nil {
@@ -344,6 +423,26 @@ Full Document Content:
 			} else {
 				targetDocID = ""
 				actionType = ActionNone
+			}
+		}
+
+		if reviewed, note := e.reviewSupersessionAction(ctx, req, actionType, targetDocID); reviewed != actionType {
+			actionType = reviewed
+			reason = strings.TrimSpace(reason + " " + note)
+			if actionType == ActionNone {
+				targetDocID, targetTitle = "", ""
+			}
+		}
+
+		if actionType == ActionFullSupersede && e.dissectFn == nil && e.ragRepo != nil {
+			if target, err := e.ragRepo.GetDocumentByID(ctx, targetDocID); err == nil {
+				if verdict, why, ok := e.verifyFullSupersession(ctx, req, target); ok && verdict != ActionFullSupersede {
+					actionType = verdict
+					reason = strings.TrimSpace(reason + " Second opinion: " + why)
+					if actionType == ActionNone {
+						targetDocID, targetTitle = "", ""
+					}
+				}
 			}
 		}
 
@@ -455,9 +554,10 @@ func (e *RegulatoryDissectionEngine) executeToolCall(ctx context.Context, req *D
 	case "compare_article_diff":
 		var args request.RegulatoryCompareArticleDiffArgs
 		_ = json.Unmarshal([]byte(tc.Function.Arguments), &args)
-		diffOut := fmt.Sprintf("Độ dài văn bản cũ: %d ký tự | Độ dài văn bản mới: %d ký tự\nTrích đoạn cũ: %.150s\nTrích đoạn mới: %.150s",
-			len(args.OldArticleText), len(args.NewArticleText), args.OldArticleText, args.NewArticleText)
-		return diffOut, false
+		if args.OldDocumentID != "" {
+			return structuralArticleDiff(e.documentText(ctx, args.OldDocumentID), req.Content, args.ArticleNumber), false
+		}
+		return structuralArticleDiff(args.OldArticleText, args.NewArticleText, args.ArticleNumber), false
 
 	case "search_knowledge_graph":
 		var args request.RegulatorySearchKnowledgeGraphArgs
@@ -1107,7 +1207,7 @@ Prior Student Inquiry & Advice:
 Student Question: %s
 Advisor Reply: %s`, doc.Title, doc.DocCode, doc.Domain, strings.Join(relevantSnippets, "\n---\n"), inq.Question, inq.TeacherReply)
 
-	resp, err := e.mgr.Chat(ctx, &llm.ChatRequest{
+	resp, err := e.mgr.ChatWithChain(ctx, llm.ChainTypeAudit, &llm.ChatRequest{
 		Messages: []llm.Message{
 			{Role: llm.RoleSystem, Content: systemPrompt},
 			{Role: llm.RoleUser, Content: userPrompt},
@@ -1351,6 +1451,9 @@ func (e *RegulatoryDissectionEngine) AuditCorpusChronological(ctx context.Contex
 		if err := e.ragRepo.ResetRegulationSupersessions(ctx); err != nil {
 			return fmt.Errorf("failed to reset supersession state: %w", err)
 		}
+		if err := e.ragRepo.ClearAuditFingerprints(ctx); err != nil {
+			return fmt.Errorf("failed to clear audit fingerprints: %w", err)
+		}
 		run, err = e.ragRepo.CreateAuditRun(ctx, uuid.NewString(), "", total)
 		if err != nil {
 			return fmt.Errorf("failed to create audit run: %w", err)
@@ -1366,7 +1469,7 @@ func (e *RegulatoryDissectionEngine) AuditCorpusChronological(ctx context.Contex
 	}
 
 	if total == 0 {
-		return e.completeAuditRun(ctx, run.ID)
+		return e.finishFullRun(ctx, run.ID, docs)
 	}
 
 	startIdx := 0
@@ -1435,7 +1538,7 @@ func (e *RegulatoryDissectionEngine) AuditCorpusChronological(ctx context.Contex
 	sem := make(chan struct{}, auditConcurrency)
 
 	if startIdx >= len(docs) {
-		return e.completeAuditRun(ctx, run.ID)
+		return e.finishFullRun(ctx, run.ID, docs)
 	}
 
 	if budgetExhausted() || ctx.Err() != nil {
@@ -1506,7 +1609,7 @@ func (e *RegulatoryDissectionEngine) AuditCorpusChronological(ctx context.Contex
 					return
 				case sem <- struct{}{}:
 				}
-				e.auditOneDocument(ctx, doc, buckets[bucketKey], memory, &applyMu)
+				e.auditOneDocument(ctx, doc, buckets[bucketKey], memory, &applyMu, false)
 				<-sem
 				buckets[bucketKey] = append(buckets[bucketKey], doc)
 				windowDone[windowIdx[doc.ID]].Store(true)
@@ -1542,7 +1645,7 @@ func (e *RegulatoryDissectionEngine) AuditCorpusChronological(ctx context.Contex
 	}
 
 	log.Info().Str("run_id", run.ID).Int64("total", total).Msg("Supersession audit run finished processing all documents")
-	return e.completeAuditRun(ctx, run.ID)
+	return e.finishFullRun(ctx, run.ID, docs)
 }
 
 func (e *RegulatoryDissectionEngine) completeAuditRun(ctx context.Context, runID string) error {
@@ -1559,11 +1662,22 @@ func (e *RegulatoryDissectionEngine) completeAuditRun(ctx context.Context, runID
 	return nil
 }
 
-func (e *RegulatoryDissectionEngine) auditOneDocument(ctx context.Context, doc *models.Document, visited []*models.Document, memory *SupersessionLineageMemory, applyMu *sync.Mutex) {
+func (e *RegulatoryDissectionEngine) auditOneDocument(ctx context.Context, doc *models.Document, visited []*models.Document, memory *SupersessionLineageMemory, applyMu *sync.Mutex, recheck bool) {
 	if memory.IsSuperseded(doc.ID) {
 		return
 	}
-	if logged, err := e.ragRepo.DocumentHasAuditLog(ctx, doc.ID); err == nil && logged {
+	if !recheck {
+		if logged, err := e.ragRepo.DocumentHasAuditLog(ctx, doc.ID); err == nil && logged {
+			return
+		}
+	}
+
+	chunks, _ := e.ragRepo.GetChunksByDocumentID(ctx, doc.ID)
+	chunkTexts := make([]string, 0, len(chunks))
+	for _, ch := range chunks {
+		chunkTexts = append(chunkTexts, ch.Content)
+	}
+	if isTitleOnlyContent(strings.Join(chunkTexts, "\n"), doc.Title) {
 		return
 	}
 
@@ -1579,7 +1693,6 @@ func (e *RegulatoryDissectionEngine) auditOneDocument(ctx context.Context, doc *
 		return
 	}
 
-	chunks, _ := e.ragRepo.GetChunksByDocumentID(ctx, doc.ID)
 	var contentBuilder strings.Builder
 	for ci, ch := range chunks {
 		if ci > 0 {
@@ -1604,17 +1717,19 @@ func (e *RegulatoryDissectionEngine) auditOneDocument(ctx context.Context, doc *
 		ApplicableCohort: doc.ApplicableCohort,
 		AcademicYear:     doc.AcademicYear,
 		Content:          fullContent,
+		FullContent:      strings.Join(chunkTexts, "\n"),
 		PublishDate:      doc.PublishDate,
 		FilePath:         doc.FilePath,
 		PriorityLevel:    doc.PriorityLevel,
 		Candidates:       candidates,
 	}
 
-	docCtx, cancelDoc := context.WithTimeout(ctx, 40*time.Second)
+	docCtx, cancelDoc := context.WithTimeout(ctx, auditDocTimeout)
 	plan, err := e.dissectDocument(docCtx, req)
 	cancelDoc()
 	if err != nil {
 		log.Warn().Err(err).Str("doc_id", doc.ID).Msg("Supersession dissection failed for document")
+		e.auditFailed.Store(doc.ID, true)
 		return
 	}
 	if plan == nil || plan.TargetDocID == "" || plan.TargetDocID == doc.ID {

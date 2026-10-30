@@ -73,7 +73,7 @@ type ProbeVisionRequest struct {
 
 type CreateLLMChainRequest struct {
 	ID               string `json:"id" validate:"required,min=2,max=64"`
-	ChainType        string `json:"chain_type" validate:"required,oneof=chat rerank embedding"`
+	ChainType        string `json:"chain_type" validate:"required,oneof=chat rerank embedding audit"`
 	Name             string `json:"name" validate:"required,min=2,max=100"`
 	Description      string `json:"description" validate:"omitempty,max=500"`
 	IsActive         *bool  `json:"is_active" validate:"omitempty"`

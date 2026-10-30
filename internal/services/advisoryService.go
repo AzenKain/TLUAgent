@@ -360,32 +360,58 @@ func (s *advisoryService) resolveModelAndProvider(ctx context.Context, modelID s
 	return nil, row.ModelKey, &row
 }
 
-func (s *advisoryService) buildChatRequest(dto *request.ChatRequest, modelKey string, row *sqlc.GetLLMModelWithProviderRow, messages []llm.Message) *llm.ChatRequest {
+func (s *advisoryService) buildChatRequest(modelKey string, row *sqlc.GetLLMModelWithProviderRow, messages []llm.Message) *llm.ChatRequest {
 	req := &llm.ChatRequest{
 		Model:    modelKey,
 		Messages: messages,
 	}
-	if row != nil {
-		enabled := row.ThinkingEnabled == 1
-		req.ThinkingEnabled = &enabled
-		if row.ThinkingBudget > 0 {
-			b := int(row.ThinkingBudget)
-			req.ThinkingBudget = &b
-		}
-		if row.EffortLevel != "" {
-			req.ReasoningEffort = row.EffortLevel
-		}
+	if row == nil {
+		return req
 	}
-	if dto.ThinkingEnabled != nil {
-		req.ThinkingEnabled = dto.ThinkingEnabled
+	enabled := row.ThinkingEnabled == 1
+	req.ThinkingEnabled = &enabled
+	if !enabled {
+		return req
 	}
-	if dto.ThinkingBudget != nil {
-		req.ThinkingBudget = dto.ThinkingBudget
+	if row.ThinkingBudget > 0 {
+		budget := int(row.ThinkingBudget)
+		req.ThinkingBudget = &budget
 	}
-	if dto.EffortLevel != "" {
-		req.ReasoningEffort = dto.EffortLevel
-	}
+	req.ReasoningEffort = row.EffortLevel
 	return req
+}
+
+// finalizeWithoutTools asks the model for a closing answer when the tool loop ended without one.
+func (s *advisoryService) finalizeWithoutTools(ctx context.Context, prov llm.Provider, modelKey string, row *sqlc.GetLLMModelWithProviderRow, messages []llm.Message) (string, bool) {
+	hasToolResult := false
+	for _, m := range messages {
+		if m.Role == llm.RoleTool {
+			hasToolResult = true
+			break
+		}
+	}
+	if !hasToolResult {
+		return "", false
+	}
+	closing := append(append([]llm.Message{}, messages...), llm.Message{
+		Role:    llm.RoleUser,
+		Content: "The lookup budget is exhausted. Answer now in the user's language using only the information already retrieved. If it is insufficient or does not cover the student's cohort and major, say exactly what is missing and ask the student for it. Do not call any tool.",
+	})
+	req := s.buildChatRequest(modelKey, row, closing)
+	var resp *llm.ChatResponse
+	var err error
+	if prov != nil {
+		resp, err = prov.Chat(ctx, req)
+	}
+	if resp == nil && s.llmManager != nil {
+		resp, err = s.llmManager.Chat(ctx, req)
+	}
+	if err != nil || resp == nil {
+		return "", false
+	}
+	cleanReply, _ := processEscalation(resp.Message.Content)
+	reply := guardrail.SanitizeOutput(strings.TrimSpace(cleanReply))
+	return reply, reply != ""
 }
 
 func (s *advisoryService) fallbackReply(ctx context.Context, query string, sources []string, timestamp string) *response.ChatResponse {
@@ -767,6 +793,12 @@ func (s *advisoryService) executeAdvisorTool(ctx context.Context, userID string,
 		if major == "" && profile != nil && profile.Major != "" {
 			major = profile.Major
 		}
+		if (profile == nil || profile.CohortYear <= 0) && !cohortStatedByStudent(ctx, cohort) {
+			return &agent.ToolResult{
+				Content: "CONFIRMATION_REQUIRED: the student's cohort is not in the profile and the student has not stated it in this conversation. Do not infer it from class codes, student IDs or transcript headers. Ask the student which cohort and major they are in, then call this tool again.",
+				Title:   "Cohort confirmation required",
+			}, nil
+		}
 		var assumedDefaults []string
 		curSem := args.CurrentSemester
 		if curSem <= 0 {
@@ -847,6 +879,7 @@ func (s *advisoryService) executeAdvisorTool(ctx context.Context, userID string,
 			TargetGraduationTerm: targetTerm,
 			Transcript:           transcriptList,
 			QuizAnswers:          quizAnswers,
+			SummerCourses:        args.SummerCourses,
 		})
 		if err != nil || res == nil {
 			log.Warn().Err(err).Msg("advisory executeAdvisorTool: roadmap optimization failed")
@@ -1377,6 +1410,7 @@ func (s *advisoryService) Consult(ctx context.Context, userID string, dto *reque
 
 	nonce, _ := crypto.GenerateRandomHex(8)
 	messages, initialSources, profile, didCompact := s.buildMessages(ctx, userID, dto, nonce)
+	ctx = withStudentText(ctx, messages)
 	sources := initialSources
 
 	tools := s.getToolDefinitions(ctx)
@@ -1387,7 +1421,7 @@ func (s *advisoryService) Consult(ctx context.Context, userID string, dto *reque
 		var lastRoadmap *response.RoadmapOptimizationResultResponse
 
 		for turn := 0; turn < maxTurns; turn++ {
-			llmReq := s.buildChatRequest(dto, modelKey, modelRow, messages)
+			llmReq := s.buildChatRequest(modelKey, modelRow, messages)
 			llmReq.Tools = tools
 
 			var resp *llm.ChatResponse
@@ -1450,6 +1484,18 @@ func (s *advisoryService) Consult(ctx context.Context, userID string, dto *reque
 		}
 	}
 
+	if s.llmManager != nil && len(s.llmManager.List()) > 0 {
+		prov, modelKey, modelRow := s.resolveModelAndProvider(ctx, dto.ModelID)
+		if reply, ok := s.finalizeWithoutTools(ctx, prov, modelKey, modelRow, messages); ok {
+			return &response.ChatResponse{
+				Query:     dto.Query,
+				Reply:     reply,
+				Sources:   deduplicateSources(sources),
+				Timestamp: timestamp,
+			}, nil
+		}
+	}
+
 	return s.executeOfflineFallback(ctx, userID, profile, dto, nil, timestamp, sources)
 }
 
@@ -1500,6 +1546,7 @@ func (s *advisoryService) ConsultStream(ctx context.Context, userID string, dto 
 
 	nonce, _ := crypto.GenerateRandomHex(8)
 	messages, initialSources, profile, didCompact := s.buildMessages(ctx, userID, dto, nonce)
+	ctx = withStudentText(ctx, messages)
 	sources := initialSources
 
 	if didCompact && onEvent != nil {
@@ -1517,7 +1564,7 @@ func (s *advisoryService) ConsultStream(ctx context.Context, userID string, dto 
 		var lastRoadmap *response.RoadmapOptimizationResultResponse
 
 		for turn := 0; turn < maxTurns; turn++ {
-			llmReq := s.buildChatRequest(dto, modelKey, modelRow, messages)
+			llmReq := s.buildChatRequest(modelKey, modelRow, messages)
 			llmReq.Tools = tools
 			llmReq.Stream = true
 
@@ -1537,8 +1584,10 @@ func (s *advisoryService) ConsultStream(ctx context.Context, userID string, dto 
 				accumulators := make(map[int]*advisoryToolCallAccumulator)
 				var accOrder []int
 
+				emittedText := false
 				filterBuf := newStreamFilterBuffer(200, func(chunkToSend string) error {
 					if onEvent != nil {
+						emittedText = true
 						return onEvent(StreamEvent{
 							Type:    "chunk",
 							Content: chunkToSend,
@@ -1625,6 +1674,9 @@ func (s *advisoryService) ConsultStream(ctx context.Context, userID string, dto 
 
 				if len(accOrder) > 0 {
 					filterBuf.Reset()
+					if emittedText && onEvent != nil {
+						_ = onEvent(StreamEvent{Type: "reset"})
+					}
 					var assembledToolCalls []llm.ToolCall
 					for _, idx := range accOrder {
 						acc := accumulators[idx]
@@ -1882,6 +1934,26 @@ func (s *advisoryService) ConsultStream(ctx context.Context, userID string, dto 
 				return res, nil
 			}
 			break
+		}
+	}
+
+	if s.llmManager != nil && len(s.llmManager.List()) > 0 {
+		prov, modelKey, modelRow := s.resolveModelAndProvider(ctx, dto.ModelID)
+		if reply, ok := s.finalizeWithoutTools(ctx, prov, modelKey, modelRow, messages); ok {
+			dedupSources := deduplicateSources(sources)
+			if onEvent != nil {
+				_ = onEvent(StreamEvent{Type: "chunk", Content: reply})
+				if len(dedupSources) > 0 {
+					_ = onEvent(StreamEvent{Type: "sources", Sources: dedupSources})
+				}
+			}
+			return &response.ChatResponse{
+				Query:      dto.Query,
+				Reply:      reply,
+				Sources:    dedupSources,
+				Timestamp:  timestamp,
+				DidCompact: didCompact,
+			}, nil
 		}
 	}
 

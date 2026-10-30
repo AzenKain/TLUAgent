@@ -142,6 +142,9 @@ ORDER BY original_course_code ASC, replacement_course_code ASC;
 -- name: CountSubstitutions :one
 SELECT COUNT(*) FROM course_substitutions;
 
+-- name: CountCoursePrerequisites :one
+SELECT COUNT(*) FROM course_prerequisites;
+
 -- name: UpsertCourseGroupSubstitution :one
 INSERT INTO course_group_substitutions (
     id, target_description, replacement_rule_description, scope_cohort, scope_major,
@@ -252,7 +255,7 @@ WHERE (CAST(sqlc.arg('cohort_num') AS INTEGER) = 0 OR (min_cohort <= CAST(sqlc.a
 -- name: GetSubstitutionByID :one
 SELECT * FROM course_substitutions WHERE id = ? LIMIT 1;
 
--- name: DeleteCourseSubstitution :exec
+-- name: DeleteCourseSubstitution :execrows
 DELETE FROM course_substitutions WHERE id = ?;
 
 -- name: ListAllPrerequisitesForCohortAndMajor :many

@@ -122,6 +122,22 @@ export const ragAdminService = {
     return res.data.data;
   },
 
+  updateDocumentCohort: async (id: string, applicableCohort: string) => {
+    const res = await apiClient.patch<{
+      status: boolean;
+      message: string;
+    }>(`/admin/documents/${encodeURIComponent(id)}/cohort`, { applicable_cohort: applicableCohort });
+    return res.data;
+  },
+
+  revertSupersession: async (payload: { active_doc_id: string; superseded_doc_id: string }) => {
+    const res = await apiClient.post<{
+      status: boolean;
+      message: string;
+    }>('/admin/rag/audit-logs/revert', payload);
+    return res.data;
+  },
+
   updateDocumentStatus: async (
     id: string,
     payload: { status: string; superseded_by_id?: string; reason?: string }
@@ -193,5 +209,32 @@ export const ragAdminService = {
       data: { ingested_documents: number };
     }>('/admin/rag/sync');
     return res.data;
+  },
+};
+
+export interface RagSearchResultDTO {
+  chunk_id: string;
+  document_id: string;
+  doc_title: string;
+  doc_type: string;
+  domain: string;
+  applicable_cohort: string;
+  content: string;
+  vector_sim: number;
+  bm25_score: number;
+  priority_level: number;
+  final_score: number;
+}
+
+export interface RagSearchPayload {
+  query: string;
+  student_cohort?: string;
+  top_k?: number;
+}
+
+export const ragSearchService = {
+  async search(payload: RagSearchPayload): Promise<RagSearchResultDTO[]> {
+    const res = await apiClient.post<{ status: boolean; data: RagSearchResultDTO[] | null }>('/rag/search', payload);
+    return res.data.data ?? [];
   },
 };

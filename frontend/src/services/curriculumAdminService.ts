@@ -11,10 +11,6 @@ import type {
   CreateSubstitutionPayload,
   UpdateSubstitutionPayload,
   PaginatedResult,
-  RoadmapOptimizationRequest,
-  RoadmapOptimizationResult,
-  PersonalityQuizAnswers,
-  PersonalityQuizResult,
 } from '@/types/curriculum';
 
 export const curriculumAdminService = {
@@ -62,13 +58,6 @@ export const curriculumAdminService = {
     return res.data.data!;
   },
 
-  async getCourse(id: string): Promise<CurriculumCourse> {
-    const res = await apiClient.get<CommonResponse<CurriculumCourse>>(
-      `/admin/curriculums/courses/${id}`
-    );
-    return res.data.data!;
-  },
-
   async createCourse(data: CreateCoursePayload): Promise<CurriculumCourse> {
     const res = await apiClient.post<CommonResponse<CurriculumCourse>>(
       '/admin/curriculums/courses',
@@ -103,13 +92,6 @@ export const curriculumAdminService = {
     return res.data.data!;
   },
 
-  async getSubstitution(id: string): Promise<CourseSubstitution> {
-    const res = await apiClient.get<CommonResponse<CourseSubstitution>>(
-      `/admin/curriculums/substitutions/${id}`
-    );
-    return res.data.data!;
-  },
-
   async createSubstitution(data: CreateSubstitutionPayload): Promise<CourseSubstitution> {
     const res = await apiClient.post<CommonResponse<CourseSubstitution>>(
       '/admin/curriculums/substitutions',
@@ -133,23 +115,4 @@ export const curriculumAdminService = {
     await apiClient.delete(`/admin/curriculums/substitutions/${id}`);
   },
 
-  async optimizeRoadmap(
-    payload: RoadmapOptimizationRequest
-  ): Promise<RoadmapOptimizationResult> {
-    const res = await apiClient.post<CommonResponse<RoadmapOptimizationResult>>(
-      '/curriculums/roadmap/optimize',
-      payload
-    );
-    return res.data.data!;
-  },
-
-  async evaluateDiagnostic(
-    payload: PersonalityQuizAnswers
-  ): Promise<PersonalityQuizResult> {
-    const res = await apiClient.post<CommonResponse<PersonalityQuizResult>>(
-      '/curriculums/roadmap/diagnostic',
-      payload
-    );
-    return res.data.data!;
-  },
 };

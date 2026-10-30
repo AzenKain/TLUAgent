@@ -28,3 +28,6 @@ data/
 
 # Local environment (secrets)
 .env
+
+# E2E test harness (contains local test credentials)
+test/

@@ -449,6 +449,7 @@ func (s *tluclawService) ProcessAdminMessage(ctx context.Context, adminID string
 	maxTurns := 6
 	var previewCard *response.TLUClawPreviewCardResponse
 	var assistantReplyText string
+	var assistantReasoning string
 	var toolOutputs []string
 
 	for turn := 0; turn < maxTurns; turn++ {
@@ -458,8 +459,9 @@ func (s *tluclawService) ProcessAdminMessage(ctx context.Context, adminID string
 			Tools:       s.toolEngine.GetToolDefinitions(),
 			Temperature: &temp,
 		}
+		applyAdminReasoning(chatReq, req.ThinkingEnabled, req.EffortLevel)
 
-		chatResp, err := provider.Chat(ctx, chatReq)
+		chatResp, err := s.llmManager.Chat(ctx, chatReq)
 		if err != nil {
 			log.Warn().Err(err).Msg("tluclaw ProcessAdminMessage: provider chat failed")
 			break
@@ -489,6 +491,7 @@ func (s *tluclawService) ProcessAdminMessage(ctx context.Context, adminID string
 		}
 
 		assistantReplyText = chatResp.Message.Content
+		assistantReasoning = chatResp.Message.ReasoningContent
 		break
 	}
 
@@ -509,7 +512,7 @@ func (s *tluclawService) ProcessAdminMessage(ctx context.Context, adminID string
 		SessionID:        sessionID,
 		Role:             "assistant",
 		Content:          assistantReplyText,
-		ReasoningContent: "",
+		ReasoningContent: assistantReasoning,
 		ToolCallsJson:    "[]",
 		ToolCallID:       "",
 		MetadataJson:     metadataJSON,
@@ -527,7 +530,7 @@ func (s *tluclawService) ProcessAdminMessage(ctx context.Context, adminID string
 		SessionID:        sessionID,
 		MessageID:        botMsg.ID,
 		Reply:            assistantReplyText,
-		ReasoningContent: "",
+		ReasoningContent: assistantReasoning,
 		PreviewCard:      previewCard,
 		DidCompact:       didCompact,
 		CreatedAt:        time.Now(),
@@ -1397,4 +1400,21 @@ func (s *tluclawService) ListSnapshots(ctx context.Context, status string, limit
 		Snapshots: items,
 		Total:     total,
 	}, nil
+}
+
+const defaultAdminEffort = "medium"
+
+// applyAdminReasoning applies the thinking choice made by the admin; an absent choice leaves the model settings in charge.
+func applyAdminReasoning(req *llm.ChatRequest, enabled *bool, effort string) {
+	if enabled == nil {
+		return
+	}
+	req.ThinkingEnabled = enabled
+	if !*enabled {
+		return
+	}
+	req.ReasoningEffort = effort
+	if req.ReasoningEffort == "" {
+		req.ReasoningEffort = defaultAdminEffort
+	}
 }

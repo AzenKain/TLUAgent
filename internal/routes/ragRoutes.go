@@ -39,6 +39,8 @@ func RegisterRAGRoutes(
 	mux.Handle("GET /api/admin/documents", protectManage(ragCtrl.HandleGetDocuments))
 	mux.Handle("GET /api/admin/documents/{id}", protectManage(ragCtrl.HandleGetDocumentDetail))
 	mux.Handle("PATCH /api/admin/documents/{id}/status", protectManage(ragCtrl.HandleUpdateDocumentStatus))
+	mux.Handle("PATCH /api/admin/documents/{id}/cohort", protectManage(ragCtrl.HandleUpdateDocumentCohort))
+	mux.Handle("POST /api/admin/rag/audit-logs/revert", protectManage(ragCtrl.HandleRevertSupersession))
 	mux.Handle("GET /api/admin/knowledge-graph", protectManage(ragCtrl.HandleGetKnowledgeGraph))
 	mux.Handle("POST /api/admin/knowledge-graph/edges", protectManage(ragCtrl.HandleUpsertKGEdge))
 	mux.Handle("DELETE /api/admin/knowledge-graph/edges/{id}", protectManage(ragCtrl.HandleDeleteKGEdge))

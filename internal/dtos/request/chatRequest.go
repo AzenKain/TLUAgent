@@ -14,9 +14,6 @@ type ChatRequest struct {
 	ModelID         string           `json:"model_id,omitempty" validate:"omitempty,max=100"`
 	Images          []string         `json:"images,omitempty" validate:"omitempty,max=5,dive,image_url"`
 	History         []ChatMessageDTO `json:"history,omitempty" validate:"omitempty,max=50,dive"`
-	ThinkingEnabled *bool            `json:"thinking_enabled,omitempty"`
-	ThinkingBudget  *int             `json:"thinking_budget,omitempty" validate:"omitempty,gte=0,lte=100000"`
-	EffortLevel     string           `json:"effort_level,omitempty" validate:"omitempty,max=20"`
 }
 
 // CreateSessionRequest encapsulates input for creating a conversation.

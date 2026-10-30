@@ -336,9 +336,24 @@ func (s *roadmapOptimizer) OptimizeRoadmap(ctx context.Context, req *models.Road
 		}
 	}
 
+	summerPreferred := make(map[string]bool, len(req.SummerCourses))
+	for _, code := range req.SummerCourses {
+		if code = strings.ToUpper(strings.TrimSpace(code)); code != "" {
+			summerPreferred[code] = true
+		}
+	}
+
 	startSem := req.CurrentSemester + 1
 	if startSem <= 1 {
 		startSem = 1
+	}
+
+	if quizResult == nil && req.TargetGraduationTerm > 0 {
+		var remainingForPace float64
+		for _, c := range remainingCourses {
+			remainingForPace += c.Credits
+		}
+		targetPace = paceForTarget(remainingForPace, startSem, req.TargetGraduationTerm, targetPace)
 	}
 
 	scheduledSemesters, criticalPaths := s.scheduleSemesters(
@@ -349,6 +364,7 @@ func (s *roadmapOptimizer) OptimizeRoadmap(ctx context.Context, req *models.Road
 		passedMap,
 		failedMap,
 		req.QuizAnswers,
+		summerPreferred,
 	)
 
 	var remainingCredits float64
@@ -379,6 +395,16 @@ func (s *roadmapOptimizer) OptimizeRoadmap(ctx context.Context, req *models.Road
 		DowngradeRisk:          downgradeWarning,
 		Recommendations:        recommendations,
 	}).ToResponse(), nil
+}
+
+// paceForTarget derives the per-semester credit load needed to finish by the target term, bounded to a realistic range.
+func paceForTarget(remainingCredits float64, startSem, targetTerm int, fallback float64) float64 {
+	terms := targetTerm - startSem + 1
+	if terms <= 0 || remainingCredits <= 0 {
+		return fallback
+	}
+	pace := math.Ceil(remainingCredits / float64(terms))
+	return math.Min(22.0, math.Max(12.0, pace))
 }
 
 func (s *roadmapOptimizer) calculateFreeElectivesWaterfall(passedMap map[string]bool, crossMajor []string, languages []string) models.FreeElectiveWaterfall {
@@ -531,6 +557,7 @@ func (s *roadmapOptimizer) scheduleSemesters(
 	initiallyPassed map[string]bool,
 	failedMap map[string]bool,
 	quiz *models.PersonalityQuizAnswers,
+	summerPreferred map[string]bool,
 ) ([]*models.ScheduledSemester, []string) {
 	completed := make(map[string]bool)
 	for k, v := range initiallyPassed {
@@ -554,7 +581,7 @@ func (s *roadmapOptimizer) scheduleSemesters(
 	}
 
 	militaryScheduled := completed["PG121"]
-	allowSummer := quiz != nil && quiz.SummerWillingness
+	allowSummer := (quiz != nil && quiz.SummerWillingness) || len(summerPreferred) > 0
 
 	for len(unassigned) > 0 && currentSemNum <= maxSemesters {
 		isSummer := allowSummer && (currentSemNum%2 == 1 && currentSemNum > startSem)
@@ -572,6 +599,9 @@ func (s *roadmapOptimizer) scheduleSemesters(
 		eligible := make([]*dagNode, 0)
 		for _, node := range unassigned {
 			if isMilitaryCourse(node.course.CourseCode) {
+				continue
+			}
+			if summerPreferred[node.course.CourseCode] && !isSummer {
 				continue
 			}
 
@@ -593,6 +623,10 @@ func (s *roadmapOptimizer) scheduleSemesters(
 		}
 
 		sort.Slice(eligible, func(i, j int) bool {
+			pi, pj := summerPreferred[eligible[i].course.CourseCode], summerPreferred[eligible[j].course.CourseCode]
+			if pi != pj {
+				return pi
+			}
 			return eligible[i].priorityScore > eligible[j].priorityScore
 		})
 

@@ -357,7 +357,7 @@ func TestAdvisoryDynamicRoadmapPreferencesAndMemory(t *testing.T) {
 	}
 
 	optReq := &request.ChatRequest{
-		Query: "Tối ưu lại lộ trình học tập cho em với",
+		Query: "Em K35 ngành Công nghệ thông tin, tối ưu lại lộ trình học tập cho em với",
 	}
 	optResp, err := advisorySvc.Consult(ctx, testUser.ID, optReq)
 	if err != nil {

@@ -7,11 +7,7 @@ export interface JobDTO {
   progress: number;
   total?: number;
   payload_json?: string;
-  result_json?: string;
   error_msg?: string;
-  error_message?: string;
-  started_at?: string;
-  finished_at?: string;
   created_at: string;
   updated_at: string;
 }
@@ -21,7 +17,6 @@ export interface JobScheduleDTO {
   name: string;
   task_type?: string;
   job_type: string;
-  cron_expr?: string;
   interval_minutes?: number;
   interval_sec?: number;
   payload_json?: string;
@@ -37,7 +32,6 @@ export interface UpsertJobScheduleDTO {
   name: string;
   task_type?: string;
   job_type: string;
-  cron_expr?: string;
   interval_minutes?: number;
   interval_sec?: number;
   payload_json?: string;
@@ -61,11 +55,6 @@ export const jobService = {
     const response = await apiClient.get<{ status: boolean; data: { items: JobDTO[]; total: number } }>('/admin/jobs', {
       params,
     });
-    return response.data.data;
-  },
-
-  async getJob(id: string) {
-    const response = await apiClient.get<{ status: boolean; data: JobDTO }>(`/admin/jobs/${id}`);
     return response.data.data;
   },
 

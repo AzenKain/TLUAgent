@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   BookOpen,
   Search,
@@ -14,9 +14,11 @@ import {
   History,
 } from 'lucide-react';
 import { documentService } from '@/services/documentService';
+import { usePermissions } from '@/hooks/usePermissions';
+import { ConfirmModal } from '@/components/common/ConfirmModal';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { MarkdownRenderer } from '@/components/common/MarkdownRenderer';
-import type { DocumentDetailDTO } from '@/services/ragAdminService';
+import { ragAdminService, type DocumentDetailDTO } from '@/services/ragAdminService';
 
 interface DocumentViewerModalProps {
   isOpen: boolean;
@@ -38,6 +40,16 @@ export const DocumentViewerModal: React.FC<DocumentViewerModalProps> = ({
   const [activeTab, setActiveTab] = useState<'content' | 'metadata' | 'chunks' | 'audit'>('content');
   const [searchInDoc, setSearchInDoc] = useState('');
   const [isCopied, setIsCopied] = useState(false);
+  const queryClient = useQueryClient();
+  const { can } = usePermissions();
+  const canManage = can('rag.manage');
+  const [forceFetch, setForceFetch] = useState(false);
+  const [editingCohort, setEditingCohort] = useState(false);
+  const [cohortDraft, setCohortDraft] = useState('');
+  const [cohortError, setCohortError] = useState<string | null>(null);
+  const [savingCohort, setSavingCohort] = useState(false);
+  const [revertTarget, setRevertTarget] = useState<{ active: string; superseded: string } | null>(null);
+  const [reverting, setReverting] = useState(false);
 
   if (documentIdentifier !== prevDocProp) {
     setPrevDocProp(documentIdentifier);
@@ -57,11 +69,11 @@ export const DocumentViewerModal: React.FC<DocumentViewerModalProps> = ({
   } = useQuery({
     queryKey: ['document-viewer-detail', targetIdentifier],
     queryFn: () => (targetIdentifier ? documentService.getDocumentDetail(targetIdentifier) : null),
-    enabled: isOpen && !!targetIdentifier && (!initialDocDetail || !!navigatedId),
+    enabled: isOpen && !!targetIdentifier && (!initialDocDetail || !!navigatedId || forceFetch),
     staleTime: 60 * 1000,
   });
 
-  const docDetail = (navigatedId ? fetchedDetail : initialDocDetail) || fetchedDetail;
+  const docDetail = (navigatedId || forceFetch ? fetchedDetail : initialDocDetail) || fetchedDetail;
 
   const handleNavigateToDoc = (newDocId: string) => {
     if (targetIdentifier) {
@@ -69,6 +81,43 @@ export const DocumentViewerModal: React.FC<DocumentViewerModalProps> = ({
     }
     setNavigatedId(newDocId);
     setSearchInDoc('');
+  };
+
+  const reloadDetail = async () => {
+    setForceFetch(true);
+    await queryClient.invalidateQueries({ queryKey: ['document-viewer-detail'] });
+    await queryClient.invalidateQueries({ queryKey: ['documents'] });
+    await refetch();
+  };
+
+  const handleSaveCohort = async () => {
+    if (!docDetail?.document) return;
+    setSavingCohort(true);
+    setCohortError(null);
+    try {
+      await ragAdminService.updateDocumentCohort(docDetail.document.id, cohortDraft);
+      setEditingCohort(false);
+      await reloadDetail();
+    } catch {
+      setCohortError(t('documents.cohort_invalid'));
+    } finally {
+      setSavingCohort(false);
+    }
+  };
+
+  const handleConfirmRevert = async () => {
+    if (!revertTarget) return;
+    setReverting(true);
+    try {
+      await ragAdminService.revertSupersession({
+        active_doc_id: revertTarget.active,
+        superseded_doc_id: revertTarget.superseded,
+      });
+      setRevertTarget(null);
+      await reloadDetail();
+    } finally {
+      setReverting(false);
+    }
   };
 
   const handleGoBack = () => {
@@ -372,10 +421,55 @@ export const DocumentViewerModal: React.FC<DocumentViewerModalProps> = ({
                     </div>
 
                     <div className="rounded-xl border border-slate-100 bg-slate-50/70 p-3.5 dark:border-slate-800 dark:bg-slate-800/40">
-                      <span className="text-xs text-slate-400 font-medium">{t('documents.col_cohort')}</span>
-                      <p className="mt-1 font-semibold text-slate-800 dark:text-slate-200">
-                        {doc.applicable_cohort || 'ALL'}
-                      </p>
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-slate-400 font-medium">{t('documents.col_cohort')}</span>
+                        {canManage && !editingCohort && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCohortDraft(doc.applicable_cohort || 'ALL');
+                              setCohortError(null);
+                              setEditingCohort(true);
+                            }}
+                            className="text-xs font-medium text-tlu-blue hover:underline"
+                          >
+                            {t('documents.edit_cohort')}
+                          </button>
+                        )}
+                      </div>
+                      {editingCohort ? (
+                        <div className="mt-1 space-y-1.5">
+                          <input
+                            value={cohortDraft}
+                            onChange={(e) => setCohortDraft(e.target.value)}
+                            placeholder={t('documents.cohort_placeholder')}
+                            className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-tlu-blue dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                          />
+                          <p className="text-[11px] text-slate-400">{t('documents.cohort_hint')}</p>
+                          {cohortError && <p className="text-[11px] text-red-500">{cohortError}</p>}
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              disabled={savingCohort}
+                              onClick={handleSaveCohort}
+                              className="rounded-lg bg-tlu-navy px-3 py-1 text-xs font-medium text-white disabled:opacity-50"
+                            >
+                              {t('common.save')}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditingCohort(false)}
+                              className="rounded-lg border border-slate-300 px-3 py-1 text-xs dark:border-slate-700"
+                            >
+                              {t('common.cancel')}
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="mt-1 font-semibold text-slate-800 dark:text-slate-200">
+                          {doc.applicable_cohort || 'ALL'}
+                        </p>
+                      )}
                     </div>
 
                     <div className="rounded-xl border border-slate-100 bg-slate-50/70 p-3.5 dark:border-slate-800 dark:bg-slate-800/40">
@@ -483,6 +577,17 @@ export const DocumentViewerModal: React.FC<DocumentViewerModalProps> = ({
                           <span className="text-[11px] text-slate-400 font-normal">{log.created_at}</span>
                         </div>
                         <p className="mt-1 text-slate-600 dark:text-slate-400">{log.reason}</p>
+                        {canManage && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setRevertTarget({ active: log.active_doc_id, superseded: log.superseded_doc_id })
+                            }
+                            className="mt-2 text-xs font-medium text-red-500 hover:underline"
+                          >
+                            {t('documents.revert_supersession')}
+                          </button>
+                        )}
                       </div>
                     ))
                   )}
@@ -492,6 +597,15 @@ export const DocumentViewerModal: React.FC<DocumentViewerModalProps> = ({
           )}
         </div>
       </div>
+      <ConfirmModal
+        isOpen={revertTarget !== null}
+        onClose={() => setRevertTarget(null)}
+        onConfirm={handleConfirmRevert}
+        title={t('documents.revert_supersession')}
+        message={t('documents.revert_confirm')}
+        variant="warning"
+        isLoading={reverting}
+      />
     </div>
   );
 };

@@ -681,6 +681,21 @@ type DuplicateRepairResult struct {
 	Superseded int `json:"superseded"`
 }
 
+// ReextractCandidate is a stored document selected for re-extraction from its source attachment.
+type ReextractCandidate struct {
+	ID          string
+	Title       string
+	PublishDate string
+	Text        string
+	GarbleRatio float64
+}
+
+// SupersessionRepairResult reports how many unjustified supersessions a repair pass undid or downgraded.
+type SupersessionRepairResult struct {
+	Reverted   int `json:"reverted"`
+	Downgraded int `json:"downgraded"`
+}
+
 type GraphRepairResult struct {
 	NodesCreated int
 	EdgesCreated int

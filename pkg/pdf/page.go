@@ -222,6 +222,37 @@ func (f Font) Width(code int) float64 {
 	return f.V.Key("Widths").Index(code - first).Float64()
 }
 
+// IsComposite reports whether the font is a Type0 composite font addressed by 2-byte character codes.
+func (f Font) IsComposite() bool {
+	return f.V.Key("Subtype").Name() == "Type0"
+}
+
+// CIDWidth returns the glyph width of a CID from the descendant font DW and W entries.
+func (f Font) CIDWidth(cid int) float64 {
+	desc := f.V.Key("DescendantFonts").Index(0)
+	width := 1000.0
+	if dw := desc.Key("DW"); dw.Kind() != Null {
+		width = dw.Float64()
+	}
+	w := desc.Key("W")
+	for i := 0; i < w.Len(); {
+		first := int(w.Index(i).Int64())
+		next := w.Index(i + 1)
+		if next.Kind() == Array {
+			if cid >= first && cid < first+next.Len() {
+				return next.Index(cid - first).Float64()
+			}
+			i += 2
+			continue
+		}
+		if cid >= first && cid <= int(next.Int64()) {
+			return w.Index(i + 2).Float64()
+		}
+		i += 3
+	}
+	return width
+}
+
 // Encoder returns the encoding between font code point sequences and UTF-8.
 //
 // The receiver is a pointer so the parsed encoding is cached on the Font;
@@ -896,7 +927,11 @@ func (p Page) Content() Content {
 		decoded := enc.Decode(s)
 		for _, ch := range decoded {
 			var w0 float64
-			if n < len(s) {
+			if g.Tf.IsComposite() {
+				if 2*n+1 < len(s) {
+					w0 = g.Tf.CIDWidth(int(s[2*n])<<8 | int(s[2*n+1]))
+				}
+			} else if n < len(s) {
 				w0 = g.Tf.Width(int(s[n]))
 			}
 			n++

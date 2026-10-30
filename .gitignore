@@ -26,3 +26,6 @@ cmd/server/dist/
 # OS metadata
 .DS_Store
 Thumbs.db
+
+# E2E test harness (contains local test credentials)
+test/

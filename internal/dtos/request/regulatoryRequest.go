@@ -16,6 +16,8 @@ type RegulatoryInspectDocumentArticlesArgs struct {
 
 // RegulatoryCompareArticleDiffArgs specifies parameters for semantic difference comparison.
 type RegulatoryCompareArticleDiffArgs struct {
+	OldDocumentID  string `json:"old_document_id"`
+	ArticleNumber  string `json:"article_number"`
 	OldArticleText string `json:"old_article_text"`
 	NewArticleText string `json:"new_article_text"`
 }

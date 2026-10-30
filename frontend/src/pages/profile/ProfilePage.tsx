@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { userService } from '@/services/userService';
 import { useMutation } from '@tanstack/react-query';
-import { User, Lock, Save, KeyRound, CheckCircle2, AlertTriangle, Trash2 } from 'lucide-react';
+import { User, Lock, Save, KeyRound, CheckCircle2, AlertTriangle, Trash2, LogOut } from 'lucide-react';
 import { Badge } from '@/components/common/Badge';
 import { ConfirmModal } from '@/components/common/ConfirmModal';
 import { PasswordStrengthMeter } from '@/components/common/PasswordStrengthMeter';
@@ -11,11 +11,13 @@ import { useTranslation } from 'react-i18next';
 import { useShallow } from 'zustand/react/shallow';
 import { useProfileStore } from '@/stores/profileStore';
 import { PageHeader } from '@/components/common/PageHeader';
+import { AcademicProfileCard } from '@/components/profile/AcademicProfileCard';
 
 export const ProfilePage: React.FC = () => {
-  const { user, refreshMe } = useAuth();
+  const { user, refreshMe, logout } = useAuth();
   const { t } = useTranslation();
   const [isClearModalOpen, setIsClearModalOpen] = useState(false);
+  const [isRevokeModalOpen, setIsRevokeModalOpen] = useState(false);
 
   const {
     fullName,
@@ -120,6 +122,15 @@ export const ProfilePage: React.FC = () => {
         text: msg,
         type: 'error',
       });
+    },
+  });
+
+  const revokeSessionsMutation = useMutation({
+    mutationFn: () => userService.revokeMySessions(),
+    onSuccess: () => logout(),
+    onError: (err: unknown) => {
+      setIsRevokeModalOpen(false);
+      setProfileMsg({ text: getApiErrorMessage(err, t('profile.error_revoke_failed')), type: 'error' });
     },
   });
 
@@ -336,6 +347,32 @@ export const ProfilePage: React.FC = () => {
         </div>
       </div>
 
+      <AcademicProfileCard />
+
+      <div className="p-4 sm:p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs">
+        <div className="flex items-center gap-3 mb-4 pb-4 border-b border-slate-100 dark:border-slate-800">
+          <div className="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400">
+            <LogOut className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">{t('profile.sessions_title')}</h3>
+            <p className="text-xs text-slate-400">{t('profile.sessions_sub')}</p>
+          </div>
+        </div>
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">{t('profile.sessions_desc')}</p>
+          <button
+            type="button"
+            onClick={() => setIsRevokeModalOpen(true)}
+            disabled={revokeSessionsMutation.isPending}
+            className="w-full sm:w-auto shrink-0 px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-medium text-xs flex items-center justify-center gap-2 shadow-sm transition disabled:opacity-50"
+          >
+            <LogOut className="w-4 h-4" />
+            <span>{t('profile.sessions_action')}</span>
+          </button>
+        </div>
+      </div>
+
       {/* AI Memory & Privacy Management Card */}
       <div className="p-4 sm:p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs">
         <div className="flex items-center gap-3 mb-4 pb-4 border-b border-slate-100 dark:border-slate-800">
@@ -374,6 +411,18 @@ export const ProfilePage: React.FC = () => {
           </button>
         </div>
       </div>
+
+      <ConfirmModal
+        isOpen={isRevokeModalOpen}
+        onClose={() => setIsRevokeModalOpen(false)}
+        onConfirm={() => revokeSessionsMutation.mutate()}
+        title={t('profile.sessions_confirm_title')}
+        message={t('profile.sessions_confirm_desc')}
+        variant="warning"
+        confirmText={t('profile.sessions_action')}
+        cancelText={t('common.cancel')}
+        isLoading={revokeSessionsMutation.isPending}
+      />
 
       {/* Confirmation Modal */}
       <ConfirmModal

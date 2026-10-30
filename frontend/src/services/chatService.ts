@@ -120,6 +120,7 @@ export interface PaginatedResult<T> {
 
 export interface ChatStreamCallbacks {
   onChunk: (chunk: string) => void;
+  onReset?: () => void;
   onReasoning?: (chunk: string) => void;
   onToolCall?: (toolCall: ToolCallInfo) => void;
   onSources?: (sources: string[]) => void;
@@ -138,16 +139,6 @@ export const chatService = {
       const blob = new Blob([JSON.stringify({ session_id: sessionId })], { type: 'application/json' });
       navigator.sendBeacon('/api/chat/guest/leave', blob);
     } catch {}
-  },
-
-  async askAdvisor(query: string, modelId?: string, images?: string[], sessionId?: string): Promise<ChatResponse> {
-    const res = await apiClient.post<ChatResponse>('/chat', {
-      query,
-      model_id: modelId,
-      images,
-      session_id: sessionId,
-    });
-    return res.data;
   },
 
   async askAdvisorStream(
@@ -206,6 +197,8 @@ export const chatService = {
           const payload = JSON.parse(jsonStr);
           if (payload.type === 'chunk' && payload.content) {
             callbacks?.onChunk(payload.content);
+          } else if (payload.type === 'reset') {
+            callbacks?.onReset?.();
           } else if (payload.type === 'compact') {
             callbacks?.onCompact?.();
           } else if (payload.type === 'reasoning' && (payload.content || payload.reasoning_content)) {

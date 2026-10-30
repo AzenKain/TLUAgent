@@ -249,11 +249,6 @@ func (s *memoryService) ExtractAndSaveMemories(ctx context.Context, userID, user
 		return nil
 	}
 
-	provider, err := s.llmManager.Default()
-	if err != nil || provider == nil {
-		return nil
-	}
-
 	prompt := agent.PromptStudentMemoryExtraction()
 
 	req := &llm.ChatRequest{
@@ -261,10 +256,11 @@ func (s *memoryService) ExtractAndSaveMemories(ctx context.Context, userID, user
 			llm.SystemMessage(prompt),
 			llm.UserMessage(fmt.Sprintf("User: %s\nAdvisor: %s", userQuery, botReply)),
 		},
-		JSONMode: true,
+		JSONMode:         true,
+		ThinkingDisabled: true,
 	}
 
-	resp, err := provider.Chat(ctx, req)
+	resp, err := s.llmManager.Chat(ctx, req)
 	if err != nil || resp == nil {
 		return nil
 	}
@@ -359,11 +355,6 @@ func (s *memoryService) ExtractAndSaveAdminMemories(ctx context.Context, adminID
 		return nil
 	}
 
-	provider, err := s.llmManager.Default()
-	if err != nil || provider == nil {
-		return nil
-	}
-
 	prompt := agent.PromptAdminMemoryExtraction()
 
 	req := &llm.ChatRequest{
@@ -371,10 +362,11 @@ func (s *memoryService) ExtractAndSaveAdminMemories(ctx context.Context, adminID
 			llm.SystemMessage(prompt),
 			llm.UserMessage(fmt.Sprintf("Administrator: %s\nTLUClaw Assistant: %s", adminQuery, botReply)),
 		},
-		JSONMode: true,
+		JSONMode:         true,
+		ThinkingDisabled: true,
 	}
 
-	resp, err := provider.Chat(ctx, req)
+	resp, err := s.llmManager.Chat(ctx, req)
 	if err != nil || resp == nil {
 		return nil
 	}

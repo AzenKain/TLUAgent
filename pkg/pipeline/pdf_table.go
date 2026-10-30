@@ -144,9 +144,11 @@ func parseSinglePDFPage(p pdf.Page) string {
 	type rowGroup struct {
 		Y     float64
 		Texts []pdf.Text
+		Table string
 	}
+	texts, tables := extractGridTables(content)
 	var rowList []rowGroup
-	for _, t := range content.Text {
+	for _, t := range texts {
 		found := false
 		for ri := range rowList {
 			if math.Abs(rowList[ri].Y-t.Y) <= 3.0 {
@@ -160,6 +162,10 @@ func parseSinglePDFPage(p pdf.Page) string {
 		}
 	}
 
+	for _, tb := range tables {
+		rowList = append(rowList, rowGroup{Y: tb.top, Table: tb.markdown})
+	}
+
 	sort.SliceStable(rowList, func(i, j int) bool {
 		return rowList[i].Y > rowList[j].Y
 	})
@@ -168,6 +174,13 @@ func parseSinglePDFPage(p pdf.Page) string {
 	inTable := false
 
 	for _, rg := range rowList {
+		if rg.Table != "" {
+			inTable = false
+			sb.WriteString("\n")
+			sb.WriteString(rg.Table)
+			sb.WriteString("\n")
+			continue
+		}
 		sort.SliceStable(rg.Texts, func(i, j int) bool {
 			if math.Abs(rg.Texts[i].X-rg.Texts[j].X) > 1.0 {
 				return rg.Texts[i].X < rg.Texts[j].X
@@ -230,7 +243,9 @@ func parseSinglePDFPage(p pdf.Page) string {
 				inTable = false
 				sb.WriteString("\n")
 			}
-			sb.WriteString("\n### " + strings.TrimSpace(fullLine) + "\n\n")
+			sb.WriteString("\n### ")
+			sb.WriteString(strings.TrimSpace(fullLine))
+			sb.WriteString("\n\n")
 			continue
 		}
 
@@ -239,7 +254,9 @@ func parseSinglePDFPage(p pdf.Page) string {
 				inTable = true
 				sb.WriteString(buildTableHeader(cells))
 			}
-			sb.WriteString("| " + strings.Join(cells, " | ") + " |\n")
+			sb.WriteString("| ")
+			sb.WriteString(strings.Join(cells, " | "))
+			sb.WriteString(" |\n")
 			continue
 		}
 
@@ -248,7 +265,8 @@ func parseSinglePDFPage(p pdf.Page) string {
 			sb.WriteString("\n")
 		}
 
-		sb.WriteString(fullLine + "\n")
+		sb.WriteString(fullLine)
+		sb.WriteString("\n")
 	}
 
 	return strings.TrimSpace(sb.String())

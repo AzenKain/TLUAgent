@@ -10,6 +10,17 @@ import (
 	"database/sql"
 )
 
+const countCoursePrerequisites = `-- name: CountCoursePrerequisites :one
+SELECT COUNT(*) FROM course_prerequisites
+`
+
+func (q *Queries) CountCoursePrerequisites(ctx context.Context) (int64, error) {
+	row := q.queryRow(ctx, q.countCoursePrerequisitesStmt, countCoursePrerequisites)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countCoursesFiltered = `-- name: CountCoursesFiltered :one
 SELECT COUNT(*) FROM curriculum_courses 
 WHERE (cohort = ?1 OR ?1 = '') 
@@ -121,13 +132,16 @@ func (q *Queries) DeleteCoursePrerequisite(ctx context.Context, id string) error
 	return err
 }
 
-const deleteCourseSubstitution = `-- name: DeleteCourseSubstitution :exec
+const deleteCourseSubstitution = `-- name: DeleteCourseSubstitution :execrows
 DELETE FROM course_substitutions WHERE id = ?
 `
 
-func (q *Queries) DeleteCourseSubstitution(ctx context.Context, id string) error {
-	_, err := q.exec(ctx, q.deleteCourseSubstitutionStmt, deleteCourseSubstitution, id)
-	return err
+func (q *Queries) DeleteCourseSubstitution(ctx context.Context, id string) (int64, error) {
+	result, err := q.exec(ctx, q.deleteCourseSubstitutionStmt, deleteCourseSubstitution, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const deleteCurriculum = `-- name: DeleteCurriculum :exec

@@ -44,6 +44,7 @@ type RAGRepository interface {
 	UpdateChunksByRuleIDStatus(ctx context.Context, ruleID, status string) error
 	UpdateChunksByDocIDStatus(ctx context.Context, docID, status string) error
 	DeleteChunksByDocumentID(ctx context.Context, docID string) error
+	UpdateChunksCohortByDocumentID(ctx context.Context, docID, cohort string) error
 	DeleteRulesByDocumentID(ctx context.Context, docID string) error
 	InvalidateRuleCache(ctx context.Context, id string)
 
@@ -70,6 +71,11 @@ type RAGRepository interface {
 	ListAuditLogsByDocID(ctx context.Context, docID string) ([]*models.SupersessionAuditLog, error)
 	ListAllAuditLogs(ctx context.Context, limit, offset int) ([]*models.SupersessionAuditLog, int, error)
 	AuditLogPairExists(ctx context.Context, activeID, supersededID string) (bool, error)
+	DeleteAuditLogPair(ctx context.Context, activeID, supersededID string) error
+	GetAuditFingerprint(ctx context.Context, docID string) (string, error)
+	SetAuditFingerprint(ctx context.Context, docID, fingerprint string) error
+	CountAuditFingerprints(ctx context.Context) (int64, error)
+	ClearAuditFingerprints(ctx context.Context) error
 	DocumentHasAuditLog(ctx context.Context, activeID string) (bool, error)
 
 	CreateAuditRun(ctx context.Context, id, cursorDocID string, totalDocs int64) (*models.SupersessionAuditRun, error)
@@ -1026,6 +1032,40 @@ func (r *ragRepository) AuditLogPairExists(ctx context.Context, activeID, supers
 	return n > 0, nil
 }
 
+func (r *ragRepository) DeleteAuditLogPair(ctx context.Context, activeID, supersededID string) error {
+	err := r.q.DeleteAuditLogPair(ctx, sqlc.DeleteAuditLogPairParams{
+		ActiveDocID:     activeID,
+		SupersededDocID: supersededID,
+	})
+	if err == nil && r.c != nil {
+		_ = r.c.DelByPattern(ctx, "rag_audit_logs*")
+	}
+	return err
+}
+
+func (r *ragRepository) GetAuditFingerprint(ctx context.Context, docID string) (string, error) {
+	fp, err := r.q.GetDocumentAuditFingerprint(ctx, docID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	return fp, err
+}
+
+func (r *ragRepository) SetAuditFingerprint(ctx context.Context, docID, fingerprint string) error {
+	return r.q.UpsertDocumentAuditFingerprint(ctx, sqlc.UpsertDocumentAuditFingerprintParams{
+		DocumentID:  docID,
+		Fingerprint: fingerprint,
+	})
+}
+
+func (r *ragRepository) CountAuditFingerprints(ctx context.Context) (int64, error) {
+	return r.q.CountDocumentAuditStates(ctx)
+}
+
+func (r *ragRepository) ClearAuditFingerprints(ctx context.Context) error {
+	return r.q.ClearDocumentAuditStates(ctx)
+}
+
 func (r *ragRepository) DocumentHasAuditLog(ctx context.Context, activeID string) (bool, error) {
 	n, err := r.q.CountAuditLogsByActiveDoc(ctx, activeID)
 	if err != nil {
@@ -1339,6 +1379,20 @@ func (r *ragRepository) UpdateChunksByDocIDStatus(ctx context.Context, docID, st
 }
 
 // DeleteChunksByDocumentID removes all chunks associated with a document ID.
+func (r *ragRepository) UpdateChunksCohortByDocumentID(ctx context.Context, docID, cohort string) error {
+	if err := r.q.UpdateChunksCohortByDocumentID(ctx, sqlc.UpdateChunksCohortByDocumentIDParams{
+		ApplicableCohort: cohort,
+		DocumentID:       docID,
+	}); err != nil {
+		return err
+	}
+	if r.c != nil && !r.inTx {
+		_ = r.c.DelByPattern(ctx, "rag_chunk*")
+		_ = r.c.DelByPattern(ctx, "rag_candidates*")
+	}
+	return nil
+}
+
 func (r *ragRepository) DeleteChunksByDocumentID(ctx context.Context, docID string) error {
 	if err := r.q.DeleteChunksByDocumentID(ctx, docID); err != nil {
 		return err

@@ -16,6 +16,7 @@ const (
 	ChainTypeChat      ChainType = "chat"
 	ChainTypeRerank    ChainType = "rerank"
 	ChainTypeEmbedding ChainType = "embedding"
+	ChainTypeAudit     ChainType = "audit"
 )
 
 type ChainNode struct {
@@ -24,6 +25,9 @@ type ChainNode struct {
 	ProviderID   string
 	ProviderName string
 	ModelKey     string
+	Thinking     *bool
+	ThinkBudget  *int
+	Effort       string
 	Priority     int
 	IsActive     bool
 	Provider     Provider
@@ -102,6 +106,15 @@ func (c *LLMChain) SetNodes(nodes []ChainNode) error {
 }
 
 // ExecuteChat runs chat completion sequentially down the chain until a node succeeds.
+func (n *ChainNode) applyReasoning(req *ChatRequest) {
+	if req.ThinkingEnabled != nil || req.ThinkingBudget != nil || req.ReasoningEffort != "" || req.ThinkingDisabled {
+		return
+	}
+	req.ThinkingEnabled = n.Thinking
+	req.ThinkingBudget = n.ThinkBudget
+	req.ReasoningEffort = n.Effort
+}
+
 func (c *LLMChain) ExecuteChat(ctx context.Context, req *ChatRequest) (*ChatResponse, *ChainNode, error) {
 	c.mu.RLock()
 	nodes := make([]ChainNode, len(c.Nodes))
@@ -126,9 +139,10 @@ func (c *LLMChain) ExecuteChat(ctx context.Context, req *ChatRequest) (*ChatResp
 		if node.ModelKey != "" {
 			nodeReq.Model = node.ModelKey
 		}
+		node.applyReasoning(&nodeReq)
 
 		resp, err := node.Provider.Chat(ctx, &nodeReq)
-		if err == nil && resp != nil && strings.TrimSpace(resp.Message.Content) != "" {
+		if err == nil && resp != nil && (strings.TrimSpace(resp.Message.Content) != "" || len(resp.Message.ToolCalls) > 0) {
 			breaker.RecordSuccess(node.ID)
 			return resp, node, nil
 		}
@@ -169,6 +183,7 @@ func (c *LLMChain) ExecuteChatStream(ctx context.Context, req *ChatRequest) (Str
 		if node.ModelKey != "" {
 			nodeReq.Model = node.ModelKey
 		}
+		node.applyReasoning(&nodeReq)
 
 		stream, err := node.Provider.ChatStream(ctx, &nodeReq)
 		if err == nil && stream != nil {

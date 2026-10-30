@@ -20,6 +20,7 @@ import {
   History,
   Eye,
   Zap,
+  Brain,
 } from 'lucide-react';
 import { tluclawAdminService } from '@/services/tluclawAdminService';
 import { TLUClawPreviewCard } from '@/components/admin/tluclaw/TLUClawPreviewCard';
@@ -30,7 +31,17 @@ import type {
   TLUClawMessage,
   TLUClawAttachment,
   TLUClawPreviewCardData,
+  TLUClawEffortLevel,
 } from '@/types/tluclaw';
+
+const THINKING_STORAGE_KEY = 'tluclaw.thinking_enabled';
+const EFFORT_STORAGE_KEY = 'tluclaw.effort_level';
+const EFFORT_LEVELS: TLUClawEffortLevel[] = ['low', 'medium', 'high'];
+
+function readStoredEffort(): TLUClawEffortLevel {
+  const stored = localStorage.getItem(EFFORT_STORAGE_KEY);
+  return EFFORT_LEVELS.find((level) => level === stored) ?? 'medium';
+}
 
 async function handleConfirmAction(snapshotId: string, nonce: string, selectedKeys?: string[]): Promise<void> {
   await tluclawAdminService.confirmAction({
@@ -57,6 +68,10 @@ export const AdminTLUClawPage: React.FC = () => {
   const [attachedImages, setAttachedImages] = useState<string[]>([]);
   const [attachedFiles, setAttachedFiles] = useState<TLUClawAttachment[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
+  const [thinkingEnabled, setThinkingEnabled] = useState<boolean>(
+    () => localStorage.getItem(THINKING_STORAGE_KEY) === 'true',
+  );
+  const [effortLevel, setEffortLevel] = useState<TLUClawEffortLevel>(readStoredEffort);
 
   const [activeTab, setActiveTab] = useState<'chat' | 'timeline'>('chat');
   const [timelineStatus, setTimelineStatus] = useState<string>('');
@@ -220,6 +235,17 @@ export const AdminTLUClawPage: React.FC = () => {
     e.target.value = '';
   };
 
+  const handleThinkingToggle = () => {
+    const next = !thinkingEnabled;
+    setThinkingEnabled(next);
+    localStorage.setItem(THINKING_STORAGE_KEY, String(next));
+  };
+
+  const handleEffortChange = (level: TLUClawEffortLevel) => {
+    setEffortLevel(level);
+    localStorage.setItem(EFFORT_STORAGE_KEY, level);
+  };
+
   const handleSendMessage = async (customPrompt?: string) => {
     const textToSend = (customPrompt || inputPrompt).trim();
     if (!textToSend && attachedImages.length === 0 && attachedFiles.length === 0) return;
@@ -247,6 +273,8 @@ export const AdminTLUClawPage: React.FC = () => {
         message: textToSend,
         images: currentImages.length > 0 ? currentImages : undefined,
         attachments: currentFiles.length > 0 ? currentFiles : undefined,
+        thinking_enabled: thinkingEnabled,
+        effort_level: thinkingEnabled ? effortLevel : undefined,
       });
 
       if (!activeSessionId && resp.session_id) {
@@ -666,6 +694,35 @@ export const AdminTLUClawPage: React.FC = () => {
                 >
                   <Paperclip className="h-4 w-4" />
                 </button>
+                <button
+                  type="button"
+                  onClick={handleThinkingToggle}
+                  aria-pressed={thinkingEnabled}
+                  className={`inline-flex items-center gap-1 rounded-xl px-2 py-2 text-xs font-medium transition-colors ${
+                    thinkingEnabled
+                      ? 'bg-primary/15 text-primary'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                  }`}
+                  title={t('tluclaw.input.thinking_tooltip')}
+                >
+                  <Brain className="h-4 w-4" />
+                  {t('tluclaw.input.thinking_label')}
+                </button>
+                {thinkingEnabled && (
+                  <select
+                    value={effortLevel}
+                    onChange={(e) => handleEffortChange(e.target.value as TLUClawEffortLevel)}
+                    aria-label={t('tluclaw.input.effort_label')}
+                    title={t('tluclaw.input.effort_label')}
+                    className="rounded-lg border border-border bg-background px-1.5 py-1 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                  >
+                    {EFFORT_LEVELS.map((level) => (
+                      <option key={level} value={level}>
+                        {t(`tluclaw.input.effort_${level}`)}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
 
               <textarea

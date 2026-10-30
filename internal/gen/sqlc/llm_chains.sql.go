@@ -170,6 +170,9 @@ SELECT
     m.context_length,
     m.supports_vision,
     m.max_images,
+    m.thinking_enabled,
+    m.thinking_budget,
+    m.effort_level,
     p.id AS provider_id,
     p.name AS provider_name,
     p.provider_type,
@@ -197,6 +200,9 @@ type ListChainNodesWithDetailsRow struct {
 	ContextLength        int64  `json:"context_length"`
 	SupportsVision       int64  `json:"supports_vision"`
 	MaxImages            int64  `json:"max_images"`
+	ThinkingEnabled      int64  `json:"thinking_enabled"`
+	ThinkingBudget       int64  `json:"thinking_budget"`
+	EffortLevel          string `json:"effort_level"`
 	ProviderID           string `json:"provider_id"`
 	ProviderName         string `json:"provider_name"`
 	ProviderType         string `json:"provider_type"`
@@ -228,6 +234,9 @@ func (q *Queries) ListChainNodesWithDetails(ctx context.Context, chainID string)
 			&i.ContextLength,
 			&i.SupportsVision,
 			&i.MaxImages,
+			&i.ThinkingEnabled,
+			&i.ThinkingBudget,
+			&i.EffortLevel,
 			&i.ProviderID,
 			&i.ProviderName,
 			&i.ProviderType,

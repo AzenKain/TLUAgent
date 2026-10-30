@@ -12,6 +12,7 @@ import (
 	"tluagent-web/internal/gen/sqlc"
 	"tluagent-web/internal/models"
 	"tluagent-web/pkg/cache"
+	"tluagent-web/pkg/constants"
 )
 
 // CurriculumRepository defines the interface for curriculum and substitution queries.
@@ -45,7 +46,6 @@ type CurriculumRepository interface {
 	CountCurriculumCourses(ctx context.Context) (int64, error)
 	FindCourseMetadataByCode(ctx context.Context, courseCode string) (*sqlc.FindCourseMetadataByCodeRow, error)
 
-
 	UpsertCoursePrerequisite(ctx context.Context, params sqlc.UpsertCoursePrerequisiteParams) (*models.CoursePrerequisite, error)
 	GetCoursePrerequisiteByID(ctx context.Context, id string) (*models.CoursePrerequisite, error)
 	DeleteCoursePrerequisite(ctx context.Context, id string) error
@@ -61,6 +61,7 @@ type CurriculumRepository interface {
 	GetSubstitutionByID(ctx context.Context, id string) (*models.CourseSubstitution, error)
 	DeleteCourseSubstitution(ctx context.Context, id string) error
 	CountSubstitutions(ctx context.Context) (int64, error)
+	CountCoursePrerequisites(ctx context.Context) (int64, error)
 
 	UpsertCourseGroupSubstitution(ctx context.Context, params sqlc.UpsertCourseGroupSubstitutionParams) (*models.CourseGroupSubstitution, error)
 	ListGroupSubstitutions(ctx context.Context, cohortNum int64, scopeMajor, facultyCode string) ([]*models.CourseGroupSubstitution, error)
@@ -666,6 +667,30 @@ func (r *curriculumRepository) ListSubstitutionsByCohortAndMajor(ctx context.Con
 	return val.([]*models.CourseSubstitution), nil
 }
 
+func (r *curriculumRepository) CountCoursePrerequisites(ctx context.Context) (int64, error) {
+	key := cache.BuildKey("prereq", "count_all")
+	val, err, _ := r.sfg.Do(key, func() (interface{}, error) {
+		if r.c != nil && !r.inTx {
+			var cached int64
+			if err := r.c.Get(ctx, key, &cached); err == nil {
+				return cached, nil
+			}
+		}
+		cnt, err := r.q.CountCoursePrerequisites(ctx)
+		if err != nil {
+			return int64(0), err
+		}
+		if r.c != nil && !r.inTx {
+			_ = r.c.Set(ctx, key, cnt, constants.NormalCacheDuration)
+		}
+		return cnt, nil
+	})
+	if err != nil {
+		return 0, err
+	}
+	return val.(int64), nil
+}
+
 func (r *curriculumRepository) CountSubstitutions(ctx context.Context) (int64, error) {
 	key := cache.BuildKey("sub", "count_all")
 	val, err, _ := r.sfg.Do(key, func() (interface{}, error) {
@@ -1004,7 +1029,14 @@ func (r *curriculumRepository) DeleteCourseSubstitution(ctx context.Context, id 
 	if r.c != nil {
 		_ = r.c.DelByPattern(ctx, "sub:*")
 	}
-	return r.q.DeleteCourseSubstitution(ctx, id)
+	rows, err := r.q.DeleteCourseSubstitution(ctx, id)
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
 }
 
 func (r *curriculumRepository) FindMajorMapping(ctx context.Context, cohort, major string) (*sqlc.FindMajorMappingRow, error) {
@@ -1148,4 +1180,3 @@ func (r *curriculumRepository) UpdateMajorMetadataByName(ctx context.Context, ma
 	}
 	return err
 }
-

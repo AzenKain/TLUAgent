@@ -55,11 +55,6 @@ export const userService = {
   },
 
   // Current User Operations
-  async getCurrentUser(): Promise<User> {
-    const res = await apiClient.get<CommonResponse<User>>('/users/current');
-    return res.data.data!;
-  },
-
   async updateCurrentProfile(payload: UpdateProfileRequest): Promise<User> {
     const res = await apiClient.put<CommonResponse<User>>('/users/current', payload);
     return res.data.data!;
@@ -67,6 +62,10 @@ export const userService = {
 
   async changeCurrentPassword(payload: ChangePasswordRequest): Promise<void> {
     await apiClient.post<CommonResponse<void>>('/users/current/password', payload);
+  },
+
+  async revokeMySessions(): Promise<void> {
+    await apiClient.post<CommonResponse<void>>('/users/current/revoke-sessions');
   },
 
   async clearCurrentProfileAndMemories(): Promise<void> {

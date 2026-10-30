@@ -1,6 +1,8 @@
 package controllers
 
 import (
+	"database/sql"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -201,6 +203,13 @@ func (c *RAGController) HandleUpdateDocumentStatus(w http.ResponseWriter, r *htt
 	}
 
 	if err := c.ragService.UpdateDocumentStatus(ctx, id, &req); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeJSONResponse(w, http.StatusNotFound, response.CommonResponse{
+				Status:  false,
+				Message: "Document not found",
+			})
+			return
+		}
 		writeJSONResponse(w, http.StatusInternalServerError, response.CommonResponse{
 			Status:  false,
 			Message: "Failed to update document status",
@@ -425,4 +434,43 @@ func (c *RAGController) HandleSyncIndex(w http.ResponseWriter, r *http.Request) 
 		Message: "Knowledge index synchronized successfully",
 		Data:    response.IngestSyncResponse{IngestedDocuments: count},
 	})
+}
+
+// HandleUpdateDocumentCohort sets the cohort scope of a document.
+func (c *RAGController) HandleUpdateDocumentCohort(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := requestContext(r, defaultRequestTimeout)
+	defer cancel()
+
+	id := r.PathValue("id")
+	if strings.TrimSpace(id) == "" {
+		writeJSONResponse(w, http.StatusBadRequest, response.CommonResponse{Status: false, Message: "Document ID is required"})
+		return
+	}
+	var req request.UpdateDocumentCohortRequest
+	if err := validator.ValidateBodyDto(r, &req); err != nil {
+		writeJSONResponse(w, http.StatusBadRequest, response.CommonResponse{Status: false, Errors: err})
+		return
+	}
+	if err := c.ragService.UpdateDocumentCohort(ctx, id, req.ApplicableCohort); err != nil {
+		apperrors.HandleError(w, err)
+		return
+	}
+	writeJSONResponse(w, http.StatusOK, response.CommonResponse{Status: true, Message: "Document cohort updated successfully"})
+}
+
+// HandleRevertSupersession undoes one audited supersession.
+func (c *RAGController) HandleRevertSupersession(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := requestContext(r, defaultRequestTimeout)
+	defer cancel()
+
+	var req request.RevertSupersessionRequest
+	if err := validator.ValidateBodyDto(r, &req); err != nil {
+		writeJSONResponse(w, http.StatusBadRequest, response.CommonResponse{Status: false, Errors: err})
+		return
+	}
+	if err := c.ragService.RevertSupersession(ctx, req.ActiveDocID, req.SupersededDocID); err != nil {
+		apperrors.HandleError(w, err)
+		return
+	}
+	writeJSONResponse(w, http.StatusOK, response.CommonResponse{Status: true, Message: "Supersession reverted successfully"})
 }

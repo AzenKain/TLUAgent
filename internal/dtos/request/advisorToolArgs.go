@@ -28,14 +28,15 @@ type AdvisorLookupPrerequisitesArgs struct {
 
 // AdvisorOptimizeRoadmapArgs defines typed parameters for roadmap optimization tool calls.
 type AdvisorOptimizeRoadmapArgs struct {
-	CurrentSemester    int    `json:"current_semester,omitempty"`
-	TargetSemesters    int    `json:"target_semesters,omitempty"`
-	Cohort             string `json:"cohort,omitempty"`
-	Major              string `json:"major,omitempty"`
-	PacePreference     string `json:"pace_preference,omitempty"`
-	SummerWillingness  bool   `json:"summer_willingness,omitempty"`
-	PrimaryStrength    string `json:"primary_strength,omitempty"`
-	DeliveryPreference string `json:"delivery_preference,omitempty"`
+	CurrentSemester    int      `json:"current_semester,omitempty"`
+	TargetSemesters    int      `json:"target_semesters,omitempty"`
+	Cohort             string   `json:"cohort,omitempty"`
+	Major              string   `json:"major,omitempty"`
+	PacePreference     string   `json:"pace_preference,omitempty"`
+	SummerWillingness  bool     `json:"summer_willingness,omitempty"`
+	PrimaryStrength    string   `json:"primary_strength,omitempty"`
+	DeliveryPreference string   `json:"delivery_preference,omitempty"`
+	SummerCourses      []string `json:"summer_courses,omitempty"`
 }
 
 // AdvisorLookupTuitionArgs defines typed parameters for tuition fee lookup tool calls.

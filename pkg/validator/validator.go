@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"mime"
 	"net/http"
 	"net/url"
 	"path"
@@ -331,6 +332,11 @@ func ValidateQueryDto(r *http.Request, dto any) []*ErrorResponse {
 func ValidateBodyDto(r *http.Request, dto any) []*ErrorResponse {
 	if r.Body == nil {
 		return []*ErrorResponse{{Message: "Request body is empty"}}
+	}
+	if ct := r.Header.Get("Content-Type"); ct != "" {
+		if mediaType, _, parseErr := mime.ParseMediaType(ct); parseErr != nil || mediaType != "application/json" {
+			return []*ErrorResponse{{Message: "Content-Type must be application/json"}}
+		}
 	}
 	body, err := io.ReadAll(r.Body)
 	if err != nil {

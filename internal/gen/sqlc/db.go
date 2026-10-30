@@ -60,6 +60,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.clearChainNodesStmt, err = db.PrepareContext(ctx, clearChainNodes); err != nil {
 		return nil, fmt.Errorf("error preparing query ClearChainNodes: %w", err)
 	}
+	if q.clearDocumentAuditStatesStmt, err = db.PrepareContext(ctx, clearDocumentAuditStates); err != nil {
+		return nil, fmt.Errorf("error preparing query ClearDocumentAuditStates: %w", err)
+	}
 	if q.clearRegulationSupersessionAuditLogsStmt, err = db.PrepareContext(ctx, clearRegulationSupersessionAuditLogs); err != nil {
 		return nil, fmt.Errorf("error preparing query ClearRegulationSupersessionAuditLogs: %w", err)
 	}
@@ -105,6 +108,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.countConversationsByUserIDStmt, err = db.PrepareContext(ctx, countConversationsByUserID); err != nil {
 		return nil, fmt.Errorf("error preparing query CountConversationsByUserID: %w", err)
 	}
+	if q.countCoursePrerequisitesStmt, err = db.PrepareContext(ctx, countCoursePrerequisites); err != nil {
+		return nil, fmt.Errorf("error preparing query CountCoursePrerequisites: %w", err)
+	}
 	if q.countCoursesFilteredStmt, err = db.PrepareContext(ctx, countCoursesFiltered); err != nil {
 		return nil, fmt.Errorf("error preparing query CountCoursesFiltered: %w", err)
 	}
@@ -113,6 +119,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.countCurriculumsStmt, err = db.PrepareContext(ctx, countCurriculums); err != nil {
 		return nil, fmt.Errorf("error preparing query CountCurriculums: %w", err)
+	}
+	if q.countDocumentAuditStatesStmt, err = db.PrepareContext(ctx, countDocumentAuditStates); err != nil {
+		return nil, fmt.Errorf("error preparing query CountDocumentAuditStates: %w", err)
 	}
 	if q.countDocumentsStmt, err = db.PrepareContext(ctx, countDocuments); err != nil {
 		return nil, fmt.Errorf("error preparing query CountDocuments: %w", err)
@@ -212,6 +221,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.deleteAgentSkillStmt, err = db.PrepareContext(ctx, deleteAgentSkill); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteAgentSkill: %w", err)
+	}
+	if q.deleteAuditLogPairStmt, err = db.PrepareContext(ctx, deleteAuditLogPair); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteAuditLogPair: %w", err)
 	}
 	if q.deleteChainStmt, err = db.PrepareContext(ctx, deleteChain); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteChain: %w", err)
@@ -365,6 +377,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.getDefaultLLMProviderStmt, err = db.PrepareContext(ctx, getDefaultLLMProvider); err != nil {
 		return nil, fmt.Errorf("error preparing query GetDefaultLLMProvider: %w", err)
+	}
+	if q.getDocumentAuditFingerprintStmt, err = db.PrepareContext(ctx, getDocumentAuditFingerprint); err != nil {
+		return nil, fmt.Errorf("error preparing query GetDocumentAuditFingerprint: %w", err)
 	}
 	if q.getDocumentByIDStmt, err = db.PrepareContext(ctx, getDocumentByID); err != nil {
 		return nil, fmt.Errorf("error preparing query GetDocumentByID: %w", err)
@@ -801,6 +816,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.updateChunkStatusStmt, err = db.PrepareContext(ctx, updateChunkStatus); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateChunkStatus: %w", err)
 	}
+	if q.updateChunksCohortByDocumentIDStmt, err = db.PrepareContext(ctx, updateChunksCohortByDocumentID); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateChunksCohortByDocumentID: %w", err)
+	}
 	if q.updateConversationTitleStmt, err = db.PrepareContext(ctx, updateConversationTitle); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateConversationTitle: %w", err)
 	}
@@ -900,6 +918,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.upsertDocumentStmt, err = db.PrepareContext(ctx, upsertDocument); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertDocument: %w", err)
 	}
+	if q.upsertDocumentAuditFingerprintStmt, err = db.PrepareContext(ctx, upsertDocumentAuditFingerprint); err != nil {
+		return nil, fmt.Errorf("error preparing query UpsertDocumentAuditFingerprint: %w", err)
+	}
 	if q.upsertDocumentChunkStmt, err = db.PrepareContext(ctx, upsertDocumentChunk); err != nil {
 		return nil, fmt.Errorf("error preparing query UpsertDocumentChunk: %w", err)
 	}
@@ -995,6 +1016,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing clearChainNodesStmt: %w", cerr)
 		}
 	}
+	if q.clearDocumentAuditStatesStmt != nil {
+		if cerr := q.clearDocumentAuditStatesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing clearDocumentAuditStatesStmt: %w", cerr)
+		}
+	}
 	if q.clearRegulationSupersessionAuditLogsStmt != nil {
 		if cerr := q.clearRegulationSupersessionAuditLogsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing clearRegulationSupersessionAuditLogsStmt: %w", cerr)
@@ -1070,6 +1096,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing countConversationsByUserIDStmt: %w", cerr)
 		}
 	}
+	if q.countCoursePrerequisitesStmt != nil {
+		if cerr := q.countCoursePrerequisitesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing countCoursePrerequisitesStmt: %w", cerr)
+		}
+	}
 	if q.countCoursesFilteredStmt != nil {
 		if cerr := q.countCoursesFilteredStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing countCoursesFilteredStmt: %w", cerr)
@@ -1083,6 +1114,11 @@ func (q *Queries) Close() error {
 	if q.countCurriculumsStmt != nil {
 		if cerr := q.countCurriculumsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing countCurriculumsStmt: %w", cerr)
+		}
+	}
+	if q.countDocumentAuditStatesStmt != nil {
+		if cerr := q.countDocumentAuditStatesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing countDocumentAuditStatesStmt: %w", cerr)
 		}
 	}
 	if q.countDocumentsStmt != nil {
@@ -1248,6 +1284,11 @@ func (q *Queries) Close() error {
 	if q.deleteAgentSkillStmt != nil {
 		if cerr := q.deleteAgentSkillStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteAgentSkillStmt: %w", cerr)
+		}
+	}
+	if q.deleteAuditLogPairStmt != nil {
+		if cerr := q.deleteAuditLogPairStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteAuditLogPairStmt: %w", cerr)
 		}
 	}
 	if q.deleteChainStmt != nil {
@@ -1503,6 +1544,11 @@ func (q *Queries) Close() error {
 	if q.getDefaultLLMProviderStmt != nil {
 		if cerr := q.getDefaultLLMProviderStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getDefaultLLMProviderStmt: %w", cerr)
+		}
+	}
+	if q.getDocumentAuditFingerprintStmt != nil {
+		if cerr := q.getDocumentAuditFingerprintStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getDocumentAuditFingerprintStmt: %w", cerr)
 		}
 	}
 	if q.getDocumentByIDStmt != nil {
@@ -2230,6 +2276,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing updateChunkStatusStmt: %w", cerr)
 		}
 	}
+	if q.updateChunksCohortByDocumentIDStmt != nil {
+		if cerr := q.updateChunksCohortByDocumentIDStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateChunksCohortByDocumentIDStmt: %w", cerr)
+		}
+	}
 	if q.updateConversationTitleStmt != nil {
 		if cerr := q.updateConversationTitleStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing updateConversationTitleStmt: %w", cerr)
@@ -2395,6 +2446,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing upsertDocumentStmt: %w", cerr)
 		}
 	}
+	if q.upsertDocumentAuditFingerprintStmt != nil {
+		if cerr := q.upsertDocumentAuditFingerprintStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing upsertDocumentAuditFingerprintStmt: %w", cerr)
+		}
+	}
 	if q.upsertDocumentChunkStmt != nil {
 		if cerr := q.upsertDocumentChunkStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing upsertDocumentChunkStmt: %w", cerr)
@@ -2496,6 +2552,7 @@ type Queries struct {
 	clearAllKGNodesStmt                       *sql.Stmt
 	clearAllUserMemoriesStmt                  *sql.Stmt
 	clearChainNodesStmt                       *sql.Stmt
+	clearDocumentAuditStatesStmt              *sql.Stmt
 	clearRegulationSupersessionAuditLogsStmt  *sql.Stmt
 	clearRegulationSupersessionEdgesStmt      *sql.Stmt
 	clearSupersessionAuditLogsStmt            *sql.Stmt
@@ -2511,9 +2568,11 @@ type Queries struct {
 	countAuditLogsByActiveDocStmt             *sql.Stmt
 	countChunksTotalStmt                      *sql.Stmt
 	countConversationsByUserIDStmt            *sql.Stmt
+	countCoursePrerequisitesStmt              *sql.Stmt
 	countCoursesFilteredStmt                  *sql.Stmt
 	countCurriculumCoursesStmt                *sql.Stmt
 	countCurriculumsStmt                      *sql.Stmt
+	countDocumentAuditStatesStmt              *sql.Stmt
 	countDocumentsStmt                        *sql.Stmt
 	countDocumentsTotalStmt                   *sql.Stmt
 	countEdgesTotalStmt                       *sql.Stmt
@@ -2547,6 +2606,7 @@ type Queries struct {
 	createUserStmt                            *sql.Stmt
 	createUserRoleStmt                        *sql.Stmt
 	deleteAgentSkillStmt                      *sql.Stmt
+	deleteAuditLogPairStmt                    *sql.Stmt
 	deleteChainStmt                           *sql.Stmt
 	deleteChunksByDocumentIDStmt              *sql.Stmt
 	deleteConversationStmt                    *sql.Stmt
@@ -2598,6 +2658,7 @@ type Queries struct {
 	getCurriculumCoursesByCurriculumIDStmt    *sql.Stmt
 	getDefaultLLMModelByTypeStmt              *sql.Stmt
 	getDefaultLLMProviderStmt                 *sql.Stmt
+	getDocumentAuditFingerprintStmt           *sql.Stmt
 	getDocumentByIDStmt                       *sql.Stmt
 	getDocumentByURLStmt                      *sql.Stmt
 	getDocumentRuleByIDStmt                   *sql.Stmt
@@ -2743,6 +2804,7 @@ type Queries struct {
 	updateChainStmt                           *sql.Stmt
 	updateChainNodePriorityStmt               *sql.Stmt
 	updateChunkStatusStmt                     *sql.Stmt
+	updateChunksCohortByDocumentIDStmt        *sql.Stmt
 	updateConversationTitleStmt               *sql.Stmt
 	updateCurriculumCourseStmt                *sql.Stmt
 	updateDocumentChunksByDocIDStatusStmt     *sql.Stmt
@@ -2776,6 +2838,7 @@ type Queries struct {
 	upsertCurriculumStmt                      *sql.Stmt
 	upsertCurriculumCourseStmt                *sql.Stmt
 	upsertDocumentStmt                        *sql.Stmt
+	upsertDocumentAuditFingerprintStmt        *sql.Stmt
 	upsertDocumentChunkStmt                   *sql.Stmt
 	upsertDocumentRuleStmt                    *sql.Stmt
 	upsertKGEdgeStmt                          *sql.Stmt
@@ -2804,6 +2867,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		clearAllKGNodesStmt:                       q.clearAllKGNodesStmt,
 		clearAllUserMemoriesStmt:                  q.clearAllUserMemoriesStmt,
 		clearChainNodesStmt:                       q.clearChainNodesStmt,
+		clearDocumentAuditStatesStmt:              q.clearDocumentAuditStatesStmt,
 		clearRegulationSupersessionAuditLogsStmt:  q.clearRegulationSupersessionAuditLogsStmt,
 		clearRegulationSupersessionEdgesStmt:      q.clearRegulationSupersessionEdgesStmt,
 		clearSupersessionAuditLogsStmt:            q.clearSupersessionAuditLogsStmt,
@@ -2819,9 +2883,11 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		countAuditLogsByActiveDocStmt:             q.countAuditLogsByActiveDocStmt,
 		countChunksTotalStmt:                      q.countChunksTotalStmt,
 		countConversationsByUserIDStmt:            q.countConversationsByUserIDStmt,
+		countCoursePrerequisitesStmt:              q.countCoursePrerequisitesStmt,
 		countCoursesFilteredStmt:                  q.countCoursesFilteredStmt,
 		countCurriculumCoursesStmt:                q.countCurriculumCoursesStmt,
 		countCurriculumsStmt:                      q.countCurriculumsStmt,
+		countDocumentAuditStatesStmt:              q.countDocumentAuditStatesStmt,
 		countDocumentsStmt:                        q.countDocumentsStmt,
 		countDocumentsTotalStmt:                   q.countDocumentsTotalStmt,
 		countEdgesTotalStmt:                       q.countEdgesTotalStmt,
@@ -2855,6 +2921,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		createUserStmt:                            q.createUserStmt,
 		createUserRoleStmt:                        q.createUserRoleStmt,
 		deleteAgentSkillStmt:                      q.deleteAgentSkillStmt,
+		deleteAuditLogPairStmt:                    q.deleteAuditLogPairStmt,
 		deleteChainStmt:                           q.deleteChainStmt,
 		deleteChunksByDocumentIDStmt:              q.deleteChunksByDocumentIDStmt,
 		deleteConversationStmt:                    q.deleteConversationStmt,
@@ -2906,6 +2973,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getCurriculumCoursesByCurriculumIDStmt:    q.getCurriculumCoursesByCurriculumIDStmt,
 		getDefaultLLMModelByTypeStmt:              q.getDefaultLLMModelByTypeStmt,
 		getDefaultLLMProviderStmt:                 q.getDefaultLLMProviderStmt,
+		getDocumentAuditFingerprintStmt:           q.getDocumentAuditFingerprintStmt,
 		getDocumentByIDStmt:                       q.getDocumentByIDStmt,
 		getDocumentByURLStmt:                      q.getDocumentByURLStmt,
 		getDocumentRuleByIDStmt:                   q.getDocumentRuleByIDStmt,
@@ -3051,6 +3119,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		updateChainStmt:                           q.updateChainStmt,
 		updateChainNodePriorityStmt:               q.updateChainNodePriorityStmt,
 		updateChunkStatusStmt:                     q.updateChunkStatusStmt,
+		updateChunksCohortByDocumentIDStmt:        q.updateChunksCohortByDocumentIDStmt,
 		updateConversationTitleStmt:               q.updateConversationTitleStmt,
 		updateCurriculumCourseStmt:                q.updateCurriculumCourseStmt,
 		updateDocumentChunksByDocIDStatusStmt:     q.updateDocumentChunksByDocIDStatusStmt,
@@ -3084,6 +3153,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		upsertCurriculumStmt:                      q.upsertCurriculumStmt,
 		upsertCurriculumCourseStmt:                q.upsertCurriculumCourseStmt,
 		upsertDocumentStmt:                        q.upsertDocumentStmt,
+		upsertDocumentAuditFingerprintStmt:        q.upsertDocumentAuditFingerprintStmt,
 		upsertDocumentChunkStmt:                   q.upsertDocumentChunkStmt,
 		upsertDocumentRuleStmt:                    q.upsertDocumentRuleStmt,
 		upsertKGEdgeStmt:                          q.upsertKGEdgeStmt,

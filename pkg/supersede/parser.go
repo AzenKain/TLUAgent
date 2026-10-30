@@ -14,6 +14,9 @@ type ParsedArticle struct {
 	Content       string `json:"content"`
 }
 
+// FullTextArticle names the pseudo article that holds text outside any numbered article.
+const FullTextArticle = "Toàn văn"
+
 var (
 	chapterRegex = regexp.MustCompile(`(?i)^\s*(?:Chương|CHƯƠNG)\s+([IVXLCDM\d]+)[.:\s-]*(.*)$`)
 	articleRegex = regexp.MustCompile(`(?i)^\s*(?:Điều|ĐIỀU)\s+(\d+[a-zA-Z]?)[.:\s-]*([^\n]*)$`)
@@ -36,7 +39,7 @@ func ParseArticles(content string) []ParsedArticle {
 		}
 		num := currentArticleNum
 		if num == "" {
-			num = "Toàn văn"
+			num = FullTextArticle
 		}
 		title := currentArticleTitle
 		if title == "" {
@@ -95,7 +98,7 @@ func ParseArticles(content string) []ParsedArticle {
 		articles = append(articles, ParsedArticle{
 			Index:         0,
 			Chapter:       "",
-			ArticleNumber: "Toàn văn",
+			ArticleNumber: FullTextArticle,
 			Title:         "Nội dung văn bản",
 			Content:       strings.TrimSpace(content),
 		})

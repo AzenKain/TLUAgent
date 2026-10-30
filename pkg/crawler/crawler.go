@@ -19,6 +19,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/rs/zerolog/log"
 	"golang.org/x/net/html"
 
 	"tluagent-web/pkg/docparser"
@@ -1055,12 +1056,13 @@ func (c *Crawler) extractAttachmentText(ctx context.Context, data []byte, filena
 
 	if bytes.HasPrefix(data, pdfMagic) || strings.HasSuffix(lowerHint, ".pdf") {
 		text, errPdf := pipeline.ExtractPDFBytesPure(data)
-		if errPdf == nil && len(strings.TrimSpace(text)) >= 150 {
+		usable := errPdf == nil && len(strings.TrimSpace(text)) >= 150
+		if usable && !pipeline.IsGarbledText(text) {
 			return text, nil
 		}
 		if c.cfg.VisionOCR != nil {
 			ocrText, errOCR := c.renderPDFAndOCR(ctx, data)
-			if errOCR == nil && len(strings.TrimSpace(ocrText)) > 0 {
+			if errOCR == nil && len(strings.TrimSpace(ocrText)) > 0 && (!usable || pipeline.TextGarbleRatio(ocrText) < pipeline.TextGarbleRatio(text)) {
 				return ocrText, nil
 			}
 		}
@@ -1107,6 +1109,8 @@ func (c *Crawler) extractAttachmentText(ctx context.Context, data []byte, filena
 	return "", fmt.Errorf("unsupported attachment format")
 }
 
+const ocrBatchSize = 1
+
 func (c *Crawler) renderPDFAndOCR(ctx context.Context, data []byte) (string, error) {
 	if c.cfg.VisionOCR == nil {
 		return "", fmt.Errorf("vision OCR handler not configured")
@@ -1118,14 +1122,14 @@ func (c *Crawler) renderPDFAndOCR(ctx context.Context, data []byte) (string, err
 	}
 
 	var sb strings.Builder
-	batchSize := 4
-	for i := 0; i < len(allImages); i += batchSize {
-		end := i + batchSize
-		if end > len(allImages) {
-			end = len(allImages)
-		}
+	for i := 0; i < len(allImages); i += ocrBatchSize {
+		end := min(i+ocrBatchSize, len(allImages))
 		partText, errOCR := c.cfg.VisionOCR(ctx, allImages[i:end])
-		if errOCR == nil && strings.TrimSpace(partText) != "" {
+		if errOCR != nil {
+			log.Warn().Err(errOCR).Int("from_page", i+1).Msg("Vision OCR failed for PDF pages")
+			continue
+		}
+		if strings.TrimSpace(partText) != "" {
 			sb.WriteString(strings.TrimSpace(partText))
 			sb.WriteString("\n\n")
 		}

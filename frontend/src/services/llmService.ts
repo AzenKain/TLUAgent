@@ -142,7 +142,7 @@ export interface LLMChainNodeDTO {
 
 export interface LLMChainDTO {
   id: string;
-  chain_type: 'chat' | 'rerank' | 'embedding';
+  chain_type: 'chat' | 'rerank' | 'embedding' | 'audit';
   name: string;
   description: string;
   is_active: boolean;
@@ -156,7 +156,7 @@ export interface LLMChainDTO {
 
 export interface CreateLLMChainDTO {
   id: string;
-  chain_type: 'chat' | 'rerank' | 'embedding';
+  chain_type: 'chat' | 'rerank' | 'embedding' | 'audit';
   name: string;
   description?: string;
   is_active?: boolean;
@@ -188,11 +188,6 @@ export interface UpdateChainNodePriorityDTO {
 export const llmService = {
   async listProviders(): Promise<LLMProviderDTO[]> {
     const res = await apiClient.get<{ status: boolean; data: LLMProviderDTO[] }>('/admin/llm/providers');
-    return res.data.data;
-  },
-
-  async getProvider(id: string): Promise<LLMProviderDTO> {
-    const res = await apiClient.get<{ status: boolean; data: LLMProviderDTO }>(`/admin/llm/providers/${id}`);
     return res.data.data;
   },
 
@@ -241,11 +236,6 @@ export const llmService = {
 
   async listChains(): Promise<LLMChainDTO[]> {
     const res = await apiClient.get<{ status: boolean; data: LLMChainDTO[] }>('/admin/llm/chains');
-    return res.data.data;
-  },
-
-  async getChain(id: string): Promise<LLMChainDTO> {
-    const res = await apiClient.get<{ status: boolean; data: LLMChainDTO }>(`/admin/llm/chains/${id}`);
     return res.data.data;
   },
 

@@ -63,7 +63,7 @@ var (
 
 		// Vietnamese
 		regexp.MustCompile(`(?i)(?:bỏ\s*qua|quên\s*đi|hủy\s*bỏ|ghi\s*đè|bo\s*qua|quen\s*di|huy\s*bo|ghi\s*de)\s+.*?(?:chỉ\s*dẫn|hướng\s*dẫn|quy\s*tắc|lệnh|ràng\s*buộc|chi\s*dan|huong\s*dan|quy\s*tac|lenh|rang\s*buoc|prompt)`),
-		regexp.MustCompile(`(?i)(?:tiết\s*lộ|cho\s*xem|in\s*ra|hiển\s*thị|đọc\s*lại|xuất\s*ra|tiet\s*lo|in\s*ra|hien\s*thi|doc\s*lai|xuat\s*ra)\s+.*?(?:system\s*prompt|prompt\s*gốc|chỉ\s*dẫn\s*khởi\s*tạo|lệnh\s*hệ\s*thống|hướng\s*dẫn\s*nội\s*bộ|cấu\s*hình\s*llm|quản\s*trị\s*viên|chi\s*dan\s*khoi\s*tao|lenh\s*he\s*thong|huong\s*dan\s*noi\s*bo|system|prompt)`),
+		regexp.MustCompile(`(?i)(?:tiết\s*lộ|cho\s*xem|in\s*ra|hiển\s*thị|đọc\s*lại|xuất\s*ra|tiet\s*lo|in\s*ra|hien\s*thi|doc\s*lai|xuat\s*ra)\s+.*?(?:system\s*prompt|prompt\s*gốc|chỉ\s*dẫn\s*khởi\s*tạo|lệnh\s*hệ\s*thống|hướng\s*dẫn\s*nội\s*bộ|cấu\s*hình\s*llm|(?:cấu\s*hình|chỉ\s*dẫn|hướng\s*dẫn|lệnh)\s*(?:của\s*)?quản\s*trị\s*viên|chi\s*dan\s*khoi\s*tao|lenh\s*he\s*thong|huong\s*dan\s*noi\s*bo|system|prompt)`),
 		regexp.MustCompile(`(?i)(?:ai\s*bẻ\s*khóa|bẻ\s*khóa\s*tự\s*do|be\s*khoa\s*tu\s*do|không\s*bị\s*ràng\s*buộc\s*bởi\s*(?:bất\s*kỳ\s*)?quy\s*(?:chế|tắc|định)|khong\s*bi\s*rang\s*buoc)`),
 
 		// Chinese (Simplified & Traditional)

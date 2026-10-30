@@ -51,6 +51,8 @@ var defaultAcadPrototypes = []string{
 	"Hướng dẫn làm đồ án tốt nghiệp, đăng ký thực tập doanh nghiệp và nghiên cứu khoa học sinh viên.",
 	"Xin chào bạn, tôi muốn hỏi thông tin học tập và thủ tục sinh viên tại trường.",
 	"University campus life, student facilities, library hours, clubs and administrative inquiries.",
+	"Th\u00f4ng tin li\u00ean h\u1ec7 c\u1ee7a khoa, b\u1ed9 m\u00f4n, v\u0103n ph\u00f2ng khoa, qu\u1ea3n tr\u1ecb vi\u00ean khoa v\u00e0 gi\u1ea3ng vi\u00ean \u0111\u1ec3 h\u1ecfi v\u1ec1 \u0111\u1ed3 \u00e1n ho\u1eb7c h\u1ecdc v\u1ee5.",
+	"Email, s\u1ed1 \u0111i\u1ec7n tho\u1ea1i v\u00e0 ph\u00f2ng l\u00e0m vi\u1ec7c c\u1ee7a c\u1ed1 v\u1ea5n h\u1ecdc t\u1eadp, tr\u01b0\u1edfng b\u1ed9 m\u00f4n v\u00e0 c\u00e1n b\u1ed9 ph\u00f2ng \u0111\u00e0o t\u1ea1o.",
 }
 
 // NewBGEM3Classifier creates an intent classifier using dual-anchor prototypical embeddings.

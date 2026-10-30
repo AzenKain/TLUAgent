@@ -3,7 +3,6 @@ import type {
   CommonResponse,
   Role,
   Permission,
-  RolePermission,
   CreateRoleRequest,
   UpdateRoleRequest,
   PermissionAssignment,
@@ -12,11 +11,6 @@ import type {
 export const roleService = {
   async getRoles(): Promise<Role[]> {
     const res = await apiClient.get<CommonResponse<Role[]>>('/roles');
-    return res.data.data!;
-  },
-
-  async getRoleById(id: string): Promise<Role> {
-    const res = await apiClient.get<CommonResponse<Role>>(`/roles/${id}`);
     return res.data.data!;
   },
 
@@ -36,11 +30,6 @@ export const roleService = {
 
   async getPermissions(): Promise<Permission[]> {
     const res = await apiClient.get<CommonResponse<Permission[]>>('/permissions');
-    return res.data.data!;
-  },
-
-  async getRolePermissions(roleId: string): Promise<RolePermission[]> {
-    const res = await apiClient.get<CommonResponse<RolePermission[]>>(`/roles/${roleId}/permissions`);
     return res.data.data!;
   },
 

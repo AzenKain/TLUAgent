@@ -22,11 +22,6 @@ export const agentService = {
     return res.data.data;
   },
 
-  async getPrompt(id: string): Promise<AgentPromptDTO> {
-    const res = await apiClient.get<CommonResponse<AgentPromptDTO>>(`/admin/agent/prompts/${id}`);
-    return res.data.data;
-  },
-
   async updatePrompt(id: string, data: UpdateAgentPromptDTO): Promise<AgentPromptDTO> {
     const res = await apiClient.put<CommonResponse<AgentPromptDTO>>(`/admin/agent/prompts/${id}`, data);
     return res.data.data;
@@ -39,11 +34,6 @@ export const agentService = {
 
   async getSkills(): Promise<AgentSkillDTO[]> {
     const res = await apiClient.get<CommonResponse<AgentSkillDTO[]>>('/admin/agent/skills');
-    return res.data.data;
-  },
-
-  async getSkill(id: string): Promise<AgentSkillDTO> {
-    const res = await apiClient.get<CommonResponse<AgentSkillDTO>>(`/admin/agent/skills/${id}`);
     return res.data.data;
   },
 

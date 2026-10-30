@@ -16,6 +16,17 @@ type UpdateDocumentStatusRequest struct {
 	Reason         string `json:"reason,omitempty" validate:"omitempty,max=1000"`
 }
 
+// UpdateDocumentCohortRequest encapsulates the cohort scope an administrator sets on a document.
+type UpdateDocumentCohortRequest struct {
+	ApplicableCohort string `json:"applicable_cohort" validate:"required,max=200"`
+}
+
+// RevertSupersessionRequest identifies the audited pair an administrator wants to undo.
+type RevertSupersessionRequest struct {
+	ActiveDocID     string `json:"active_doc_id" validate:"required,max=128"`
+	SupersededDocID string `json:"superseded_doc_id" validate:"required,max=128"`
+}
+
 // KGEdgeRequest encapsulates input for creating or updating a knowledge graph relationship.
 type KGEdgeRequest struct {
 	ID           string  `json:"id,omitempty" validate:"omitempty,max=128"`

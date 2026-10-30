@@ -226,6 +226,20 @@ func (m *Manager) Chat(ctx context.Context, req *ChatRequest) (*ChatResponse, er
 	return p.Chat(ctx, adaptedReq)
 }
 
+// ChatWithChain runs the request through the dedicated workload chain and falls back to the chat route when it is unavailable or fails.
+func (m *Manager) ChatWithChain(ctx context.Context, chainType ChainType, req *ChatRequest) (*ChatResponse, error) {
+	m.mu.RLock()
+	chain := m.chains[chainType]
+	m.mu.RUnlock()
+
+	if chain != nil && chain.IsActive && len(chain.Nodes) > 0 {
+		if resp, _, err := chain.ExecuteChat(ctx, req); err == nil {
+			return resp, nil
+		}
+	}
+	return m.Chat(ctx, req)
+}
+
 // ChatStream executes streaming chat, routing through the chat chain if configured or falling back to default provider.
 func (m *Manager) ChatStream(ctx context.Context, req *ChatRequest) (StreamReader, error) {
 	targetModel := req.Model

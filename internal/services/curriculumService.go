@@ -13,6 +13,7 @@ import (
 	"tluagent-web/internal/gen/sqlc"
 	"tluagent-web/internal/models"
 	"tluagent-web/internal/repositories"
+	"tluagent-web/pkg/apperrors"
 	"tluagent-web/pkg/guardrail"
 )
 
@@ -493,6 +494,14 @@ func (s *curriculumService) CreateCourse(ctx context.Context, req *request.Creat
 		IsElearning:       isEl,
 	}
 
+	if existing, listErr := s.repo.GetCurriculumCoursesByCohortAndMajor(ctx, cohort, major); listErr == nil {
+		for _, c := range existing {
+			if strings.EqualFold(c.CourseCode, courseCode) && c.ID != id {
+				return nil, apperrors.New(apperrors.ErrConflict, "Course code already exists in this curriculum")
+			}
+		}
+	}
+
 	curr, err := s.repo.GetCurriculumByCohortAndMajor(ctx, params.Cohort, params.MajorName)
 	if err == nil && curr != nil {
 		params.CurriculumID = curr.ID
@@ -771,10 +780,15 @@ func (s *curriculumService) GetStats(ctx context.Context) (*response.CurriculumS
 	if err != nil {
 		return nil, err
 	}
+	prereqCount, err := s.repo.CountCoursePrerequisites(ctx)
+	if err != nil {
+		return nil, err
+	}
 	return &response.CurriculumStatsResponse{
 		Curriculums:   currCount,
 		Courses:       courseCount,
 		Substitutions: subCount,
+		Prerequisites: prereqCount,
 	}, nil
 }
 

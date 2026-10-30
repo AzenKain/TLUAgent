@@ -35,6 +35,11 @@ tool_definition: |
             "type": "boolean",
             "description": "Có sẵn sàng học kỳ hè để giảm tải các kỳ chính hay không (true/false)."
           },
+          "summer_courses": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Mã các môn sinh viên muốn hoãn sang kỳ hè (ví dụ [\"MI201\"]); bộ tối ưu sẽ xếp các môn này vào kỳ hè đầu tiên đủ điều kiện tiên quyết."
+          },
           "primary_strength": {
             "type": "string",
             "description": "Thế mạnh hoặc định hướng ưu tiên: 'programming', 'mathematics', 'networking', 'softskills'."

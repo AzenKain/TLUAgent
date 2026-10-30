@@ -6,6 +6,7 @@ const (
 	JobTypeCrawlNews          = "crawl_news"
 	JobTypeCrawlStaticPages   = "crawl_static_pages"
 	JobTypeSupersedeCheck     = "supersede_check"
+	JobTypeReextractDocuments = "reextract_documents"
 
 	JobStatusPending     = "pending"
 	JobStatusRunning     = "running"
@@ -15,5 +16,4 @@ const (
 
 	SlugNotices = "thong-bao"
 	SlugNews    = "tin-tuc"
-
 )

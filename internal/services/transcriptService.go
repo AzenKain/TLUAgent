@@ -313,9 +313,14 @@ func (s *transcriptService) extractGradeRecords(ctx context.Context, base64Image
 
 	systemInstruction := agent.PromptVisionTranscriptExtraction()
 
+	visionModel := s.llmManager.VisionFallbackModel()
+	if visionModel == "" {
+		visionModel = provider.DefaultModel()
+	}
+
 	temp := 0.1
 	req := &llm.ChatRequest{
-		Model: provider.DefaultModel(),
+		Model: visionModel,
 		Messages: []llm.Message{
 			{
 				Role:    llm.RoleSystem,
@@ -340,8 +345,12 @@ func (s *transcriptService) extractGradeRecords(ctx context.Context, base64Image
 	content = strings.TrimSuffix(content, "```")
 	content = strings.TrimSpace(content)
 
+	if start := strings.Index(content, "["); start > 0 {
+		content = content[start:]
+	}
+
 	var extracted []*models.StudentCourseGradeRecord
-	if err := json.Unmarshal([]byte(content), &extracted); err != nil {
+	if err := json.NewDecoder(strings.NewReader(content)).Decode(&extracted); err != nil {
 		return nil, fmt.Errorf("unmarshal extracted transcript json: %w (content: %s)", err, content)
 	}
 
