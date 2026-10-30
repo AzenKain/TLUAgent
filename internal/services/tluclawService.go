@@ -24,6 +24,7 @@ import (
 	"tluagent-web/pkg/compactor"
 	"tluagent-web/pkg/constants"
 	"tluagent-web/pkg/crypto"
+	"tluagent-web/pkg/database"
 	"tluagent-web/pkg/docparser"
 	"tluagent-web/pkg/llm"
 	"tluagent-web/pkg/tuition"
@@ -45,26 +46,27 @@ type TLUClawService interface {
 
 // TLUClawParams encapsulates dependencies for TLUClaw services and tool engine.
 type TLUClawParams struct {
-	TLUClawRepo    repositories.TLUClawRepository
-	CurriculumRepo repositories.CurriculumRepository
-	RAGRepo        repositories.RAGRepository
-	RAGService     RAGService
-	RAMCache       cache.Cache
-	LLMManager     *llm.Manager
-	SkillLoader    agent.SkillLoader
-	MemoryService  MemoryService
-	UserRepo       repositories.UserRepository
-	RoleRepo       repositories.RoleRepository
-	TranscriptRepo repositories.TranscriptRepository
-	InquiryRepo    repositories.InquiryRepository
-	LLMConfigSvc   LLMConfigService
-	MemoryRepo     repositories.MemoryRepository
-	NotifRepo      repositories.NotificationRepository
-	JobService     JobService
-	TuitionClient  *tuition.Client
+	TLUClawRepo      repositories.TLUClawRepository
+	CurriculumRepo   repositories.CurriculumRepository
+	RAGRepo          repositories.RAGRepository
+	RAGService       RAGService
+	RAMCache         cache.Cache
+	LLMManager       *llm.Manager
+	SkillLoader      agent.SkillLoader
+	MemoryService    MemoryService
+	UserRepo         repositories.UserRepository
+	RoleRepo         repositories.RoleRepository
+	TranscriptRepo   repositories.TranscriptRepository
+	InquiryRepo      repositories.InquiryRepository
+	LLMConfigSvc     LLMConfigService
+	MemoryRepo       repositories.MemoryRepository
+	NotifRepo        repositories.NotificationRepository
+	JobService       JobService
+	TuitionClient    *tuition.Client
 	RoleService      RoleService
 	SettingsRepo     repositories.SettingsRepository
 	DissectionEngine *RegulatoryDissectionEngine
+	TxManager        database.TxManager
 }
 
 type tluclawService struct {
@@ -88,6 +90,7 @@ type tluclawService struct {
 	llmManager       *llm.Manager
 	settingsRepo     repositories.SettingsRepository
 	dissectionEngine *RegulatoryDissectionEngine
+	txManager        database.TxManager
 }
 
 // NewTLUClawService creates a new administrative assistant service.
@@ -97,10 +100,10 @@ func NewTLUClawService(params TLUClawParams) TLUClawService {
 		dissectionEngine = NewRegulatoryDissectionEngine(EngineParams{
 			RAGRepo:        params.RAGRepo,
 			CurriculumRepo: params.CurriculumRepo,
-			InquiryRepo: params.InquiryRepo,
-			NotifRepo:   params.NotifRepo,
-			UserRepo:    params.UserRepo,
-			LLMManager:  params.LLMManager,
+			InquiryRepo:    params.InquiryRepo,
+			NotifRepo:      params.NotifRepo,
+			UserRepo:       params.UserRepo,
+			LLMManager:     params.LLMManager,
 		})
 	}
 	params.DissectionEngine = dissectionEngine
@@ -130,6 +133,7 @@ func NewTLUClawService(params TLUClawParams) TLUClawService {
 		llmManager:       params.LLMManager,
 		settingsRepo:     params.SettingsRepo,
 		dissectionEngine: dissectionEngine,
+		txManager:        params.TxManager,
 	}
 }
 
@@ -552,12 +556,39 @@ func (s *tluclawService) ConfirmSnapshot(ctx context.Context, adminID string, re
 		return nil, apperrors.New(apperrors.ErrBadRequest, "confirmation nonce has expired")
 	}
 
+	currRepo := s.curriculumRepo
+	ragRepo := s.ragRepo
+	notifRepo := s.notifRepo
+	var tx *sql.Tx
+	var cErr error
+	var writeErr error
+	check := func(err error) {
+		if err != nil && writeErr == nil {
+			writeErr = err
+		}
+	}
+	if s.txManager != nil {
+		var err error
+		tx, err = s.txManager.BeginTx(ctx, nil)
+		if err != nil {
+			return nil, fmt.Errorf("begin transaction: %w", err)
+		}
+		defer func() {
+			if tx != nil {
+				_ = tx.Rollback()
+			}
+		}()
+		currRepo = s.curriculumRepo.WithTx(tx)
+		ragRepo = s.ragRepo.WithTx(tx)
+		notifRepo = s.notifRepo.WithTx(tx)
+	}
+
 	switch snapshot.ActionType {
 	case "academic_structure":
 		var state request.TLUClawAcademicStructureSnapshotState
 		if err := json.Unmarshal([]byte(snapshot.NewStateJSON), &state); err == nil {
 			if state.Cohort != "" {
-				_, _ = s.curriculumRepo.UpsertCurriculum(ctx, sqlc.UpsertCurriculumParams{
+				_, cErr = currRepo.UpsertCurriculum(ctx, sqlc.UpsertCurriculumParams{
 					ID:           "CURR_" + state.Cohort,
 					Cohort:       state.Cohort,
 					AcademicYear: state.AcademicYear,
@@ -568,11 +599,13 @@ func (s *tluclawService) ConfirmSnapshot(ctx context.Context, adminID string, re
 					TotalCourses: 0,
 					TotalCredits: 0,
 				})
+				check(cErr)
 			}
 			if state.MajorCode != "" {
 				aliasesJoined := strings.Join(state.Aliases, ",")
-				_ = s.curriculumRepo.UpdateMajorMetadataByName(ctx, state.MajorNameVi, state.MajorCode, state.FacultyCode, aliasesJoined)
-				_, _ = s.curriculumRepo.UpsertCurriculum(ctx, sqlc.UpsertCurriculumParams{
+				cErr = currRepo.UpdateMajorMetadataByName(ctx, state.MajorNameVi, state.MajorCode, state.FacultyCode, aliasesJoined)
+				check(cErr)
+				_, cErr = currRepo.UpsertCurriculum(ctx, sqlc.UpsertCurriculumParams{
 					ID:           "CURR_MAJ_" + state.MajorCode,
 					Cohort:       constants.DocCohortAll,
 					AcademicYear: constants.CurrentAcademicYear(),
@@ -583,7 +616,8 @@ func (s *tluclawService) ConfirmSnapshot(ctx context.Context, adminID string, re
 					TotalCourses: 0,
 					TotalCredits: 0,
 				})
-				s.curriculumRepo.InvalidateCurriculumCache(ctx, "", "")
+				check(cErr)
+				currRepo.InvalidateCurriculumCache(ctx, "", "")
 			}
 		}
 
@@ -591,7 +625,7 @@ func (s *tluclawService) ConfirmSnapshot(ctx context.Context, adminID string, re
 		var state request.TLUClawCurriculumSnapshotState
 		if err := json.Unmarshal([]byte(snapshot.NewStateJSON), &state); err == nil {
 			currID := fmt.Sprintf("CURR_%s_%s", state.Cohort, state.MajorCode)
-			_, _ = s.curriculumRepo.UpsertCurriculum(ctx, sqlc.UpsertCurriculumParams{
+			_, cErr = currRepo.UpsertCurriculum(ctx, sqlc.UpsertCurriculumParams{
 				ID:           currID,
 				Cohort:       state.Cohort,
 				AcademicYear: state.Cohort,
@@ -602,8 +636,9 @@ func (s *tluclawService) ConfirmSnapshot(ctx context.Context, adminID string, re
 				TotalCourses: int64(len(state.IncomingCourses)),
 				TotalCredits: 0,
 			})
+			check(cErr)
 
-			existingCourses, _ := s.curriculumRepo.GetCurriculumCoursesByCohortAndMajor(ctx, state.Cohort, state.MajorCode)
+			existingCourses, _ := currRepo.GetCurriculumCoursesByCohortAndMajor(ctx, state.Cohort, state.MajorCode)
 			existingMap := make(map[string]*models.CurriculumCourse)
 			for _, ec := range existingCourses {
 				existingMap[strings.ToUpper(strings.TrimSpace(ec.CourseCode))] = ec
@@ -626,7 +661,7 @@ func (s *tluclawService) ConfirmSnapshot(ctx context.Context, adminID string, re
 				if existing, exists := existingMap[cleanCode]; exists {
 					courseID = existing.ID
 				}
-				_, _ = s.curriculumRepo.UpsertCurriculumCourse(ctx, sqlc.UpsertCurriculumCourseParams{
+				_, cErr = currRepo.UpsertCurriculumCourse(ctx, sqlc.UpsertCurriculumCourseParams{
 					ID:                courseID,
 					CurriculumID:      currID,
 					Cohort:            state.Cohort,
@@ -641,8 +676,9 @@ func (s *tluclawService) ConfirmSnapshot(ctx context.Context, adminID string, re
 					SuggestedSemester: inc.SuggestedSemester,
 					IsElearning:       inc.IsElearning,
 				})
+				check(cErr)
 			}
-			s.curriculumRepo.InvalidateCurriculumCache(ctx, state.Cohort, state.MajorCode)
+			currRepo.InvalidateCurriculumCache(ctx, state.Cohort, state.MajorCode)
 			if s.c != nil {
 				_ = s.c.DelByPattern(ctx, "curriculum:*")
 				_ = s.c.DelByPattern(ctx, "course:*")
@@ -655,7 +691,7 @@ func (s *tluclawService) ConfirmSnapshot(ctx context.Context, adminID string, re
 			if state.PlanJSON != "" && s.dissectionEngine != nil {
 				var plan GranularSupersessionPlan
 				if err := json.Unmarshal([]byte(state.PlanJSON), &plan); err == nil {
-					_ = s.dissectionEngine.ApplyPlan(ctx, &plan, &DissectionRequest{
+					cErr = s.dissectionEngine.WithRepositories(ragRepo, currRepo).ApplyPlan(ctx, &plan, &DissectionRequest{
 						NewDocID:         state.NewDocID,
 						Title:            state.Title,
 						DocCode:          state.NewDocID,
@@ -665,6 +701,7 @@ func (s *tluclawService) ConfirmSnapshot(ctx context.Context, adminID string, re
 						AcademicYear:     state.AcademicYear,
 						Content:          state.Content,
 					})
+					check(cErr)
 					break
 				}
 			}
@@ -679,7 +716,8 @@ func (s *tluclawService) ConfirmSnapshot(ctx context.Context, adminID string, re
 				PriorityLevel:    10,
 				CreatedAt:        time.Now().Format(time.RFC3339),
 			}
-			_, _ = s.ragRepo.UpsertDocument(ctx, docModel)
+			_, cErr = ragRepo.UpsertDocument(ctx, docModel)
+			check(cErr)
 
 			if strings.TrimSpace(state.Content) != "" {
 				chunkTexts := splitIntoChunks(state.Content, 1200, 150)
@@ -720,7 +758,8 @@ func (s *tluclawService) ConfirmSnapshot(ctx context.Context, adminID string, re
 					})
 				}
 				if len(chunks) > 0 {
-					_ = s.ragRepo.UpsertChunksBatch(ctx, chunks)
+					cErr = ragRepo.UpsertChunksBatch(ctx, chunks)
+					check(cErr)
 				}
 			}
 
@@ -731,7 +770,8 @@ func (s *tluclawService) ConfirmSnapshot(ctx context.Context, adminID string, re
 				Code:     state.NewDocID,
 				Status:   "ACTIVE",
 			}
-			_, _ = s.ragRepo.UpsertKGNode(ctx, docNode)
+			_, cErr = ragRepo.UpsertKGNode(ctx, docNode)
+			check(cErr)
 
 			if state.Cohort != "" && state.Cohort != "ALL" {
 				cohortNode := &models.KGNode{
@@ -741,8 +781,9 @@ func (s *tluclawService) ConfirmSnapshot(ctx context.Context, adminID string, re
 					Code:     state.Cohort,
 					Status:   "ACTIVE",
 				}
-				_, _ = s.ragRepo.UpsertKGNode(ctx, cohortNode)
-				_, _ = s.ragRepo.UpsertKGEdge(ctx, &models.KGEdge{
+				_, cErr = ragRepo.UpsertKGNode(ctx, cohortNode)
+				check(cErr)
+				_, cErr = ragRepo.UpsertKGEdge(ctx, &models.KGEdge{
 					ID:           fmt.Sprintf("edge:cohort:%s:%s", state.NewDocID, state.Cohort),
 					SourceNodeID: docNode.ID,
 					TargetNodeID: cohortNode.ID,
@@ -750,11 +791,27 @@ func (s *tluclawService) ConfirmSnapshot(ctx context.Context, adminID string, re
 					Weight:       1.0,
 					Status:       "ACTIVE",
 				})
+				check(cErr)
 			}
 
 			for _, oldID := range state.SupersededDocIDs {
-				_ = s.ragRepo.UpdateDocumentStatus(ctx, oldID, "SUPERSEDED", state.NewDocID)
-				_ = s.ragRepo.RecordSupersessionLog(ctx, state.NewDocID, oldID, "DOCUMENT_REPLACEMENT", "Superseded via TLUClaw administrative action")
+				cErr = ragRepo.UpdateDocumentStatus(ctx, oldID, "SUPERSEDED", state.NewDocID)
+				check(cErr)
+				cErr = ragRepo.RecordSupersessionLog(ctx, state.NewDocID, oldID, "DOCUMENT_REPLACEMENT", "Superseded via TLUClaw administrative action")
+				check(cErr)
+
+				oldTitle := oldID
+				if oldDoc, dErr := ragRepo.GetDocumentByID(ctx, oldID); dErr == nil && oldDoc != nil && oldDoc.Title != "" {
+					oldTitle = oldDoc.Title
+				}
+				_, cErr = ragRepo.UpsertKGNode(ctx, &models.KGNode{
+					ID:       "doc:" + oldID,
+					NodeType: constants.KGNodeTypeDocument,
+					Name:     oldTitle,
+					Code:     oldID,
+					Status:   constants.DocStatusActive,
+				})
+				check(cErr)
 
 				edge := &models.KGEdge{
 					ID:           "edge_" + uuid.NewString()[:8],
@@ -762,8 +819,10 @@ func (s *tluclawService) ConfirmSnapshot(ctx context.Context, adminID string, re
 					TargetNodeID: "doc:" + oldID,
 					RelationType: "SUPERSEDES",
 					Weight:       1.0,
+					Status:       "ACTIVE",
 				}
-				_, _ = s.ragRepo.UpsertKGEdge(ctx, edge)
+				_, cErr = ragRepo.UpsertKGEdge(ctx, edge)
+				check(cErr)
 			}
 
 			if s.c != nil {
@@ -776,7 +835,7 @@ func (s *tluclawService) ConfirmSnapshot(ctx context.Context, adminID string, re
 		var state request.TLUClawSubstitutionSnapshotState
 		if err := json.Unmarshal([]byte(snapshot.NewStateJSON), &state); err == nil {
 			var isTransitiveInt int64
-			_, _ = s.curriculumRepo.UpsertCourseSubstitution(ctx, sqlc.UpsertCourseSubstitutionParams{
+			_, cErr = currRepo.UpsertCourseSubstitution(ctx, sqlc.UpsertCourseSubstitutionParams{
 				ID:                    state.ID,
 				OriginalCourseCode:    state.OriginalCourseCode,
 				OriginalCourseName:    state.OriginalCourseName,
@@ -794,9 +853,10 @@ func (s *tluclawService) ConfirmSnapshot(ctx context.Context, adminID string, re
 				RuleNote:              state.RuleNote,
 				SourceReference:       "TLUClaw Operation",
 			})
+			check(cErr)
 			if state.IsBidirectional == 1 {
 				reverseID := fmt.Sprintf("%s_rev", state.ID)
-				_, _ = s.curriculumRepo.UpsertCourseSubstitution(ctx, sqlc.UpsertCourseSubstitutionParams{
+				_, cErr = currRepo.UpsertCourseSubstitution(ctx, sqlc.UpsertCourseSubstitutionParams{
 					ID:                    reverseID,
 					OriginalCourseCode:    state.ReplacementCourseCode,
 					OriginalCourseName:    state.ReplacementCourseName,
@@ -814,8 +874,9 @@ func (s *tluclawService) ConfirmSnapshot(ctx context.Context, adminID string, re
 					RuleNote:              state.RuleNote,
 					SourceReference:       "TLUClaw Operation (Bidirectional)",
 				})
+				check(cErr)
 			}
-			s.curriculumRepo.InvalidateCurriculumCache(ctx, "", "")
+			currRepo.InvalidateCurriculumCache(ctx, "", "")
 			if s.c != nil {
 				_ = s.c.DelByPattern(ctx, "curr*")
 			}
@@ -824,11 +885,25 @@ func (s *tluclawService) ConfirmSnapshot(ctx context.Context, adminID string, re
 	case "prerequisite_rule":
 		var state request.TLUClawPrerequisiteSnapshotState
 		if err := json.Unmarshal([]byte(snapshot.NewStateJSON), &state); err == nil {
+			if state.CurriculumCourseID == "" && state.CourseCode != "" && state.Cohort != "" {
+				if matches, lErr := currRepo.GetCoursesByCodeAndCohort(ctx, state.Cohort, state.CourseCode); lErr == nil {
+					for _, match := range matches {
+						if state.MajorName == "" || strings.EqualFold(match.MajorName, state.MajorName) {
+							state.CurriculumCourseID = match.ID
+							break
+						}
+					}
+				}
+			}
+			if state.CurriculumCourseID == "" {
+				return nil, apperrors.New(apperrors.ErrBadRequest,
+					fmt.Sprintf("Không tìm thấy học phần %s trong CTĐT khóa %s để gắn điều kiện tiên quyết", state.CourseCode, state.Cohort))
+			}
 			minGradeVal, _ := strconv.ParseFloat(state.MinGrade, 64)
 			if minGradeVal <= 0 {
 				minGradeVal = 1.0
 			}
-			_, _ = s.curriculumRepo.UpsertCoursePrerequisite(ctx, sqlc.UpsertCoursePrerequisiteParams{
+			_, cErr = currRepo.UpsertCoursePrerequisite(ctx, sqlc.UpsertCoursePrerequisiteParams{
 				ID:                     state.ID,
 				CurriculumCourseID:     state.CurriculumCourseID,
 				Cohort:                 state.Cohort,
@@ -839,7 +914,8 @@ func (s *tluclawService) ConfirmSnapshot(ctx context.Context, adminID string, re
 				ConditionType:          state.ConditionType,
 				RawExpression:          state.RawExpression,
 			})
-			s.curriculumRepo.InvalidateCurriculumCache(ctx, state.Cohort, "")
+			check(cErr)
+			currRepo.InvalidateCurriculumCache(ctx, state.Cohort, "")
 			if s.c != nil {
 				_ = s.c.DelByPattern(ctx, "curr*")
 			}
@@ -906,9 +982,10 @@ func (s *tluclawService) ConfirmSnapshot(ctx context.Context, adminID string, re
 		var state request.TLUClawUserRoleChangeSnapshotState
 		if err := json.Unmarshal([]byte(snapshot.NewStateJSON), &state); err == nil {
 			if s.roleRepo != nil {
-				if state.RoleAction == "ASSIGN" {
+				switch state.RoleAction {
+				case "ASSIGN":
 					_ = s.roleRepo.CreateUserRole(ctx, state.UserID, state.RoleID)
-				} else if state.RoleAction == "REMOVE" {
+				case "REMOVE":
 					if s.userRepo != nil {
 						u, _ := s.userRepo.GetByID(ctx, state.UserID)
 						if u != nil {
@@ -960,7 +1037,8 @@ func (s *tluclawService) ConfirmSnapshot(ctx context.Context, adminID string, re
 	case "document_status":
 		var state request.TLUClawDocumentStatusSnapshotState
 		if err := json.Unmarshal([]byte(snapshot.NewStateJSON), &state); err == nil && s.ragRepo != nil {
-			_ = s.ragRepo.UpdateDocumentStatus(ctx, state.DocumentID, state.Status, "")
+			cErr = ragRepo.UpdateDocumentStatus(ctx, state.DocumentID, state.Status, "")
+			check(cErr)
 			if s.c != nil {
 				_ = s.c.DelByPattern(ctx, "rag_search:*")
 				_ = s.c.DelByPattern(ctx, "rag_candidates:*")
@@ -972,13 +1050,14 @@ func (s *tluclawService) ConfirmSnapshot(ctx context.Context, adminID string, re
 		var state request.TLUClawNotificationDispatchSnapshotState
 		if err := json.Unmarshal([]byte(snapshot.NewStateJSON), &state); err == nil && s.notifRepo != nil {
 			for _, n := range state.Notifications {
-				_, _ = s.notifRepo.CreateNotification(ctx, &models.UserNotification{
+				_, cErr = notifRepo.CreateNotification(ctx, &models.UserNotification{
 					ID:      n.ID,
 					UserID:  n.UserID,
 					Title:   n.Title,
 					Content: n.Content,
 					Type:    n.Type,
 				})
+				check(cErr)
 			}
 		}
 
@@ -989,27 +1068,79 @@ func (s *tluclawService) ConfirmSnapshot(ctx context.Context, adminID string, re
 		}
 	}
 
+	if writeErr != nil {
+		if tx != nil {
+			_ = tx.Rollback()
+			tx = nil
+		}
+		log.Error().Err(writeErr).Str("snapshot_id", snapshot.ID).Msg("TLUClaw commit failed")
+		return nil, fmt.Errorf("apply snapshot changes: %w", writeErr)
+	}
+
 	appliedTime := sql.NullTime{Time: time.Now(), Valid: true}
-	if err := s.tluclawRepo.UpdateSnapshotStatus(ctx, snapshot.ID, "COMMITTED", appliedTime); err != nil {
+	snapshotRepo := s.tluclawRepo
+	if tx != nil {
+		snapshotRepo = s.tluclawRepo.WithTx(tx)
+	}
+	if err := snapshotRepo.UpdateSnapshotStatus(ctx, snapshot.ID, "COMMITTED", appliedTime); err != nil {
 		return nil, fmt.Errorf("update snapshot status: %w", err)
 	}
 
 	if s.notifRepo != nil {
 		var blast models.TLUClawBlastRadius
-		_ = json.Unmarshal([]byte(snapshot.BlastRadiusJSON), &blast)
+		cErr = json.Unmarshal([]byte(snapshot.BlastRadiusJSON), &blast)
+		check(cErr)
 		if len(blast.AffectedCohorts) > 0 || len(blast.AffectedMajors) > 0 {
 			notifTitle := fmt.Sprintf("Thông báo cập nhật học vụ: %s", snapshot.Summary)
 			notifContent := fmt.Sprintf("Hệ thống vừa cập nhật dữ liệu đào tạo ảnh hưởng đến: %s. Chi tiết: %s", strings.Join(blast.AffectedCohorts, ", "), blast.ImpactSummary)
-			_, _ = s.notifRepo.CreateNotification(ctx, &models.UserNotification{
+			now := time.Now()
+			_, cErr = notifRepo.CreateNotification(ctx, &models.UserNotification{
 				ID:        "notif_" + uuid.NewString()[:8],
 				UserID:    "BROADCAST",
 				Title:     notifTitle,
 				Content:   notifContent,
 				Type:      "ACADEMIC_ALERT",
 				IsRead:    false,
-				CreatedAt: time.Now(),
+				CreatedAt: now,
 			})
+			check(cErr)
+
+			var recipients []string
+			if s.memoryRepo != nil && len(blast.AffectedCohorts) > 0 {
+				if ids, err := s.memoryRepo.ListUserIDsByCohorts(ctx, blast.AffectedCohorts); err == nil {
+					recipients = ids
+				} else {
+					log.Warn().Err(err).Msg("Failed to resolve students affected by TLUClaw commit")
+				}
+			}
+			const notifBatch = 500
+			for start := 0; start < len(recipients); start += notifBatch {
+				end := start + notifBatch
+				if end > len(recipients) {
+					end = len(recipients)
+				}
+				for _, userID := range recipients[start:end] {
+					_, cErr = notifRepo.CreateNotification(ctx, &models.UserNotification{
+						ID:        "notif_" + uuid.NewString()[:8],
+						UserID:    userID,
+						Title:     notifTitle,
+						Content:   notifContent,
+						Type:      constants.NotifTypeCurriculumUpdated,
+						IsRead:    false,
+						CreatedAt: now,
+					})
+					check(cErr)
+				}
+			}
+			log.Info().Int("students", len(recipients)).Str("snapshot_id", snapshot.ID).Msg("Curriculum update notifications dispatched")
 		}
+	}
+
+	if tx != nil {
+		if err := tx.Commit(); err != nil {
+			return nil, fmt.Errorf("commit transaction: %w", err)
+		}
+		tx = nil
 	}
 
 	return &response.TLUClawActionResponse{

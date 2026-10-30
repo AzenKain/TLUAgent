@@ -78,3 +78,9 @@ WHERE (sqlc.arg('cohort') = '' OR sp.cohort = sqlc.arg('cohort'))
 ORDER BY sp.cumulative_gpa ASC
 LIMIT sqlc.arg('limit_val');
 
+
+-- name: ListUserIDsByCohort :many
+SELECT DISTINCT user_id FROM student_academic_profiles WHERE cohort = ?;
+
+-- name: ListUserIDsByCohorts :many
+SELECT DISTINCT user_id FROM student_academic_profiles WHERE cohort IN (sqlc.slice('cohorts'));

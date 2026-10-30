@@ -431,6 +431,37 @@ func (q *Queries) GetRolesByIDs(ctx context.Context, ids []string) ([]Role, erro
 	return items, nil
 }
 
+const listAdminUserIDs = `-- name: ListAdminUserIDs :many
+SELECT DISTINCT u.id
+FROM users u
+JOIN user_roles ur ON u.id = ur.user_id
+JOIN roles r ON ur.role_id = r.id
+WHERE u.is_deleted = 0 AND r.is_deleted = 0 AND (r.name = 'ADMIN' OR r.is_admin = 1)
+`
+
+func (q *Queries) ListAdminUserIDs(ctx context.Context) ([]string, error) {
+	rows, err := q.query(ctx, q.listAdminUserIDsStmt, listAdminUserIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listPermissionKeys = `-- name: ListPermissionKeys :many
 SELECT key FROM permissions ORDER BY key ASC
 `

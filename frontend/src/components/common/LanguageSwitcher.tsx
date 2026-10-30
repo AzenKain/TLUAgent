@@ -4,9 +4,9 @@ import { Globe, Check } from 'lucide-react';
 import { useSettingsStore, type Language } from '@/stores/settingsStore';
 import { useShallow } from 'zustand/react/shallow';
 
-const LANGUAGES: { code: Language; label: string; flag: string }[] = [
-  { code: 'vi', label: 'Tiếng Việt', flag: '🇻🇳' },
-  { code: 'en', label: 'English', flag: '🇺🇸' },
+const LANGUAGES: { code: Language; labelKey: string; flag: string }[] = [
+  { code: 'vi', labelKey: 'common.lang_vi', flag: '🇻🇳' },
+  { code: 'en', labelKey: 'common.lang_en', flag: '🇺🇸' },
 ];
 
 export const LanguageSwitcher: React.FC<{ className?: string }> = ({ className = '' }) => {
@@ -75,7 +75,7 @@ export const LanguageSwitcher: React.FC<{ className?: string }> = ({ className =
               >
                 <span className="flex items-center gap-2">
                   <span>{lang.flag}</span>
-                  <span>{lang.label}</span>
+                  <span>{t(lang.labelKey)}</span>
                 </span>
                 {isSelected && <Check className="w-3.5 h-3.5" />}
               </button>

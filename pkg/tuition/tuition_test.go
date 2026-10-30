@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -41,7 +42,7 @@ const sampleHTML = `<!DOCTYPE html>
 </html>`
 
 func TestParseTuitionHTML(t *testing.T) {
-	info := ParseTuitionHTML(sampleHTML, "A44519", "https://hocphi.thanglong.edu.vn/pay/thanglong?customer=A44519")
+	info := ParseTuitionHTML(sampleHTML, "A44519", "https://portal.example.test/pay/tenant?customer=A44519")
 
 	require.True(t, info.Found)
 	assert.Equal(t, "A44519", info.StudentID)
@@ -66,7 +67,7 @@ func TestParseTuitionHTML(t *testing.T) {
 
 func TestLookupTuition_MockServer(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "/pay/thanglong", r.URL.Path)
+		assert.Equal(t, "/pay/tenant", r.URL.Path)
 		customer := r.URL.Query().Get("customer")
 		if customer == "A44519" {
 			w.WriteHeader(http.StatusOK)
@@ -78,7 +79,7 @@ func TestLookupTuition_MockServer(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient(5*time.Second, server.URL+"/pay/thanglong")
+	client := NewClient(5*time.Second, server.URL+"/pay/tenant")
 	info, err := client.LookupTuition(context.Background(), "A44519")
 	require.NoError(t, err)
 	assert.True(t, info.Found)
@@ -102,4 +103,22 @@ func TestLookupTuition_Live(t *testing.T) {
 	assert.Equal(t, "ĐỖ DUY KHÁNH", info.StudentName)
 	assert.Equal(t, "Khoa Công nghệ thông tin", info.Faculty)
 	assert.NotEmpty(t, info.TotalDebt)
+}
+
+func TestLookupTuition_RequiresConfiguredPortal(t *testing.T) {
+	t.Setenv("TUITION_PORTAL_URL", "")
+
+	client := NewClient(time.Second)
+	_, err := client.LookupTuition(context.Background(), "A44519")
+	if err == nil || !strings.Contains(err.Error(), "TUITION_PORTAL_URL") {
+		t.Fatalf("expected a configuration error naming TUITION_PORTAL_URL, got %v", err)
+	}
+}
+
+func TestHostLabelUsesConfiguredPortal(t *testing.T) {
+	t.Setenv("TUITION_PORTAL_URL", "https://portal.example.test/pay/tenant")
+
+	if got := HostLabel(); got != "portal.example.test" {
+		t.Fatalf("expected configured portal host, got %q", got)
+	}
 }

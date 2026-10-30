@@ -16,5 +16,4 @@ const (
 	SlugNotices = "thong-bao"
 	SlugNews    = "tin-tuc"
 
-	DefaultUniversityBaseURL = "https://thanglong.edu.vn"
 )

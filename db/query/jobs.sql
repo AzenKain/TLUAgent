@@ -89,3 +89,9 @@ WHERE id = sqlc.arg('id') AND enabled = 1 AND next_run_at <= sqlc.arg('now');
 UPDATE job_schedules
 SET last_job_id = NULL, next_run_at = sqlc.arg('retry_at'), updated_at = CURRENT_TIMESTAMP
 WHERE id = sqlc.arg('id') AND last_job_id = sqlc.arg('job_id');
+
+-- name: ListRecentJobStatusesByType :many
+SELECT status FROM jobs
+WHERE type = ?
+ORDER BY created_at DESC, rowid DESC
+LIMIT ?;

@@ -32,29 +32,49 @@ function getNodeColor(node: KGNodeDTO): string {
   if (node.status === 'SUPERSEDED') return '#94a3b8';
   if (node.status === 'PARTIALLY_AMENDED' || node.status === 'PARTIALLY_SUPERSEDED') return '#f59e0b';
   switch (node.node_type) {
-    case 'REGULATION':
+    case 'DOCUMENT':
       return '#050C56';
-    case 'CONDITION':
+    case 'TOPIC':
       return '#1D53E6';
-    case 'ENTITY':
+    case 'COHORT':
       return '#3AC2D8';
-    case 'METRIC':
+    case 'RULE':
       return '#10b981';
+    case 'ENTITY':
+      return '#f59e0b';
     default:
       return '#1D53E6';
   }
 }
 
+const KG_NODE_TYPES = ['DOCUMENT', 'TOPIC', 'COHORT', 'RULE', 'ENTITY'] as const;
+
+const KG_RELATIONS = [
+  'SUPERSEDES',
+  'AMENDS',
+  'PARTIALLY_AMENDS',
+  'COVERS_TOPIC',
+  'APPLIES_TO_COHORT',
+  'REFERENCES',
+  'BELONGS_TO',
+] as const;
+
 function getEdgeColor(relation: string): string {
   switch (relation) {
     case 'SUPERSEDES':
       return '#EA2212';
-    case 'REQUIRES':
-      return '#1D53E6';
     case 'AMENDS':
       return '#3AC2D8';
-    case 'CONTRADICTS':
-      return '#EA2212';
+    case 'PARTIALLY_AMENDS':
+      return '#f59e0b';
+    case 'COVERS_TOPIC':
+      return '#1D53E6';
+    case 'APPLIES_TO_COHORT':
+      return '#10b981';
+    case 'REFERENCES':
+      return '#64748b';
+    case 'BELONGS_TO':
+      return '#8b5cf6';
     default:
       return '#64748b';
   }
@@ -696,10 +716,11 @@ export const KnowledgeGraphPage: React.FC = () => {
               className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 shadow-sm focus:border-tlu-blue focus:outline-none focus:ring-1 focus:ring-tlu-blue [&>option]:bg-slate-900 [&>option]:text-slate-100"
             >
               <option value="" className="bg-slate-900 text-slate-100">{t('knowledge_graph.filter_node_type')}</option>
-              <option value="REGULATION" className="bg-slate-900 text-slate-100">REGULATION</option>
-              <option value="CONDITION" className="bg-slate-900 text-slate-100">CONDITION</option>
-              <option value="ENTITY" className="bg-slate-900 text-slate-100">ENTITY</option>
-              <option value="METRIC" className="bg-slate-900 text-slate-100">METRIC</option>
+              {KG_NODE_TYPES.map((nodeType) => (
+                <option key={nodeType} value={nodeType} className="bg-slate-900 text-slate-100">
+                  {t(`knowledge_graph.node_type_${nodeType.toLowerCase()}`)}
+                </option>
+              ))}
             </select>
           </div>
 
@@ -710,10 +731,11 @@ export const KnowledgeGraphPage: React.FC = () => {
               className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 shadow-sm focus:border-tlu-blue focus:outline-none focus:ring-1 focus:ring-tlu-blue [&>option]:bg-slate-900 [&>option]:text-slate-100"
             >
               <option value="" className="bg-slate-900 text-slate-100">{t('knowledge_graph.filter_relation_type')}</option>
-              <option value="SUPERSEDES" className="bg-slate-900 text-slate-100">SUPERSEDES</option>
-              <option value="REQUIRES" className="bg-slate-900 text-slate-100">REQUIRES</option>
-              <option value="AMENDS" className="bg-slate-900 text-slate-100">AMENDS</option>
-              <option value="CONTRADICTS" className="bg-slate-900 text-slate-100">CONTRADICTS</option>
+              {KG_RELATIONS.map((relation) => (
+                <option key={relation} value={relation} className="bg-slate-900 text-slate-100">
+                  {t(`knowledge_graph.relation_${relation.toLowerCase()}`)}
+                </option>
+              ))}
             </select>
           </div>
 
@@ -843,22 +865,15 @@ export const KnowledgeGraphPage: React.FC = () => {
               {/* Bottom Information Legend & Hint */}
               <div className="absolute bottom-3 left-3 right-3 flex flex-wrap items-center justify-between gap-2 pointer-events-none">
                 <div className="flex flex-wrap items-center gap-2 rounded-xl bg-slate-950/85 px-3 py-1.5 text-[11px] text-slate-300 backdrop-blur-md border border-slate-800/80 pointer-events-auto">
-                  <div className="flex items-center gap-1.5">
-                    <span className="h-2 w-2 rounded-full bg-tlu-red" />
-                    <span>SUPERSEDES</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="h-2 w-2 rounded-full bg-tlu-blue" />
-                    <span>REQUIRES</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="h-2 w-2 rounded-full bg-tlu-cyan" />
-                    <span>AMENDS</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="h-2 w-2 rounded-full bg-tlu-red" />
-                    <span>CONTRADICTS</span>
-                  </div>
+                  {KG_RELATIONS.map((relation) => (
+                    <div key={relation} className="flex items-center gap-1.5">
+                      <span
+                        className="h-2 w-2 rounded-full"
+                        style={{ backgroundColor: getEdgeColor(relation) }}
+                      />
+                      <span>{t(`knowledge_graph.legend_${relation.toLowerCase()}`)}</span>
+                    </div>
+                  ))}
                 </div>
 
                 <div className="rounded-xl bg-slate-950/85 px-3 py-1.5 text-[10px] text-slate-400 backdrop-blur-md border border-slate-800/80 pointer-events-auto">
@@ -1056,10 +1071,11 @@ export const KnowledgeGraphPage: React.FC = () => {
               onChange={(e) => setRelationType(e.target.value)}
               className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:border-tlu-blue focus:outline-none focus:ring-1 focus:ring-tlu-blue [&>option]:bg-slate-900 [&>option]:text-slate-100"
             >
-              <option value="SUPERSEDES" className="bg-slate-900 text-slate-100">SUPERSEDES</option>
-              <option value="REQUIRES" className="bg-slate-900 text-slate-100">REQUIRES</option>
-              <option value="AMENDS" className="bg-slate-900 text-slate-100">AMENDS</option>
-              <option value="CONTRADICTS" className="bg-slate-900 text-slate-100">CONTRADICTS</option>
+              {KG_RELATIONS.map((relation) => (
+                <option key={relation} value={relation} className="bg-slate-900 text-slate-100">
+                  {t(`knowledge_graph.relation_${relation.toLowerCase()}`)}
+                </option>
+              ))}
             </select>
           </div>
 

@@ -1,10 +1,10 @@
 ---
 id: tuition_calculation
 name: Tính toán Học phí & Hạn nộp
-description: Tính toán học phí theo tín chỉ, tra cứu trực tiếp tại cổng https://hocphi.thanglong.edu.vn/pay/thanglong và hướng dẫn xử lý nợ học phí.
+description: Tính toán học phí theo tín chỉ, tra cứu trực tiếp tại cổng {{tuition_portal_url}} và hướng dẫn xử lý nợ học phí.
 priority: 60
 tool_definition: |
-  {"name":"lookup_tuition_fee","description":"Tra cứu học phí thực tế, nợ học phí và tình trạng thanh toán của sinh viên TLU từ cổng hocphi.thanglong.edu.vn theo Mã sinh viên","parameters":{"type":"object","properties":{"student_id":{"type":"string","description":"Mã sinh viên TLU (ví dụ: A44519)"}},"required":["student_id"]}}
+  {"name":"lookup_tuition_fee","description":"Tra cứu học phí thực tế, nợ học phí và tình trạng thanh toán của sinh viên TLU từ cổng thanh toán học phí của Trường theo Mã sinh viên","parameters":{"type":"object","properties":{"student_id":{"type":"string","description":"Mã sinh viên TLU (ví dụ: A44519)"}},"required":["student_id"]}}
 ---
 # Kỹ Năng: Tính Toán Học Phí, Tra Cứu Cổng Thanh Toán & Hướng Dẫn Xử Lý Nợ Học Phí (tuition_calculation)
 
@@ -20,14 +20,14 @@ Kỹ năng này chịu trách nhiệm:
 
 ### 1. Kênh Thanh Toán Trực Tuyến Chính Thức
 
-- **Cổng thanh toán chính thức duy nhất**: [https://hocphi.thanglong.edu.vn/pay/thanglong](https://hocphi.thanglong.edu.vn/pay/thanglong) (Hệ thống thanh toán trực tuyến ebills.vn của Trường Đại học Thăng Long).
+- **Cổng thanh toán chính thức duy nhất**: [{{tuition_portal_url}}]({{tuition_portal_url}}) (Hệ thống thanh toán trực tuyến của Trường Đại học Thăng Long).
 - **Cách tra cứu & nộp**: Sinh viên truy cập đường link trên, nhập **Mã sinh viên** (ví dụ: `A44444`) để xem chi tiết học phí học kỳ, tổng số tiền cần thanh toán và chọn hình thức thanh toán (thẻ ATM nội địa, thẻ Visa/MasterCard, Ví MoMo, VNPay-QR).
-- **Cảnh báo an toàn**: Tuyệt đối không chuyển khoản qua tài khoản cá nhân, tài khoản trung gian hoặc các đường link lạ không thuộc tên miền `*.thanglong.edu.vn`.
+- **Cảnh báo an toàn**: Tuyệt đối không chuyển khoản qua tài khoản cá nhân, tài khoản trung gian hoặc các đường link lạ không thuộc tên miền chính thức của Trường (`{{university_site_url}}`).
 
 ### 2. Sử Dụng Công Cụ Tra Cứu Học Phí (lookup_tuition_fee)
 
 - Khi sinh viên cung cấp Mã sinh viên (ví dụ: `A44519`, `A41234`...) và hỏi về tình hình học phí, nợ học phí, hệ thống sẽ kích hoạt công cụ `lookup_tuition_fee` để trích xuất dữ liệu trực tiếp từ cổng thanh toán.
-- Báo cáo rõ ràng cho sinh viên: Họ tên, Khoa, Tổng số tiền nợ học phí, Chi tiết từng khoản phí (tên học phần/học kỳ, loại phí, số tiền) và dẫn link trực tiếp tới trang thanh toán của sinh viên: `https://hocphi.thanglong.edu.vn/pay/thanglong?customer={masv}`.
+- Báo cáo rõ ràng cho sinh viên: Họ tên, Khoa, Tổng số tiền nợ học phí, Chi tiết từng khoản phí (tên học phần/học kỳ, loại phí, số tiền) và dẫn link trực tiếp tới trang thanh toán của sinh viên: `{{tuition_portal_url}}?customer={masv}`.
 
 ### 3. Quy Trình Khẩn Cấp Khi Quá Hạn Nộp Học Phí (Bắt Buộc Nhắc Nhở)
 

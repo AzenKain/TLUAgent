@@ -753,7 +753,7 @@ func (s *advisoryService) executeAdvisorTool(ctx context.Context, userID string,
 		return &agent.ToolResult{
 			Content: tuition.FormatPromptContext(info),
 			Title:   fmt.Sprintf("Tra cứu học phí SV: %s (%s)", info.StudentID, info.TotalDebt),
-			Sources: []string{"Cổng thanh toán học phí Đại học Thăng Long (hocphi.thanglong.edu.vn)"},
+			Sources: []string{fmt.Sprintf("Cổng thanh toán học phí trực tuyến của Trường (%s)", tuition.HostLabel())},
 		}, nil
 
 	case "optimize_study_roadmap":
@@ -767,13 +767,16 @@ func (s *advisoryService) executeAdvisorTool(ctx context.Context, userID string,
 		if major == "" && profile != nil && profile.Major != "" {
 			major = profile.Major
 		}
+		var assumedDefaults []string
 		curSem := args.CurrentSemester
 		if curSem <= 0 {
 			curSem = 1
+			assumedDefaults = append(assumedDefaults, "học kỳ hiện tại được giả định là 1")
 		}
 		targetTerm := args.TargetSemesters
 		if targetTerm <= 0 {
 			targetTerm = 8
+			assumedDefaults = append(assumedDefaults, "số học kỳ mục tiêu được giả định là 8")
 		}
 		pacePref := strings.TrimSpace(args.PacePreference)
 		summerWillingness := args.SummerWillingness
@@ -832,7 +835,7 @@ func (s *advisoryService) executeAdvisorTool(ctx context.Context, userID string,
 			quizAnswers = &models.PersonalityQuizAnswers{
 				PacePreference:     pacePref,
 				SummerWillingness:  summerWillingness,
-				PrimaryStrength:   primaryStrength,
+				PrimaryStrength:    primaryStrength,
 				DeliveryPreference: deliveryPref,
 			}
 		}
@@ -854,6 +857,9 @@ func (s *advisoryService) executeAdvisorTool(ctx context.Context, userID string,
 		}
 		var b strings.Builder
 		b.WriteString("## ĐỀ XUẤT LỘ TRÌNH ĐĂNG KÝ HỌC KỲ TIẾP THEO (TỐI ƯU HÓA DAG):\n")
+		if len(assumedDefaults) > 0 {
+			fmt.Fprintf(&b, "- Lưu ý: %s do hồ sơ học vụ chưa có thông tin; hãy cung cấp để lộ trình chính xác hơn.\n", strings.Join(assumedDefaults, ", "))
+		}
 		fmt.Fprintf(&b, "- Tiến độ tích lũy: %.1f / %.1f tín chỉ (Còn lại: %.1f tín chỉ)\n", res.AccumulatedCredits, res.TotalCurriculumCredits, res.RemainingCredits)
 		if len(res.CriticalPathCourses) > 0 {
 			fmt.Fprintf(&b, "- Môn đường găng tiên quyết: %s\n", strings.Join(res.CriticalPathCourses, ", "))

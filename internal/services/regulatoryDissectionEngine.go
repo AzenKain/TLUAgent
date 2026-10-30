@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -22,6 +23,7 @@ import (
 	"tluagent-web/internal/gen/sqlc"
 	"tluagent-web/internal/models"
 	"tluagent-web/internal/repositories"
+	"tluagent-web/pkg/config"
 	"tluagent-web/pkg/constants"
 	"tluagent-web/pkg/convert"
 	"tluagent-web/pkg/llm"
@@ -107,7 +109,15 @@ type RegulatoryDissectionEngine struct {
 	userRepo       repositories.UserRepository
 	mgr            *llm.Manager
 	sfg            *singleflight.Group
+
+	dissectFn      func(ctx context.Context, req *DissectionRequest) (*GranularSupersessionPlan, error)
+	auditBatchSize int
 }
+
+const (
+	DefaultAuditBatchSize = 200
+	auditConcurrency      = 5
+)
 
 // NewRegulatoryDissectionEngine creates a new RegulatoryDissectionEngine instance.
 func NewRegulatoryDissectionEngine(params EngineParams) *RegulatoryDissectionEngine {
@@ -683,6 +693,17 @@ func (e *RegulatoryDissectionEngine) buildDefaultPlan(
 }
 
 // ApplyPlan executes the granular supersession modifications atomically across documents, rules, chunks, and graph.
+func (e *RegulatoryDissectionEngine) WithRepositories(ragRepo repositories.RAGRepository, curriculumRepo repositories.CurriculumRepository) *RegulatoryDissectionEngine {
+	clone := *e
+	if ragRepo != nil {
+		clone.ragRepo = ragRepo
+	}
+	if curriculumRepo != nil {
+		clone.curriculumRepo = curriculumRepo
+	}
+	return &clone
+}
+
 func (e *RegulatoryDissectionEngine) ApplyPlan(ctx context.Context, plan *GranularSupersessionPlan, req *DissectionRequest) error {
 	if plan == nil || req == nil || e.ragRepo == nil {
 		return nil
@@ -856,6 +877,7 @@ func (e *RegulatoryDissectionEngine) ApplyPlan(ctx context.Context, plan *Granul
 				TargetNodeID: constants.PrefixDocNode + plan.TargetDocID,
 				RelationType: constants.KGRelationSupersedes,
 				Weight:       1.0,
+				Status:       constants.DocStatusActive,
 			})
 		} else if plan.ActionType == ActionPartialAmend {
 			_ = e.ragRepo.UpdateDocumentStatus(ctx, plan.TargetDocID, constants.DocStatusPartiallyAmended, req.NewDocID)
@@ -874,6 +896,7 @@ func (e *RegulatoryDissectionEngine) ApplyPlan(ctx context.Context, plan *Granul
 				TargetNodeID: constants.PrefixDocNode + plan.TargetDocID,
 				RelationType: constants.KGRelationPartiallyAmends,
 				Weight:       1.0,
+				Status:       constants.DocStatusActive,
 			})
 		}
 	}
@@ -1280,26 +1303,90 @@ func (e *RegulatoryDissectionEngine) retrieveCandidatesDataDriven(
 	return candidates
 }
 
-// AuditCorpusChronological reviews all university regulations in chronological order with memory.
+func (e *RegulatoryDissectionEngine) auditBucketKey(ctx context.Context, doc *models.Document, majorRows []sqlc.ListAllMajorMetadataRow) string {
+	if doc.Domain == constants.DomainRegulation && (doc.Type == constants.DocTypeRegulation || doc.Type == constants.DocTypeRule) {
+		return constants.DomainRegulation + ":REG_RULE"
+	}
+	if doc.Type == constants.DocTypeCurriculum {
+		return "CTDT:" + e.resolveMajorFromDB(ctx, doc.Title, majorRows)
+	}
+	return doc.Domain + ":" + doc.Type
+}
+
+func (e *RegulatoryDissectionEngine) auditBatchSizeOrDefault() int {
+	if e.auditBatchSize > 0 {
+		return e.auditBatchSize
+	}
+	if n := config.GetIntConfigWithDefault("AUDIT_BATCH_SIZE", DefaultAuditBatchSize); n > 0 {
+		return n
+	}
+	return DefaultAuditBatchSize
+}
+
+func (e *RegulatoryDissectionEngine) dissectDocument(ctx context.Context, req *DissectionRequest) (*GranularSupersessionPlan, error) {
+	if e.dissectFn != nil {
+		return e.dissectFn(ctx, req)
+	}
+	return e.ExecuteDissectionLoop(ctx, req)
+}
+
+// AuditCorpusChronological runs one batch per call and persists its cursor so interrupted audits resume.
 func (e *RegulatoryDissectionEngine) AuditCorpusChronological(ctx context.Context, onProgress func(cur, total int64)) error {
 	if e.ragRepo == nil {
 		return fmt.Errorf("rag repo unavailable for audit")
 	}
 
-	_ = e.ragRepo.ResetAllSupersessions(ctx)
-
 	docs, err := e.ragRepo.ListAllRegulationsChronological(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to list regulations: %w", err)
 	}
-
 	total := int64(len(docs))
-	if total == 0 {
-		return nil
+
+	run, err := e.ragRepo.GetRunningAuditRun(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to load running audit run: %w", err)
 	}
 
+	if run == nil {
+		if err := e.ragRepo.ResetRegulationSupersessions(ctx); err != nil {
+			return fmt.Errorf("failed to reset supersession state: %w", err)
+		}
+		run, err = e.ragRepo.CreateAuditRun(ctx, uuid.NewString(), "", total)
+		if err != nil {
+			return fmt.Errorf("failed to create audit run: %w", err)
+		}
+		log.Info().Str("run_id", run.ID).Int64("total", total).Msg("Supersession audit run started (supersession state reset once)")
+	} else {
+		log.Info().
+			Str("run_id", run.ID).
+			Str("cursor", run.CursorDocID).
+			Int64("processed", run.Processed).
+			Int64("total", total).
+			Msg("Resuming supersession audit run")
+	}
+
+	if total == 0 {
+		return e.completeAuditRun(ctx, run.ID)
+	}
+
+	startIdx := 0
+	if run.CursorDocID != "" {
+		for i, doc := range docs {
+			if doc.ID == run.CursorDocID {
+				startIdx = i + 1
+				break
+			}
+		}
+	}
+	if startIdx > len(docs) {
+		startIdx = len(docs)
+	}
+	processed := int64(startIdx)
+	if err := e.ragRepo.UpdateAuditRunProgress(ctx, run.ID, run.CursorDocID, processed, total); err != nil {
+		log.Warn().Err(err).Str("run_id", run.ID).Msg("Failed to persist audit run progress")
+	}
 	if onProgress != nil {
-		onProgress(0, total)
+		onProgress(processed, total)
 	}
 
 	memory := NewSupersessionLineageMemory()
@@ -1316,139 +1403,249 @@ func (e *RegulatoryDissectionEngine) AuditCorpusChronological(ctx context.Contex
 		majorRows, _ = e.curriculumRepo.ListAllMajorMetadata(ctx)
 	}
 
-	domainBuckets := make(map[string][]*models.Document)
-	for _, doc := range docs {
-		key := doc.Domain + ":" + doc.Type
-		if doc.Domain == constants.DomainRegulation && (doc.Type == constants.DocTypeRegulation || doc.Type == constants.DocTypeRule) {
-			key = constants.DomainRegulation + ":REG_RULE"
-		} else if doc.Type == constants.DocTypeCurriculum {
-			mCode := e.resolveMajorFromDB(ctx, doc.Title, majorRows)
-			key = "CTDT:" + mCode
+	buckets := make(map[string][]*models.Document, len(docs))
+	bucketKeyByDoc := make(map[string]string, len(docs))
+	for i, doc := range docs {
+		key := e.auditBucketKey(ctx, doc, majorRows)
+		bucketKeyByDoc[doc.ID] = key
+		if i < startIdx {
+			buckets[key] = append(buckets[key], doc)
 		}
-		domainBuckets[key] = append(domainBuckets[key], doc)
 	}
 
-	var completed int64
-	var progMu sync.Mutex
-	var applyMu sync.Mutex
-	var wg sync.WaitGroup
-	sem := make(chan struct{}, 5)
+	batchSize := e.auditBatchSizeOrDefault()
 
-	for _, bucketDocs := range domainBuckets {
-		bDocs := bucketDocs
+	startedAt := time.Now()
+	deadline, hasDeadline := ctx.Deadline()
+	var timeBudget time.Duration
+	if hasDeadline {
+		timeBudget = time.Until(deadline)
+	}
+	budgetExhausted := func() bool {
+		if !hasDeadline {
+			return false
+		}
+		if timeBudget <= 0 {
+			return true
+		}
+		return time.Since(startedAt) >= time.Duration(float64(timeBudget)*0.8)
+	}
+
+	var applyMu sync.Mutex
+	sem := make(chan struct{}, auditConcurrency)
+
+	if startIdx >= len(docs) {
+		return e.completeAuditRun(ctx, run.ID)
+	}
+
+	if budgetExhausted() || ctx.Err() != nil {
+		log.Info().
+			Str("run_id", run.ID).
+			Int64("processed", processed).
+			Int64("total", total).
+			Msg("Supersession audit paused before batch; will resume on next tick")
+		return nil
+	}
+
+	windowStart := startIdx
+	windowEnd := windowStart + batchSize
+	if windowEnd > len(docs) {
+		windowEnd = len(docs)
+	}
+	window := docs[windowStart:windowEnd]
+
+	grouped := make(map[string][]*models.Document, len(window))
+	groupOrder := make([]string, 0, len(window))
+	windowIdx := make(map[string]int, len(window))
+	for i, doc := range window {
+		key := bucketKeyByDoc[doc.ID]
+		if _, ok := grouped[key]; !ok {
+			groupOrder = append(groupOrder, key)
+		}
+		grouped[key] = append(grouped[key], doc)
+		windowIdx[doc.ID] = i
+	}
+
+	windowDone := make([]atomic.Bool, len(window))
+	var progressMu sync.Mutex
+	lastPersisted := 0
+	persistContiguous := func() {
+		progressMu.Lock()
+		defer progressMu.Unlock()
+		advance := lastPersisted
+		for advance < len(window) && windowDone[advance].Load() {
+			advance++
+		}
+		if advance == lastPersisted {
+			return
+		}
+		lastPersisted = advance
+		cur := window[advance-1].ID
+		p := int64(windowStart + advance)
+		if err := e.ragRepo.UpdateAuditRunProgress(ctx, run.ID, cur, p, total); err != nil {
+			log.Warn().Err(err).Str("run_id", run.ID).Msg("Failed to persist audit run cursor")
+		}
+		if onProgress != nil {
+			onProgress(p, total)
+		}
+	}
+
+	var wg sync.WaitGroup
+	for _, key := range groupOrder {
+		groupDocs := grouped[key]
+		bucketKey := key
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			var visited []*models.Document
-			for _, doc := range bDocs {
+			for _, doc := range groupDocs {
+				if budgetExhausted() || ctx.Err() != nil {
+					return
+				}
 				select {
 				case <-ctx.Done():
 					return
-				default:
+				case sem <- struct{}{}:
 				}
-
-				if memory.IsSuperseded(doc.ID) {
-					progMu.Lock()
-					completed++
-					cur := completed
-					progMu.Unlock()
-					if onProgress != nil {
-						onProgress(cur, total)
-					}
-					continue
-				}
-
-				var activeVisited []*models.Document
-				for _, v := range visited {
-					if !memory.IsSuperseded(v.ID) {
-						activeVisited = append(activeVisited, v)
-					}
-				}
-
-				candidates := e.retrieveCandidatesDataDriven(ctx, doc.ID, doc.Title, doc.Type, doc.Domain, doc.PublishDate, activeVisited)
-				visited = append(visited, doc)
-
-				if len(candidates) == 0 {
-					progMu.Lock()
-					completed++
-					cur := completed
-					progMu.Unlock()
-					if onProgress != nil {
-						onProgress(cur, total)
-					}
-					continue
-				}
-
-				chunks, _ := e.ragRepo.GetChunksByDocumentID(ctx, doc.ID)
-				var contentBuilder strings.Builder
-				for ci, ch := range chunks {
-					if ci > 0 {
-						contentBuilder.WriteString("\n\n")
-					}
-					contentBuilder.WriteString(ch.Content)
-					if contentBuilder.Len() > 8000 {
-						break
-					}
-				}
-				fullContent := contentBuilder.String()
-				if strings.TrimSpace(fullContent) == "" {
-					fullContent = doc.Title
-				}
-
-				req := &DissectionRequest{
-					NewDocID:         doc.ID,
-					Title:            doc.Title,
-					DocCode:          doc.DocCode,
-					DocType:          doc.Type,
-					Domain:           doc.Domain,
-					ApplicableCohort: doc.ApplicableCohort,
-					AcademicYear:     doc.AcademicYear,
-					Content:          fullContent,
-					PublishDate:      doc.PublishDate,
-					FilePath:         doc.FilePath,
-					PriorityLevel:    doc.PriorityLevel,
-					Candidates:       candidates,
-				}
-
-				sem <- struct{}{}
-				docCtx, cancelDoc := context.WithTimeout(ctx, 40*time.Second)
-				plan, err := e.ExecuteDissectionLoop(docCtx, req)
-				cancelDoc()
+				e.auditOneDocument(ctx, doc, buckets[bucketKey], memory, &applyMu)
 				<-sem
-
-				if err == nil && plan != nil && plan.TargetDocID != "" && plan.TargetDocID != doc.ID {
-					if plan.ActionType == ActionFullSupersede || plan.ActionType == ActionPartialAmend {
-						log.Info().
-							Str("action", string(plan.ActionType)).
-							Str("new_doc_id", doc.ID).
-							Str("new_title", doc.Title).
-							Str("target_doc_id", plan.TargetDocID).
-							Str("target_title", plan.TargetDocTitle).
-							Str("reason", plan.Reason).
-							Msg("Regulatory supersession applied")
-						applyMu.Lock()
-						_ = e.ApplyPlan(ctx, plan, req)
-						applyMu.Unlock()
-						if plan.ActionType == ActionFullSupersede {
-							memory.RecordSupersession(plan.TargetDocID, doc.ID)
-						}
-					}
-				}
-
-				progMu.Lock()
-				completed++
-				cur := completed
-				progMu.Unlock()
-				if onProgress != nil {
-					onProgress(cur, total)
-				}
+				buckets[bucketKey] = append(buckets[bucketKey], doc)
+				windowDone[windowIdx[doc.ID]].Store(true)
+				persistContiguous()
 			}
 		}()
 	}
-
 	wg.Wait()
 
+	progressMu.Lock()
+	advanced := lastPersisted
+	progressMu.Unlock()
+
+	if advanced < len(window) {
+		log.Info().
+			Str("run_id", run.ID).
+			Int64("processed", processed).
+			Int64("total", total).
+			Msg("Supersession audit paused mid-batch; will resume on next tick")
+		return nil
+	}
+
+	startIdx += advanced
+	processed = int64(startIdx)
+
+	if startIdx < len(docs) {
+		log.Info().
+			Str("run_id", run.ID).
+			Int64("processed", processed).
+			Int64("total", total).
+			Msg("Supersession audit batch finished; next tick resumes from cursor")
+		return nil
+	}
+
+	log.Info().Str("run_id", run.ID).Int64("total", total).Msg("Supersession audit run finished processing all documents")
+	return e.completeAuditRun(ctx, run.ID)
+}
+
+func (e *RegulatoryDissectionEngine) completeAuditRun(ctx context.Context, runID string) error {
+	if err := e.ragRepo.CompleteAuditRun(ctx, runID); err != nil {
+		return fmt.Errorf("failed to complete audit run: %w", err)
+	}
+	if latest, err := e.ragRepo.GetLatestAuditRun(ctx); err == nil && latest != nil {
+		log.Info().
+			Str("run_id", latest.ID).
+			Int64("processed", latest.Processed).
+			Int64("total", latest.TotalDocs).
+			Msg("Supersession audit run completed")
+	}
 	return nil
+}
+
+func (e *RegulatoryDissectionEngine) auditOneDocument(ctx context.Context, doc *models.Document, visited []*models.Document, memory *SupersessionLineageMemory, applyMu *sync.Mutex) {
+	if memory.IsSuperseded(doc.ID) {
+		return
+	}
+	if logged, err := e.ragRepo.DocumentHasAuditLog(ctx, doc.ID); err == nil && logged {
+		return
+	}
+
+	var activeVisited []*models.Document
+	for _, v := range visited {
+		if !memory.IsSuperseded(v.ID) {
+			activeVisited = append(activeVisited, v)
+		}
+	}
+
+	candidates := e.retrieveCandidatesDataDriven(ctx, doc.ID, doc.Title, doc.Type, doc.Domain, doc.PublishDate, activeVisited)
+	if len(candidates) == 0 {
+		return
+	}
+
+	chunks, _ := e.ragRepo.GetChunksByDocumentID(ctx, doc.ID)
+	var contentBuilder strings.Builder
+	for ci, ch := range chunks {
+		if ci > 0 {
+			contentBuilder.WriteString("\n\n")
+		}
+		contentBuilder.WriteString(ch.Content)
+		if contentBuilder.Len() > 8000 {
+			break
+		}
+	}
+	fullContent := contentBuilder.String()
+	if strings.TrimSpace(fullContent) == "" {
+		fullContent = doc.Title
+	}
+
+	req := &DissectionRequest{
+		NewDocID:         doc.ID,
+		Title:            doc.Title,
+		DocCode:          doc.DocCode,
+		DocType:          doc.Type,
+		Domain:           doc.Domain,
+		ApplicableCohort: doc.ApplicableCohort,
+		AcademicYear:     doc.AcademicYear,
+		Content:          fullContent,
+		PublishDate:      doc.PublishDate,
+		FilePath:         doc.FilePath,
+		PriorityLevel:    doc.PriorityLevel,
+		Candidates:       candidates,
+	}
+
+	docCtx, cancelDoc := context.WithTimeout(ctx, 40*time.Second)
+	plan, err := e.dissectDocument(docCtx, req)
+	cancelDoc()
+	if err != nil {
+		log.Warn().Err(err).Str("doc_id", doc.ID).Msg("Supersession dissection failed for document")
+		return
+	}
+	if plan == nil || plan.TargetDocID == "" || plan.TargetDocID == doc.ID {
+		return
+	}
+	if plan.ActionType != ActionFullSupersede && plan.ActionType != ActionPartialAmend {
+		return
+	}
+	if exists, err := e.ragRepo.AuditLogPairExists(ctx, doc.ID, plan.TargetDocID); err == nil && exists {
+		return
+	}
+
+	log.Info().
+		Str("action", string(plan.ActionType)).
+		Str("new_doc_id", doc.ID).
+		Str("new_title", doc.Title).
+		Str("target_doc_id", plan.TargetDocID).
+		Str("target_title", plan.TargetDocTitle).
+		Str("reason", plan.Reason).
+		Msg("Regulatory supersession applied")
+
+	applyMu.Lock()
+	applyErr := e.ApplyPlan(ctx, plan, req)
+	applyMu.Unlock()
+	if applyErr != nil {
+		log.Error().Err(applyErr).Str("new_doc_id", doc.ID).Str("target_doc_id", plan.TargetDocID).Msg("Failed to apply supersession plan")
+		return
+	}
+	if plan.ActionType == ActionFullSupersede {
+		memory.RecordSupersession(plan.TargetDocID, doc.ID)
+	}
 }
 
 func extractNormalizedCohortList(text string) string {

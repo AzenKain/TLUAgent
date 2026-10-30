@@ -36,9 +36,9 @@ export const RoadmapCard: React.FC<RoadmapCardProps> = ({ roadmap, onViewFullRoa
   const currentSemesterPlan = roadmap.semesters && roadmap.semesters.length > 0 ? roadmap.semesters[activeTab] : null;
 
   return (
-    <div className="mt-4 overflow-hidden rounded-2xl border border-blue-200/90 dark:border-blue-900/40 bg-gradient-to-br from-white via-blue-50/20 to-slate-50 dark:from-slate-900 dark:via-[#0c1322] dark:to-slate-900/90 shadow-md">
+    <div className="mt-4 overflow-hidden rounded-2xl border border-blue-200/90 dark:border-blue-900/40 bg-linear-to-br from-white via-blue-50/20 to-slate-50 dark:from-slate-900 dark:via-[#0c1322] dark:to-slate-900/90 shadow-md">
       {/* Header */}
-      <div className="border-b border-blue-100 dark:border-slate-800 bg-gradient-to-r from-blue-500/10 via-sky-500/5 to-transparent px-5 py-4">
+      <div className="border-b border-blue-100 dark:border-slate-800 bg-linear-to-r from-blue-500/10 via-sky-500/5 to-transparent px-5 py-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-tlu-navy text-white shadow-sm dark:bg-tlu-cyan dark:text-slate-950">
@@ -93,7 +93,7 @@ export const RoadmapCard: React.FC<RoadmapCardProps> = ({ roadmap, onViewFullRoa
           </div>
           <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200/80 dark:bg-slate-800">
             <div
-              className="h-full rounded-full bg-gradient-to-r from-blue-600 via-sky-500 to-teal-400 transition-all duration-500"
+              className="h-full rounded-full bg-linear-to-r from-blue-600 via-sky-500 to-teal-400 transition-all duration-500"
               style={{ width: `${progressPercent}%` }}
             />
           </div>
@@ -234,7 +234,7 @@ export const RoadmapCard: React.FC<RoadmapCardProps> = ({ roadmap, onViewFullRoa
 
                       <div className="shrink-0 text-right">
                         <span className="rounded-md bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-xs font-semibold text-slate-700 dark:text-slate-300">
-                          {c.credits} TC
+                          {t('common.credit_value', { credits: c.credits })}
                         </span>
                       </div>
                     </div>

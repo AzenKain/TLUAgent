@@ -374,4 +374,83 @@ func TestRAGService_CourseCodeExactMatch(t *testing.T) {
 	}
 }
 
+func TestRAGService_TransitiveSupersedeExcludedFromSearch(t *testing.T) {
+	db, err := sql.Open("sqlite", ":memory:?_pragma=foreign_keys(ON)")
+	if err != nil {
+		t.Fatalf("failed to open sqlite: %v", err)
+	}
+	defer db.Close()
 
+	if err := database.ApplySchema(db); err != nil {
+		t.Fatalf("failed to apply schema: %v", err)
+	}
+
+	ragRepo := repositories.NewRAGRepository(db, cache.NewRamCache())
+	ragSvc := services.NewRAGService(ragRepo, nil, nil, nil)
+	ctx := context.Background()
+
+	for _, id := range []string{"doc_chain_a", "doc_chain_b", "doc_chain_c"} {
+		doc := &models.Document{
+			ID:               id,
+			Title:            "Hoc phi tin chi " + id,
+			Type:             "QUY_CHE",
+			Domain:           "HOC_PHI",
+			Status:           "ACTIVE",
+			PublishDate:      "2026-01-01",
+			ApplicableCohort: "ALL",
+			PriorityLevel:    80,
+			FilePath:         id + ".md",
+		}
+		if _, err := ragRepo.UpsertDocument(ctx, doc); err != nil {
+			t.Fatalf("failed to seed document %s: %v", id, err)
+		}
+		chunk := &models.DocumentChunk{
+			ID:               "chk_" + id,
+			DocumentID:       id,
+			ChunkIndex:       0,
+			ChunkType:        "RULE_BODY",
+			Content:          "Hoc phi mot tin chi la 500000 dong",
+			Status:           "ACTIVE",
+			Domain:           "HOC_PHI",
+			ApplicableCohort: "ALL",
+			PriorityLevel:    80,
+			Embedding:        []float32{1, 0, 0},
+		}
+		if _, err := ragRepo.UpsertChunk(ctx, chunk); err != nil {
+			t.Fatalf("failed to seed chunk %s: %v", chunk.ID, err)
+		}
+	}
+
+	for _, id := range []string{"doc_chain_a", "doc_chain_b", "doc_chain_c"} {
+		node := &models.KGNode{ID: "doc:" + id, NodeType: "DOCUMENT", Name: id, Status: "ACTIVE"}
+		if _, err := ragRepo.UpsertKGNode(ctx, node); err != nil {
+			t.Fatalf("failed to seed node %s: %v", node.ID, err)
+		}
+	}
+
+	edges := []*models.KGEdge{
+		{ID: "edge_a_b", SourceNodeID: "doc:doc_chain_a", TargetNodeID: "doc:doc_chain_b", RelationType: "SUPERSEDES", Weight: 1, Status: "ACTIVE"},
+		{ID: "edge_b_c", SourceNodeID: "doc:doc_chain_b", TargetNodeID: "doc:doc_chain_c", RelationType: "SUPERSEDES", Weight: 1, Status: "ACTIVE"},
+	}
+	for _, edge := range edges {
+		if _, err := ragRepo.UpsertKGEdge(ctx, edge); err != nil {
+			t.Fatalf("failed to seed edge %s: %v", edge.ID, err)
+		}
+	}
+
+	results, err := ragSvc.Search(ctx, models.RAGSearchParams{Query: "hoc phi tin chi", TopK: 10}, []float32{1, 0, 0})
+	if err != nil {
+		t.Fatalf("search failed: %v", err)
+	}
+
+	seen := map[string]bool{}
+	for _, item := range results {
+		seen[item.DocumentID] = true
+	}
+	if !seen["doc_chain_a"] {
+		t.Fatalf("expected newest document in chain to be returned, got %v", seen)
+	}
+	if seen["doc_chain_b"] || seen["doc_chain_c"] {
+		t.Fatalf("expected transitive superseded documents to be excluded, got %v", seen)
+	}
+}

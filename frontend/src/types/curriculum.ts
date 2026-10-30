@@ -222,7 +222,6 @@ export interface FreeElectiveWaterfall {
   earned_credits: number;
   cross_major_courses: string[];
   extra_languages: string[];
-  excess_electives: string[];
   is_fulfilled: boolean;
 }
 
@@ -231,6 +230,7 @@ export interface DegreeDowngradeRiskWarning {
   max_allowed_credits: number;
   is_at_risk: boolean;
   warning_message: string;
+  note?: string;
 }
 
 export interface RoadmapOptimizationResult {

@@ -15,6 +15,7 @@ import (
 )
 
 type UserRepository interface {
+	ListAdminUserIDs(ctx context.Context) ([]string, error)
 	GetByID(ctx context.Context, id string) (*models.UserEntity, error)
 	GetByIDWithoutDeleted(ctx context.Context, id string) (*models.UserEntity, error)
 	GetByEmail(ctx context.Context, email string) (*models.UserEntity, error)
@@ -561,4 +562,8 @@ func (r *userRepository) InvalidateUserCache(ctx context.Context, id, email stri
 
 func apperrorsIsNotFound(err error) bool {
 	return err == sql.ErrNoRows
+}
+
+func (r *userRepository) ListAdminUserIDs(ctx context.Context) ([]string, error) {
+	return r.q.ListAdminUserIDs(ctx)
 }

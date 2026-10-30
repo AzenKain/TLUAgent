@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -17,6 +18,13 @@ import (
 )
 
 func main() {
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "-healthcheck", "--healthcheck":
+			os.Exit(runHealthcheck())
+		}
+	}
+
 	if err := config.LoadEnv(); err != nil {
 		fmt.Fprintf(os.Stderr, "failed to load .env: %v\n", err)
 	}
@@ -61,4 +69,26 @@ func main() {
 	} else {
 		log.Info().Msg("Server stopped successfully")
 	}
+}
+
+// runHealthcheck calls the local health endpoint and converts the result into a process exit code.
+func runHealthcheck() int {
+	_ = config.LoadEnv()
+
+	port := config.GetConfigWithDefault("PORT", "8080")
+	url := fmt.Sprintf("http://127.0.0.1:%s/api/health", port)
+
+	client := &http.Client{Timeout: 3 * time.Second}
+	resp, err := client.Get(url)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "healthcheck failed: %v\n", err)
+		return 1
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		fmt.Fprintf(os.Stderr, "healthcheck returned status %d\n", resp.StatusCode)
+		return 1
+	}
+	return 0
 }

@@ -32,7 +32,7 @@ var (
 	nodePathRegex       = regexp.MustCompile(`/node/(\d+)`)
 	iframeDriveRegex    = regexp.MustCompile(`(?i)<iframe[^>]+src=["'](?:https?:)?//drive\.google\.com/file/d/([a-zA-Z0-9_-]+)`)
 	driveFileIDRegex    = regexp.MustCompile(`drive\.google\.com/file/d/([a-zA-Z0-9_-]+)`)
-	pdfLinkRegex         = regexp.MustCompile(`(?i)href=["'](/sites/default/files/[^"']+\.(?:pdf|doc|docx|xls|xlsx))["']`)
+	pdfLinkRegex        = regexp.MustCompile(`(?i)href=["'](/sites/default/files/[^"']+\.(?:pdf|doc|docx|xls|xlsx))["']`)
 	attachmentLinkRegex = pdfLinkRegex
 	inlineImageRegex    = regexp.MustCompile(`(?i)<img[^>]+src=["'](/sites/default/files/inline-images/[^"']+\.(?:jpg|jpeg|png))["']`)
 	pdfMagic            = []byte("%PDF-")
@@ -119,7 +119,7 @@ func ResolveBrowserIdentity(targetOS, customUA string) (string, string) {
 // NewCrawler initializes an in-memory web crawler instance with human-browser headers.
 func NewCrawler(cfg Config) (*Crawler, error) {
 	if cfg.BaseURL == "" {
-		cfg.BaseURL = "https://thanglong.edu.vn"
+		return nil, fmt.Errorf("crawler base url is required")
 	}
 	if cfg.TimeoutSec <= 0 {
 		cfg.TimeoutSec = 15

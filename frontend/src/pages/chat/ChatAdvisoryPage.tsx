@@ -1816,7 +1816,7 @@ export const ChatAdvisoryPage: React.FC = () => {
                             {m.roadmap && (
                               <RoadmapCard
                                 roadmap={m.roadmap}
-                                onViewFullRoadmap={() => navigate('/student/roadmap')}
+                                onViewFullRoadmap={() => navigate('/my-roadmap')}
                                 onQuickAction={(text) => {
                                   setInput(text);
                                   textareaRef.current?.focus();

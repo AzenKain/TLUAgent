@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
@@ -17,6 +18,7 @@ import (
 	"tluagent-web/internal/models"
 	"tluagent-web/internal/repositories"
 	"tluagent-web/pkg/apperrors"
+	"tluagent-web/pkg/config"
 	"tluagent-web/pkg/constants"
 	"tluagent-web/pkg/convert"
 	"tluagent-web/pkg/crawler"
@@ -88,6 +90,8 @@ type jobService struct {
 	llmManager *llm.Manager
 	ragService RAGService
 	detector   *Detector
+	notifRepo  repositories.NotificationRepository
+	userRepo   repositories.UserRepository
 }
 
 func NewJobService(
@@ -117,13 +121,31 @@ func NewJobService(
 	return s
 }
 
+func (s *jobService) SetFailureNotifier(notifRepo repositories.NotificationRepository, userRepo repositories.UserRepository) {
+	s.notifRepo = notifRepo
+	s.userRepo = userRepo
+}
+
 type crawlPayload struct {
-	MaxPages    int   `json:"max_pages"`
-	Limit       int `json:"limit"`
-	Pages       int `json:"pages"`
-	MaxTimeDays int `json:"max_time_days"`
-	MaxTime     int `json:"max_time"`
-	Days        int `json:"days"`
+	MaxPages         int   `json:"max_pages"`
+	Limit            int   `json:"limit"`
+	Pages            int   `json:"pages"`
+	MaxTimeDays      int   `json:"max_time_days"`
+	MaxTime          int   `json:"max_time"`
+	Days             int   `json:"days"`
+	FetchAttachments *bool `json:"fetch_attachments"`
+}
+
+// parseCrawlOptions reads the optional payload switches of the crawl jobs.
+func parseCrawlOptions(payload string) (fetchAttachments bool) {
+	var p crawlPayload
+	if err := json.Unmarshal([]byte(strings.TrimSpace(payload)), &p); err != nil {
+		return true
+	}
+	if p.FetchAttachments == nil {
+		return true
+	}
+	return *p.FetchAttachments
 }
 
 func parseCrawlPayload(payload string) (int, int) {
@@ -171,130 +193,251 @@ func (s *jobService) registerHandlers() {
 
 	s.queue.RegisterHandler(constants.JobTypeCrawlNotices, func(ctx context.Context, jobID, payload string) error {
 		maxPages, maxTimeDays := parseCrawlPayload(payload)
-
-		c, err := crawler.NewCrawler(crawler.Config{
-			BaseURL:         constants.DefaultUniversityBaseURL,
-			DelayMs:         60,
-			Concurrency:     3,
-			MaxRetries:      5,
-			IgnoredDriveIDs: TLUIgnoredDriveIDs,
-			MaxTimeDays:     maxTimeDays,
-			VisionOCR:        s.visionOCRHandler(),
-		})
-		if err != nil {
-			return err
-		}
-
-		var docFilter func(id, rawURL, title string) bool
-		if s.ragService != nil {
-			docFilter, _ = s.ragService.BuildDocumentFilter(ctx)
-		}
-
-		skipChecker := func(ctx context.Context, id, rawURL, title string) bool {
-			if docFilter != nil && docFilter(id, rawURL, title) {
-				return true
-			}
-			if s.ragService == nil {
-				return false
-			}
-			return s.ragService.DocumentExistsByURL(ctx, rawURL)
-		}
-
-		handler := func(ctx context.Context, doc *crawler.CrawledDocument) error {
-			return s.processCrawledDocumentInMemory(ctx, doc)
-		}
-
-		return c.CrawlPagedCategory(ctx, constants.SlugNotices, constants.DocTypeNotice, maxPages, skipChecker, handler, func(cur, total int64) {
-			_, _ = s.repo.UpdateJobProgress(ctx, jobID, cur, total)
-		})
+		return s.crawlCMSCollections(ctx, jobID, []cmsCrawlSource{{
+			Collection:      crawler.CMSCollectionAnnouncements,
+			DocType:         constants.DocTypeNotice,
+			IDPrefix:        "DOC_THONG_BAO_",
+			MinBody:         120,
+			FetchAttachment: parseCrawlOptions(payload),
+			AllowTitleOnly:  true,
+		}}, maxPages, maxTimeDays)
 	})
 
 	s.queue.RegisterHandler(constants.JobTypeCrawlNews, func(ctx context.Context, jobID, payload string) error {
 		maxPages, maxTimeDays := parseCrawlPayload(payload)
-
-		c, err := crawler.NewCrawler(crawler.Config{
-			BaseURL:         constants.DefaultUniversityBaseURL,
-			DelayMs:         60,
-			Concurrency:     3,
-			MaxRetries:      5,
-			IgnoredDriveIDs: TLUIgnoredDriveIDs,
-			MaxTimeDays:     maxTimeDays,
-			VisionOCR:        s.visionOCRHandler(),
-		})
-		if err != nil {
-			return err
-		}
-
-		var docFilter func(id, rawURL, title string) bool
-		if s.ragService != nil {
-			docFilter, _ = s.ragService.BuildDocumentFilter(ctx)
-		}
-
-		skipChecker := func(ctx context.Context, id, rawURL, title string) bool {
-			if docFilter != nil && docFilter(id, rawURL, title) {
-				return true
-			}
-			if s.ragService == nil {
-				return false
-			}
-			return s.ragService.DocumentExistsByURL(ctx, rawURL)
-		}
-
-		handler := func(ctx context.Context, doc *crawler.CrawledDocument) error {
-			return s.processCrawledDocumentInMemory(ctx, doc)
-		}
-
-		return c.CrawlPagedCategory(ctx, constants.SlugNews, constants.DocTypeNews, maxPages, skipChecker, handler, func(cur, total int64) {
-			_, _ = s.repo.UpdateJobProgress(ctx, jobID, cur, total)
-		})
+		return s.crawlCMSCollections(ctx, jobID, []cmsCrawlSource{
+			{
+				Collection:     crawler.CMSCollectionPosts,
+				DocType:        constants.DocTypeNews,
+				IDPrefix:       "DOC_TIN_TUC_",
+				MinBody:        80,
+				AllowTitleOnly: true,
+			},
+			{
+				Collection:     crawler.CMSCollectionEvents,
+				DocType:        constants.DocTypeNews,
+				IDPrefix:       "DOC_SU_KIEN_",
+				MinBody:        80,
+				AllowTitleOnly: true,
+			},
+		}, maxPages, maxTimeDays)
 	})
 
 	s.queue.RegisterHandler(constants.JobTypeCrawlStaticPages, func(ctx context.Context, jobID, payload string) error {
-		c, err := crawler.NewCrawler(crawler.Config{
-			BaseURL:         constants.DefaultUniversityBaseURL,
-			DelayMs:         60,
-			Concurrency:     3,
-			MaxRetries:      5,
-			IgnoredDriveIDs: TLUIgnoredDriveIDs,
-			VisionOCR:        s.visionOCRHandler(),
-		})
-		if err != nil {
-			return err
-		}
-
-		var docFilter func(id, rawURL, title string) bool
-		if s.ragService != nil {
-			docFilter, _ = s.ragService.BuildDocumentFilter(ctx)
-		}
-
-		skipChecker := func(ctx context.Context, id, rawURL, title string) bool {
-			if docFilter != nil && docFilter(id, rawURL, title) {
-				return true
-			}
-			if s.ragService == nil {
-				return false
-			}
-			return s.ragService.DocumentExistsByURL(ctx, rawURL)
-		}
-
-		handler := func(ctx context.Context, doc *crawler.CrawledDocument) error {
-			return s.processCrawledDocumentInMemory(ctx, doc)
-		}
-
-		return c.CrawlRoutes(ctx, TLUStaticRoutes, constants.DocTypeStatic, skipChecker, handler, func(cur, total int64) {
-			_, _ = s.repo.UpdateJobProgress(ctx, jobID, cur, total)
-		})
+		maxPages, maxTimeDays := parseCrawlPayload(payload)
+		return s.crawlCMSCollections(ctx, jobID, []cmsCrawlSource{{
+			Collection:       crawler.CMSCollectionPages,
+			DocType:          constants.DocTypeStatic,
+			IDPrefix:         "DOC_STATIC_",
+			MinBody:          200,
+			SkipSlugSuffixes: []string{"-en"},
+			SkipSlugs:        []string{"navbar", "footer", "header"},
+		}}, maxPages, maxTimeDays)
 	})
-
 
 	s.queue.RegisterHandler(constants.JobTypeSupersedeCheck, func(ctx context.Context, jobID, payload string) error {
 		if s.detector == nil || s.detector.Engine() == nil {
 			return nil
 		}
+		if s.ragService != nil {
+			if _, err := s.ragService.RepairDocumentGraph(ctx, 500); err != nil {
+				log.Warn().Err(err).Msg("Knowledge graph repair before supersession audit failed")
+			}
+		}
 		return s.detector.Engine().AuditCorpusChronological(ctx, func(cur, total int64) {
 			_, _ = s.repo.UpdateJobProgress(ctx, jobID, cur, total)
 		})
 	})
+}
+
+type cmsCrawlSource struct {
+	Collection       string
+	DocType          string
+	IDPrefix         string
+	MinBody          int
+	FetchAttachment  bool
+	AllowTitleOnly   bool
+	SkipSlugSuffixes []string
+	SkipSlugs        []string
+}
+
+func (s cmsCrawlSource) skips(slug string) bool {
+	slug = strings.ToLower(strings.TrimSpace(slug))
+	for _, exact := range s.SkipSlugs {
+		if slug == exact {
+			return true
+		}
+	}
+	for _, suffix := range s.SkipSlugSuffixes {
+		if suffix != "" && strings.HasSuffix(slug, suffix) {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *jobService) crawlCMSCollections(ctx context.Context, jobID string, sources []cmsCrawlSource, maxPages, maxTimeDays int) error {
+	if len(sources) == 0 {
+		return nil
+	}
+
+	client, err := crawler.NewCMSClient(crawler.CMSConfig{
+		BaseURL: config.GetConfigWithDefault("CMS_API_BASE_URL", ""),
+		SiteURL: config.GetConfigWithDefault("CMS_SITE_URL", ""),
+		Locale:  config.GetConfigWithDefault("CMS_LOCALE", crawler.DefaultCMSLocale),
+		DelayMs: 60,
+	})
+	if err != nil {
+		return err
+	}
+
+	var attachmentCrawler *crawler.Crawler
+	if needsAttachments(sources) && strings.TrimSpace(client.SiteURL()) == "" {
+		return fmt.Errorf("CMS_SITE_URL is required to download attachments")
+	}
+	if needsAttachments(sources) {
+		attachmentCrawler, err = crawler.NewCrawler(crawler.Config{
+			BaseURL:         client.SiteURL(),
+			DelayMs:         60,
+			Concurrency:     3,
+			MaxRetries:      5,
+			IgnoredDriveIDs: TLUIgnoredDriveIDs,
+			VisionOCR:       s.visionOCRHandler(),
+		})
+		if err != nil {
+			return err
+		}
+	}
+
+	skipChecker := s.crawlSkipChecker(ctx)
+
+	if maxPages <= 0 {
+		maxPages = 5
+	}
+
+	var cutoff time.Time
+	if maxTimeDays > 0 {
+		cutoff = time.Now().AddDate(0, 0, -maxTimeDays)
+	}
+
+	pageSize := client.PageSize()
+	var discovered, ingested, skipped int64
+	for _, source := range sources {
+		for page := 0; page < maxPages; page++ {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			items, pagination, err := client.List(ctx, source.Collection, page*pageSize)
+			if err != nil {
+				return fmt.Errorf("list %s page %d: %w", source.Collection, page, err)
+			}
+			if len(items) == 0 {
+				break
+			}
+
+			for _, item := range items {
+				discovered++
+				if !cutoff.IsZero() && crawler.CMSItemOlderThan(item, cutoff) {
+					continue
+				}
+				if item.URL == "" || item.Title == "" {
+					continue
+				}
+				if source.skips(item.Slug) {
+					skipped++
+					continue
+				}
+				if skipChecker != nil && skipChecker(ctx, "", item.URL, item.Title) {
+					skipped++
+					continue
+				}
+
+				detail, err := client.Detail(ctx, source.Collection, item.ID)
+				if err != nil {
+					log.Warn().Err(err).Str("collection", source.Collection).Str("item_id", item.ID).Msg("Skipped CMS item without detail")
+					continue
+				}
+				if detail.Title != "" {
+					item = detail
+				}
+
+				body := strings.TrimSpace(item.Body)
+				if len([]rune(body)) < source.MinBody && source.FetchAttachment && attachmentCrawler != nil && item.AttachmentURL != "" {
+					if attachmentText := attachmentCrawler.AttachmentText(ctx, item.AttachmentURL); attachmentText != "" {
+						body = strings.TrimSpace(body + "\n\n" + attachmentText)
+					}
+				}
+				if len([]rune(body)) < source.MinBody {
+					if !source.AllowTitleOnly {
+						skipped++
+						continue
+					}
+					body = item.Title
+				}
+
+				doc := &crawler.CrawledDocument{
+					ID:          crawler.CMSDocID(source.IDPrefix, item.ID),
+					Category:    source.DocType,
+					URL:         item.URL,
+					Title:       item.Title,
+					PublishDate: item.PublishDate,
+					Content:     body,
+				}
+				if err := s.processCrawledDocumentInMemory(ctx, doc); err != nil {
+					log.Warn().Err(err).Str("doc_id", doc.ID).Msg("Failed to ingest crawled CMS item")
+					continue
+				}
+				ingested++
+
+				if _, err := s.repo.UpdateJobProgress(ctx, jobID, ingested, discovered); err != nil {
+					log.Warn().Err(err).Msg("Failed to update crawl job progress")
+				}
+				if attachmentCrawler != nil {
+					time.Sleep(60 * time.Millisecond)
+				}
+			}
+
+			if len(items) < pageSize || !pagination.HasMore {
+				break
+			}
+		}
+	}
+
+	if discovered == 0 {
+		return fmt.Errorf("no items returned by CMS for %d collection(s)", len(sources))
+	}
+
+	log.Info().
+		Int64("discovered", discovered).
+		Int64("ingested", ingested).
+		Int64("skipped", skipped).
+		Msg("CMS crawl finished")
+	return nil
+}
+
+func needsAttachments(sources []cmsCrawlSource) bool {
+	for _, source := range sources {
+		if source.FetchAttachment {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *jobService) crawlSkipChecker(ctx context.Context) crawler.SkipChecker {
+	var docFilter func(id, rawURL, title string) bool
+	if s.ragService != nil {
+		docFilter, _ = s.ragService.BuildDocumentFilter(ctx)
+	}
+	return func(ctx context.Context, id, rawURL, title string) bool {
+		if docFilter != nil && docFilter(id, rawURL, title) {
+			return true
+		}
+		if s.ragService == nil {
+			return false
+		}
+		return s.ragService.DocumentExistsByURL(ctx, rawURL)
+	}
 }
 
 func (s *jobService) visionOCRHandler() crawler.VisionOCRHandler {
@@ -336,6 +479,13 @@ func (s *jobService) visionOCRHandler() crawler.VisionOCRHandler {
 	}
 }
 
+func effectiveFromFor(publishDate, academicYear string) string {
+	if strings.TrimSpace(publishDate) != "" {
+		return publishDate
+	}
+	return constants.DeriveEffectiveFromAcademicYear(academicYear)
+}
+
 func (s *jobService) processCrawledDocumentInMemory(ctx context.Context, item *crawler.CrawledDocument) error {
 	if item == nil || strings.TrimSpace(item.Content) == "" {
 		return nil
@@ -367,6 +517,8 @@ func (s *jobService) processCrawledDocumentInMemory(ctx context.Context, item *c
 		Status:           constants.DocStatusActive,
 		PriorityLevel:    resolveTLUPriority(item.Category, item.Title),
 		PublishDate:      item.PublishDate,
+		EffectiveFrom:    effectiveFromFor(item.PublishDate, academicYear),
+		ValidityTier:     constants.DefaultValidityTier(docType),
 		FilePath:         item.URL,
 		CharCount:        len(item.Content),
 	}
@@ -460,8 +612,39 @@ func (s *jobService) Failed(ctx context.Context, j worker.Job, err error) error 
 	if err != nil {
 		errMsg = err.Error()
 	}
-	_, err = s.repo.UpdateJobStatus(ctx, j.ID, constants.JobStatusFailed, errMsg)
-	return err
+	_, updateErr := s.repo.UpdateJobStatus(ctx, j.ID, constants.JobStatusFailed, errMsg)
+	s.notifyRepeatedFailure(ctx, j, errMsg)
+	return updateErr
+}
+
+func (s *jobService) notifyRepeatedFailure(ctx context.Context, j worker.Job, errMsg string) {
+	if s.notifRepo == nil || s.userRepo == nil {
+		return
+	}
+	statuses, err := s.repo.ListRecentJobStatusesByType(ctx, j.Type, 2)
+	if err != nil || len(statuses) < 2 {
+		return
+	}
+	for _, status := range statuses {
+		if status != constants.JobStatusFailed {
+			return
+		}
+	}
+	adminIDs, err := s.userRepo.ListAdminUserIDs(ctx)
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to load admin recipients for job failure alert")
+		return
+	}
+	for _, adminID := range adminIDs {
+		_, _ = s.notifRepo.CreateNotification(ctx, &models.UserNotification{
+			ID:      "notif_" + uuid.NewString(),
+			UserID:  adminID,
+			Title:   "Tác vụ nền thất bại liên tiếp",
+			Content: fmt.Sprintf("Tác vụ %s đã thất bại 2 lần liên tiếp. Lỗi gần nhất: %s", j.Type, errMsg),
+			Type:    constants.NotifTypeJobFailure,
+		})
+	}
+	log.Warn().Str("job_type", j.Type).Int("admins", len(adminIDs)).Msg("Dispatched repeated job failure alerts")
 }
 
 func (s *jobService) GetJob(ctx context.Context, id string) (*response.JobResponse, error) {

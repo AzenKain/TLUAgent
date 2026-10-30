@@ -34,6 +34,8 @@ type PersonalityQuizResult struct {
 
 // RoadmapOptimizationRequest encapsulates all parameters needed to optimize a study roadmap.
 type RoadmapOptimizationRequest struct {
+	UserID               string                  `json:"-"`
+	AcademicStanding     string                  `json:"-"`
 	Cohort               string                  `json:"cohort" validate:"required,min=1,max=50"`
 	MajorName            string                  `json:"major_name" validate:"required,min=1,max=100"`
 	CurrentSemester      int                     `json:"current_semester" validate:"gte=1,lte=20"`
@@ -134,7 +136,6 @@ type FreeElectiveWaterfall struct {
 	EarnedCredits     float64  `json:"earned_credits"`
 	CrossMajorCourses []string `json:"cross_major_courses"`
 	ExtraLanguages    []string `json:"extra_languages"`
-	ExcessElectives   []string `json:"excess_electives"`
 	IsFulfilled       bool     `json:"is_fulfilled"`
 }
 
@@ -148,7 +149,6 @@ func (few *FreeElectiveWaterfall) ToResponse() *response.FreeElectiveWaterfallRe
 		EarnedCredits:     few.EarnedCredits,
 		CrossMajorCourses: few.CrossMajorCourses,
 		ExtraLanguages:    few.ExtraLanguages,
-		ExcessElectives:   few.ExcessElectives,
 		IsFulfilled:       few.IsFulfilled,
 	}
 }
@@ -159,6 +159,7 @@ type DegreeDowngradeRiskWarning struct {
 	MaxAllowedCredits  float64 `json:"max_allowed_credits"`
 	IsAtRisk           bool    `json:"is_at_risk"`
 	WarningMessage     string  `json:"warning_message"`
+	Note               string  `json:"note,omitempty"`
 }
 
 // ToResponse converts a DegreeDowngradeRiskWarning domain model to a response DTO.
@@ -171,6 +172,7 @@ func (ddrw *DegreeDowngradeRiskWarning) ToResponse() *response.DegreeDowngradeRi
 		MaxAllowedCredits:  ddrw.MaxAllowedCredits,
 		IsAtRisk:           ddrw.IsAtRisk,
 		WarningMessage:     ddrw.WarningMessage,
+		Note:               ddrw.Note,
 	}
 }
 

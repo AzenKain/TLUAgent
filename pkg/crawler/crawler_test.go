@@ -66,8 +66,8 @@ func TestCrawler_DiscoverMaxPageAndAutoWait(t *testing.T) {
 }
 
 func TestCrawler_CollisionProofDocID(t *testing.T) {
-	url1 := "https://thanglong.edu.vn/thong-bao/hoc-phi-hoc-ky-1-nam-hoc-2025-2026-1234.html"
-	url2 := "https://thanglong.edu.vn/thong-bao/hoc-phi-hoc-ky-2-nam-hoc-2025-2026-1234.html"
+	url1 := "https://cms.example.test/thong-bao/hoc-phi-hoc-ky-1-nam-hoc-2025-2026-1234.html"
+	url2 := "https://cms.example.test/thong-bao/hoc-phi-hoc-ky-2-nam-hoc-2025-2026-1234.html"
 
 	nodeID1 := extractNodeID(url1)
 	nodeID2 := extractNodeID(url2)
@@ -242,11 +242,11 @@ func TestCrawler_MaxTimeDaysFilter(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 
 		if strings.Contains(r.URL.Path, "node/recent") {
-			_, _ = w.Write([]byte(fmt.Sprintf(`<html><body><h1>Recent Notice</h1><p>Ngay: %s</p><div>Content recent</div></body></html>`, today)))
+			_, _ = fmt.Fprintf(w, `<html><body><h1>Recent Notice</h1><p>Ngay: %s</p><div>Content recent</div></body></html>`, today)
 			return
 		}
 		if strings.Contains(r.URL.Path, "node/old") {
-			_, _ = w.Write([]byte(fmt.Sprintf(`<html><body><h1>Old Notice</h1><p>Ngay: %s</p><div>Content old</div></body></html>`, oldDate)))
+			_, _ = fmt.Fprintf(w, `<html><body><h1>Old Notice</h1><p>Ngay: %s</p><div>Content old</div></body></html>`, oldDate)
 			return
 		}
 
@@ -348,4 +348,3 @@ func TestCrawler_FetchListingItems_Deduplication(t *testing.T) {
 		t.Errorf("expected date parsed from container, got %q", items[0].Date)
 	}
 }
-

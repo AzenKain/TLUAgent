@@ -74,7 +74,10 @@ func TestSemanticClassifier_LiveBGEM3(t *testing.T) {
 
 	embedder, err := embedding.NewOnnxEmbedder(modelDir, manifest, modelPath, libPath)
 	if err != nil {
-		t.Fatalf("failed to create ONNX embedder: %v", err)
+		t.Skipf("skipping live BGE-M3 test: ONNX runtime unavailable: %v", err)
+	}
+	if _, err := embedder.EmbedSingle(context.Background(), "probe"); err != nil {
+		t.Skipf("skipping live BGE-M3 test: ONNX inference unavailable: %v", err)
 	}
 
 	classifier := guardrail.NewBGEM3Classifier(embedder)

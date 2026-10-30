@@ -78,6 +78,7 @@ func setupTestTLUClawController(t *testing.T) (*controllers.TLUClawController, *
 			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 		);`,
+		`CREATE UNIQUE INDEX idx_curriculums_cohort_major ON curriculums (cohort, major_name);`,
 		`CREATE TABLE curriculum_courses (
 			id TEXT PRIMARY KEY,
 			curriculum_id TEXT NOT NULL,

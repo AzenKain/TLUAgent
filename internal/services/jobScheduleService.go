@@ -191,6 +191,7 @@ func (s *jobScheduleService) SeedDefaultSchedulesIfEmpty(ctx context.Context) er
 			Payload:  `{}`,
 			Enabled:  1,
 		},
+		// Supersession audit stays off until an LLM provider is configured.
 		{
 			ID:       "sched-supersede-check",
 			Name:     "Regulatory Supersession Conflict Audit",

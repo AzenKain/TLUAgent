@@ -20,6 +20,7 @@ type MemoryRepository interface {
 	GetStudentProfile(ctx context.Context, userID string) (*models.StudentProfile, error)
 	UpsertStudentProfile(ctx context.Context, profile *models.StudentProfile) (*models.StudentProfile, error)
 	ListStudentProfilesByStanding(ctx context.Context, cohort, major, academicStanding string, limit int32) ([]sqlc.ListStudentProfilesByStandingRow, error)
+	ListUserIDsByCohorts(ctx context.Context, cohorts []string) ([]string, error)
 
 	GetUserMemoryByID(ctx context.Context, id string) (*models.UserMemoryItem, error)
 	GetUserMemoriesByIDs(ctx context.Context, ids []string) ([]*models.UserMemoryItem, error)
@@ -100,6 +101,19 @@ func (r *memoryRepository) UpsertStudentProfile(ctx context.Context, profile *mo
 	}
 	r.InvalidateProfileCache(ctx, profile.UserID)
 	return (&models.StudentProfile{}).FromSqlc(row), nil
+}
+
+func (r *memoryRepository) ListUserIDsByCohorts(ctx context.Context, cohorts []string) ([]string, error) {
+	clean := make([]string, 0, len(cohorts))
+	for _, c := range cohorts {
+		if c = strings.TrimSpace(c); c != "" {
+			clean = append(clean, c)
+		}
+	}
+	if len(clean) == 0 {
+		return nil, nil
+	}
+	return r.q.ListUserIDsByCohorts(ctx, clean)
 }
 
 func (r *memoryRepository) ListStudentProfilesByStanding(ctx context.Context, cohort, major, academicStanding string, limit int32) ([]sqlc.ListStudentProfilesByStandingRow, error) {

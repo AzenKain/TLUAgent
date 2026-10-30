@@ -969,6 +969,7 @@ func (s *curriculumService) GetStudentPersonalRoadmap(ctx context.Context, userI
 			curSem = 2
 		}
 		res, err := optimizer.OptimizeRoadmap(ctx, &models.RoadmapOptimizationRequest{
+			UserID:               userID,
 			Cohort:               visData.Curriculum.Cohort,
 			MajorName:            visData.Curriculum.MajorName,
 			CurrentSemester:      curSem,
@@ -1119,4 +1120,3 @@ func isWordBoundaryMatch(text, pattern string) bool {
 func isAlphaNumByte(b byte) bool {
 	return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || (b >= '0' && b <= '9')
 }
-

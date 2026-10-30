@@ -392,6 +392,41 @@ func (q *Queries) ListJobScheduleIDs(ctx context.Context) ([]string, error) {
 	return items, nil
 }
 
+const listRecentJobStatusesByType = `-- name: ListRecentJobStatusesByType :many
+SELECT status FROM jobs
+WHERE type = ?
+ORDER BY created_at DESC, rowid DESC
+LIMIT ?
+`
+
+type ListRecentJobStatusesByTypeParams struct {
+	Type  string `json:"type"`
+	Limit int64  `json:"limit"`
+}
+
+func (q *Queries) ListRecentJobStatusesByType(ctx context.Context, arg ListRecentJobStatusesByTypeParams) ([]string, error) {
+	rows, err := q.query(ctx, q.listRecentJobStatusesByTypeStmt, listRecentJobStatusesByType, arg.Type, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var status string
+		if err := rows.Scan(&status); err != nil {
+			return nil, err
+		}
+		items = append(items, status)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const markRunningJobsInterrupted = `-- name: MarkRunningJobsInterrupted :exec
 UPDATE jobs
 SET status = 'failed', error_msg = 'server restarted while job was running', updated_at = CURRENT_TIMESTAMP

@@ -649,6 +649,32 @@ func TestTLUClaw_FullOmnipotentOperations(t *testing.T) {
 	_, _ = db.Exec(`INSERT INTO users (id, email, full_name, student_code, password_hash)
 		VALUES ('stu_44519', 'khanh.dd@thanglong.edu.vn', 'Do Duy Khanh', 'A44519', 'hash')`)
 
+	_, _ = currRepo.UpsertCurriculum(ctx, sqlc.UpsertCurriculumParams{
+		ID:           "CURR_K35_TT",
+		Cohort:       "K35",
+		AcademicYear: "2022-2023",
+		MajorName:    "TT",
+		MajorCode:    "TT",
+		FacultyCode:  "FITI",
+		TotalCourses: 2,
+		TotalCredits: 6,
+	})
+	for idx, code := range []string{"TT101", "TT201"} {
+		_, _ = currRepo.UpsertCurriculumCourse(ctx, sqlc.UpsertCurriculumCourseParams{
+			ID:                "C_K35_" + code,
+			CurriculumID:      "CURR_K35_TT",
+			Cohort:            "K35",
+			MajorName:         "TT",
+			CourseCode:        code,
+			CourseName:        code,
+			Credits:           3.0,
+			Weight:            1.0,
+			Hours:             "45",
+			KnowledgeBlock:    "Chuyên ngành",
+			SuggestedSemester: int64(idx + 1),
+		})
+	}
+
 	_, _ = memoryRepo.UpsertStudentProfile(ctx, &models.StudentProfile{
 		UserID:           "stu_44519",
 		Major:            "CNTT",

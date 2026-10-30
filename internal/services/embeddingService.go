@@ -16,10 +16,13 @@ import (
 	"tluagent-web/internal/dtos/response"
 	"tluagent-web/internal/repositories"
 	"tluagent-web/pkg/apperrors"
+	"tluagent-web/pkg/config"
 	"tluagent-web/pkg/embedding"
 	"tluagent-web/pkg/guardrail"
 	"tluagent-web/pkg/jsonx"
 	"tluagent-web/pkg/llm"
+
+	"github.com/rs/zerolog/log"
 )
 
 const (
@@ -46,6 +49,7 @@ type EmbeddingService interface {
 	ActivateModel(ctx context.Context, modelID string) (response.EmbeddingSettingsResponse, error)
 	DeleteModel(ctx context.Context, modelID string) error
 	SyncActiveEmbedder(ctx context.Context) error
+	EnsureActiveEmbedderAvailable(ctx context.Context) error
 }
 
 type modelLockManager struct {
@@ -130,6 +134,90 @@ func (s *embeddingService) SyncActiveEmbedder(ctx context.Context) error {
 	s.llmManager.SetEmbedder(embedder)
 	guardrail.SetGlobalClassifier(guardrail.NewBGEM3Classifier(embedder))
 	return nil
+}
+
+// EnsureActiveEmbedderAvailable starts the catalog download of a missing ONNX model or
+// runtime library and activates the embedder as soon as the files land on disk.
+func (s *embeddingService) EnsureActiveEmbedderAvailable(ctx context.Context) error {
+	syncErr := s.SyncActiveEmbedder(ctx)
+	if syncErr == nil {
+		return nil
+	}
+	if s.getProviderSetting(ctx) != EmbeddingProviderONNX || !config.GetBoolConfigWithDefault("EMBEDDING_AUTO_DOWNLOAD", true) {
+		return syncErr
+	}
+
+	modelIDPtr := s.getModelIDSetting(ctx)
+	if modelIDPtr == nil || *modelIDPtr == "" {
+		return syncErr
+	}
+	modelID := *modelIDPtr
+	if err := embedding.SanitizeModelID(modelID); err != nil {
+		return syncErr
+	}
+
+	pending, startErr := s.startMissingEmbedderDownloads(modelID)
+	if startErr != nil {
+		log.Warn().Err(startErr).Str("model", modelID).Msg("Failed to start embedding downloads")
+	}
+	if !pending {
+		return syncErr
+	}
+
+	log.Info().Str("model", modelID).Msg("Embedding files missing, downloading ONNX runtime and model in background")
+	go s.awaitEmbedderFiles(modelID)
+	return syncErr
+}
+
+func (s *embeddingService) startMissingEmbedderDownloads(modelID string) (bool, error) {
+	modelDir := filepath.Join(s.rootDir, modelID)
+	pending := false
+
+	if _, err := os.Stat(modelDir); err != nil {
+		if _, startErr := s.downloader.Start(modelID); startErr != nil {
+			log.Info().Err(startErr).Str("preset", modelID).Msg("Embedding model download not started")
+		} else {
+			pending = true
+		}
+	}
+
+	if _, err := embedding.CurrentRuntimeLibraryPath(s.rootDir); err != nil {
+		if preset, ok := embedding.RuntimePresetID(); ok {
+			if _, startErr := s.downloader.Start(preset); startErr != nil {
+				log.Info().Err(startErr).Str("preset", preset).Msg("Embedding runtime download not started")
+			} else {
+				pending = true
+			}
+		}
+	}
+	return pending, nil
+}
+
+func (s *embeddingService) awaitEmbedderFiles(modelID string) {
+	deadline := time.Now().Add(45 * time.Minute)
+	for time.Now().Before(deadline) {
+		time.Sleep(20 * time.Second)
+		modelDir := filepath.Join(s.rootDir, modelID)
+		if _, err := os.Stat(modelDir); err != nil {
+			continue
+		}
+		if _, err := embedding.LoadManifest(modelDir); err != nil {
+			continue
+		}
+		if _, err := embedding.FindModelFile(modelDir); err != nil {
+			continue
+		}
+		if _, err := embedding.CurrentRuntimeLibraryPath(s.rootDir); err != nil {
+			continue
+		}
+		if err := s.SyncActiveEmbedder(context.Background()); err != nil {
+			log.Debug().Err(err).Str("model", modelID).Msg("Embedder files present but activation failed, retrying")
+			continue
+		}
+		log.Info().Str("model", modelID).Msg("Activated downloaded ONNX embedder")
+		return
+	}
+	log.Warn().Str("model", modelID).Msg("Gave up waiting for ONNX embedding files")
 }
 
 func (s *embeddingService) GetSettings(ctx context.Context) (response.EmbeddingSettingsResponse, error) {

@@ -54,17 +54,23 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.clearAllKGNodesStmt, err = db.PrepareContext(ctx, clearAllKGNodes); err != nil {
 		return nil, fmt.Errorf("error preparing query ClearAllKGNodes: %w", err)
 	}
-	if q.clearAllSupersessionAuditLogsStmt, err = db.PrepareContext(ctx, clearAllSupersessionAuditLogs); err != nil {
-		return nil, fmt.Errorf("error preparing query ClearAllSupersessionAuditLogs: %w", err)
-	}
-	if q.clearAllSupersessionEdgesStmt, err = db.PrepareContext(ctx, clearAllSupersessionEdges); err != nil {
-		return nil, fmt.Errorf("error preparing query ClearAllSupersessionEdges: %w", err)
-	}
 	if q.clearAllUserMemoriesStmt, err = db.PrepareContext(ctx, clearAllUserMemories); err != nil {
 		return nil, fmt.Errorf("error preparing query ClearAllUserMemories: %w", err)
 	}
 	if q.clearChainNodesStmt, err = db.PrepareContext(ctx, clearChainNodes); err != nil {
 		return nil, fmt.Errorf("error preparing query ClearChainNodes: %w", err)
+	}
+	if q.clearRegulationSupersessionAuditLogsStmt, err = db.PrepareContext(ctx, clearRegulationSupersessionAuditLogs); err != nil {
+		return nil, fmt.Errorf("error preparing query ClearRegulationSupersessionAuditLogs: %w", err)
+	}
+	if q.clearRegulationSupersessionEdgesStmt, err = db.PrepareContext(ctx, clearRegulationSupersessionEdges); err != nil {
+		return nil, fmt.Errorf("error preparing query ClearRegulationSupersessionEdges: %w", err)
+	}
+	if q.clearSupersessionAuditLogsStmt, err = db.PrepareContext(ctx, clearSupersessionAuditLogs); err != nil {
+		return nil, fmt.Errorf("error preparing query ClearSupersessionAuditLogs: %w", err)
+	}
+	if q.completeSupersessionAuditRunStmt, err = db.PrepareContext(ctx, completeSupersessionAuditRun); err != nil {
+		return nil, fmt.Errorf("error preparing query CompleteSupersessionAuditRun: %w", err)
 	}
 	if q.countActiveAdminUsersStmt, err = db.PrepareContext(ctx, countActiveAdminUsers); err != nil {
 		return nil, fmt.Errorf("error preparing query CountActiveAdminUsers: %w", err)
@@ -86,6 +92,12 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.countArchivedDocumentsStmt, err = db.PrepareContext(ctx, countArchivedDocuments); err != nil {
 		return nil, fmt.Errorf("error preparing query CountArchivedDocuments: %w", err)
+	}
+	if q.countAuditLogPairsStmt, err = db.PrepareContext(ctx, countAuditLogPairs); err != nil {
+		return nil, fmt.Errorf("error preparing query CountAuditLogPairs: %w", err)
+	}
+	if q.countAuditLogsByActiveDocStmt, err = db.PrepareContext(ctx, countAuditLogsByActiveDoc); err != nil {
+		return nil, fmt.Errorf("error preparing query CountAuditLogsByActiveDoc: %w", err)
 	}
 	if q.countChunksTotalStmt, err = db.PrepareContext(ctx, countChunksTotal); err != nil {
 		return nil, fmt.Errorf("error preparing query CountChunksTotal: %w", err)
@@ -180,6 +192,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.createRoleStmt, err = db.PrepareContext(ctx, createRole); err != nil {
 		return nil, fmt.Errorf("error preparing query CreateRole: %w", err)
 	}
+	if q.createSupersessionAuditRunStmt, err = db.PrepareContext(ctx, createSupersessionAuditRun); err != nil {
+		return nil, fmt.Errorf("error preparing query CreateSupersessionAuditRun: %w", err)
+	}
 	if q.createTLUClawMessageStmt, err = db.PrepareContext(ctx, createTLUClawMessage); err != nil {
 		return nil, fmt.Errorf("error preparing query CreateTLUClawMessage: %w", err)
 	}
@@ -269,6 +284,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.expireInquiryStmt, err = db.PrepareContext(ctx, expireInquiry); err != nil {
 		return nil, fmt.Errorf("error preparing query ExpireInquiry: %w", err)
+	}
+	if q.failSupersessionAuditRunStmt, err = db.PrepareContext(ctx, failSupersessionAuditRun); err != nil {
+		return nil, fmt.Errorf("error preparing query FailSupersessionAuditRun: %w", err)
 	}
 	if q.findCourseMetadataByCodeStmt, err = db.PrepareContext(ctx, findCourseMetadataByCode); err != nil {
 		return nil, fmt.Errorf("error preparing query FindCourseMetadataByCode: %w", err)
@@ -396,6 +414,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getLLMProviderByIDStmt, err = db.PrepareContext(ctx, getLLMProviderByID); err != nil {
 		return nil, fmt.Errorf("error preparing query GetLLMProviderByID: %w", err)
 	}
+	if q.getLatestSupersessionAuditRunStmt, err = db.PrepareContext(ctx, getLatestSupersessionAuditRun); err != nil {
+		return nil, fmt.Errorf("error preparing query GetLatestSupersessionAuditRun: %w", err)
+	}
 	if q.getNotificationByIDStmt, err = db.PrepareContext(ctx, getNotificationByID); err != nil {
 		return nil, fmt.Errorf("error preparing query GetNotificationByID: %w", err)
 	}
@@ -425,6 +446,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.getRolesByIDsStmt, err = db.PrepareContext(ctx, getRolesByIDs); err != nil {
 		return nil, fmt.Errorf("error preparing query GetRolesByIDs: %w", err)
+	}
+	if q.getRunningSupersessionAuditRunStmt, err = db.PrepareContext(ctx, getRunningSupersessionAuditRun); err != nil {
+		return nil, fmt.Errorf("error preparing query GetRunningSupersessionAuditRun: %w", err)
 	}
 	if q.getSetupStateStmt, err = db.PrepareContext(ctx, getSetupState); err != nil {
 		return nil, fmt.Errorf("error preparing query GetSetupState: %w", err)
@@ -498,6 +522,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.listActiveChatModelsWithProviderStmt, err = db.PrepareContext(ctx, listActiveChatModelsWithProvider); err != nil {
 		return nil, fmt.Errorf("error preparing query ListActiveChatModelsWithProvider: %w", err)
 	}
+	if q.listActiveDocumentsForDedupeStmt, err = db.PrepareContext(ctx, listActiveDocumentsForDedupe); err != nil {
+		return nil, fmt.Errorf("error preparing query ListActiveDocumentsForDedupe: %w", err)
+	}
 	if q.listActiveLLMModelsByTypeStmt, err = db.PrepareContext(ctx, listActiveLLMModelsByType); err != nil {
 		return nil, fmt.Errorf("error preparing query ListActiveLLMModelsByType: %w", err)
 	}
@@ -512,6 +539,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.listAdminConversationsNoFeedbackStmt, err = db.PrepareContext(ctx, listAdminConversationsNoFeedback); err != nil {
 		return nil, fmt.Errorf("error preparing query ListAdminConversationsNoFeedback: %w", err)
+	}
+	if q.listAdminUserIDsStmt, err = db.PrepareContext(ctx, listAdminUserIDs); err != nil {
+		return nil, fmt.Errorf("error preparing query ListAdminUserIDs: %w", err)
 	}
 	if q.listAgentPromptsStmt, err = db.PrepareContext(ctx, listAgentPrompts); err != nil {
 		return nil, fmt.Errorf("error preparing query ListAgentPrompts: %w", err)
@@ -542,6 +572,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.listAllRegulationIDsChronologicalStmt, err = db.PrepareContext(ctx, listAllRegulationIDsChronological); err != nil {
 		return nil, fmt.Errorf("error preparing query ListAllRegulationIDsChronological: %w", err)
+	}
+	if q.listAuditLogPairsMissingEdgeStmt, err = db.PrepareContext(ctx, listAuditLogPairsMissingEdge); err != nil {
+		return nil, fmt.Errorf("error preparing query ListAuditLogPairsMissingEdge: %w", err)
 	}
 	if q.listAuditLogsByDocIDStmt, err = db.PrepareContext(ctx, listAuditLogsByDocID); err != nil {
 		return nil, fmt.Errorf("error preparing query ListAuditLogsByDocID: %w", err)
@@ -575,6 +608,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.listDistinctSubstitutionMajorsStmt, err = db.PrepareContext(ctx, listDistinctSubstitutionMajors); err != nil {
 		return nil, fmt.Errorf("error preparing query ListDistinctSubstitutionMajors: %w", err)
+	}
+	if q.listDocumentIDsMissingGraphNodeStmt, err = db.PrepareContext(ctx, listDocumentIDsMissingGraphNode); err != nil {
+		return nil, fmt.Errorf("error preparing query ListDocumentIDsMissingGraphNode: %w", err)
 	}
 	if q.listDueJobScheduleIDsStmt, err = db.PrepareContext(ctx, listDueJobScheduleIDs); err != nil {
 		return nil, fmt.Errorf("error preparing query ListDueJobScheduleIDs: %w", err)
@@ -630,6 +666,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.listPrerequisitesForCourseStmt, err = db.PrepareContext(ctx, listPrerequisitesForCourse); err != nil {
 		return nil, fmt.Errorf("error preparing query ListPrerequisitesForCourse: %w", err)
 	}
+	if q.listRecentJobStatusesByTypeStmt, err = db.PrepareContext(ctx, listRecentJobStatusesByType); err != nil {
+		return nil, fmt.Errorf("error preparing query ListRecentJobStatusesByType: %w", err)
+	}
 	if q.listRecentNotificationIDsStmt, err = db.PrepareContext(ctx, listRecentNotificationIDs); err != nil {
 		return nil, fmt.Errorf("error preparing query ListRecentNotificationIDs: %w", err)
 	}
@@ -654,6 +693,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.listSupersededDocumentsStmt, err = db.PrepareContext(ctx, listSupersededDocuments); err != nil {
 		return nil, fmt.Errorf("error preparing query ListSupersededDocuments: %w", err)
 	}
+	if q.listSupersessionPairsMissingEdgeStmt, err = db.PrepareContext(ctx, listSupersessionPairsMissingEdge); err != nil {
+		return nil, fmt.Errorf("error preparing query ListSupersessionPairsMissingEdge: %w", err)
+	}
 	if q.listTLUClawMessagesBySessionIDStmt, err = db.PrepareContext(ctx, listTLUClawMessagesBySessionID); err != nil {
 		return nil, fmt.Errorf("error preparing query ListTLUClawMessagesBySessionID: %w", err)
 	}
@@ -668,6 +710,12 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.listTranscriptGradeIDsByUserIDStmt, err = db.PrepareContext(ctx, listTranscriptGradeIDsByUserID); err != nil {
 		return nil, fmt.Errorf("error preparing query ListTranscriptGradeIDsByUserID: %w", err)
+	}
+	if q.listUserIDsByCohortStmt, err = db.PrepareContext(ctx, listUserIDsByCohort); err != nil {
+		return nil, fmt.Errorf("error preparing query ListUserIDsByCohort: %w", err)
+	}
+	if q.listUserIDsByCohortsStmt, err = db.PrepareContext(ctx, listUserIDsByCohorts); err != nil {
+		return nil, fmt.Errorf("error preparing query ListUserIDsByCohorts: %w", err)
 	}
 	if q.listUserMemoriesByUserIDStmt, err = db.PrepareContext(ctx, listUserMemoriesByUserID); err != nil {
 		return nil, fmt.Errorf("error preparing query ListUserMemoriesByUserID: %w", err)
@@ -699,14 +747,14 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.removeChainNodeStmt, err = db.PrepareContext(ctx, removeChainNode); err != nil {
 		return nil, fmt.Errorf("error preparing query RemoveChainNode: %w", err)
 	}
-	if q.resetAllChunkSupersessionsStmt, err = db.PrepareContext(ctx, resetAllChunkSupersessions); err != nil {
-		return nil, fmt.Errorf("error preparing query ResetAllChunkSupersessions: %w", err)
+	if q.resetRegulationChunkSupersessionsStmt, err = db.PrepareContext(ctx, resetRegulationChunkSupersessions); err != nil {
+		return nil, fmt.Errorf("error preparing query ResetRegulationChunkSupersessions: %w", err)
 	}
-	if q.resetAllDocumentSupersessionsStmt, err = db.PrepareContext(ctx, resetAllDocumentSupersessions); err != nil {
-		return nil, fmt.Errorf("error preparing query ResetAllDocumentSupersessions: %w", err)
+	if q.resetRegulationDocumentSupersessionsStmt, err = db.PrepareContext(ctx, resetRegulationDocumentSupersessions); err != nil {
+		return nil, fmt.Errorf("error preparing query ResetRegulationDocumentSupersessions: %w", err)
 	}
-	if q.resetAllRuleSupersessionsStmt, err = db.PrepareContext(ctx, resetAllRuleSupersessions); err != nil {
-		return nil, fmt.Errorf("error preparing query ResetAllRuleSupersessions: %w", err)
+	if q.resetRegulationRuleSupersessionsStmt, err = db.PrepareContext(ctx, resetRegulationRuleSupersessions); err != nil {
+		return nil, fmt.Errorf("error preparing query ResetRegulationRuleSupersessions: %w", err)
 	}
 	if q.restoreUserStmt, err = db.PrepareContext(ctx, restoreUser); err != nil {
 		return nil, fmt.Errorf("error preparing query RestoreUser: %w", err)
@@ -800,6 +848,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.updateRuleStatusStmt, err = db.PrepareContext(ctx, updateRuleStatus); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateRuleStatus: %w", err)
+	}
+	if q.updateSupersessionAuditRunProgressStmt, err = db.PrepareContext(ctx, updateSupersessionAuditRunProgress); err != nil {
+		return nil, fmt.Errorf("error preparing query UpdateSupersessionAuditRunProgress: %w", err)
 	}
 	if q.updateSystemRoleDescriptionStmt, err = db.PrepareContext(ctx, updateSystemRoleDescription); err != nil {
 		return nil, fmt.Errorf("error preparing query UpdateSystemRoleDescription: %w", err)
@@ -934,16 +985,6 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing clearAllKGNodesStmt: %w", cerr)
 		}
 	}
-	if q.clearAllSupersessionAuditLogsStmt != nil {
-		if cerr := q.clearAllSupersessionAuditLogsStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing clearAllSupersessionAuditLogsStmt: %w", cerr)
-		}
-	}
-	if q.clearAllSupersessionEdgesStmt != nil {
-		if cerr := q.clearAllSupersessionEdgesStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing clearAllSupersessionEdgesStmt: %w", cerr)
-		}
-	}
 	if q.clearAllUserMemoriesStmt != nil {
 		if cerr := q.clearAllUserMemoriesStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing clearAllUserMemoriesStmt: %w", cerr)
@@ -952,6 +993,26 @@ func (q *Queries) Close() error {
 	if q.clearChainNodesStmt != nil {
 		if cerr := q.clearChainNodesStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing clearChainNodesStmt: %w", cerr)
+		}
+	}
+	if q.clearRegulationSupersessionAuditLogsStmt != nil {
+		if cerr := q.clearRegulationSupersessionAuditLogsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing clearRegulationSupersessionAuditLogsStmt: %w", cerr)
+		}
+	}
+	if q.clearRegulationSupersessionEdgesStmt != nil {
+		if cerr := q.clearRegulationSupersessionEdgesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing clearRegulationSupersessionEdgesStmt: %w", cerr)
+		}
+	}
+	if q.clearSupersessionAuditLogsStmt != nil {
+		if cerr := q.clearSupersessionAuditLogsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing clearSupersessionAuditLogsStmt: %w", cerr)
+		}
+	}
+	if q.completeSupersessionAuditRunStmt != nil {
+		if cerr := q.completeSupersessionAuditRunStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing completeSupersessionAuditRunStmt: %w", cerr)
 		}
 	}
 	if q.countActiveAdminUsersStmt != nil {
@@ -987,6 +1048,16 @@ func (q *Queries) Close() error {
 	if q.countArchivedDocumentsStmt != nil {
 		if cerr := q.countArchivedDocumentsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing countArchivedDocumentsStmt: %w", cerr)
+		}
+	}
+	if q.countAuditLogPairsStmt != nil {
+		if cerr := q.countAuditLogPairsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing countAuditLogPairsStmt: %w", cerr)
+		}
+	}
+	if q.countAuditLogsByActiveDocStmt != nil {
+		if cerr := q.countAuditLogsByActiveDocStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing countAuditLogsByActiveDocStmt: %w", cerr)
 		}
 	}
 	if q.countChunksTotalStmt != nil {
@@ -1144,6 +1215,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing createRoleStmt: %w", cerr)
 		}
 	}
+	if q.createSupersessionAuditRunStmt != nil {
+		if cerr := q.createSupersessionAuditRunStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing createSupersessionAuditRunStmt: %w", cerr)
+		}
+	}
 	if q.createTLUClawMessageStmt != nil {
 		if cerr := q.createTLUClawMessageStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing createTLUClawMessageStmt: %w", cerr)
@@ -1292,6 +1368,11 @@ func (q *Queries) Close() error {
 	if q.expireInquiryStmt != nil {
 		if cerr := q.expireInquiryStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing expireInquiryStmt: %w", cerr)
+		}
+	}
+	if q.failSupersessionAuditRunStmt != nil {
+		if cerr := q.failSupersessionAuditRunStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing failSupersessionAuditRunStmt: %w", cerr)
 		}
 	}
 	if q.findCourseMetadataByCodeStmt != nil {
@@ -1504,6 +1585,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getLLMProviderByIDStmt: %w", cerr)
 		}
 	}
+	if q.getLatestSupersessionAuditRunStmt != nil {
+		if cerr := q.getLatestSupersessionAuditRunStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getLatestSupersessionAuditRunStmt: %w", cerr)
+		}
+	}
 	if q.getNotificationByIDStmt != nil {
 		if cerr := q.getNotificationByIDStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getNotificationByIDStmt: %w", cerr)
@@ -1552,6 +1638,11 @@ func (q *Queries) Close() error {
 	if q.getRolesByIDsStmt != nil {
 		if cerr := q.getRolesByIDsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getRolesByIDsStmt: %w", cerr)
+		}
+	}
+	if q.getRunningSupersessionAuditRunStmt != nil {
+		if cerr := q.getRunningSupersessionAuditRunStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getRunningSupersessionAuditRunStmt: %w", cerr)
 		}
 	}
 	if q.getSetupStateStmt != nil {
@@ -1674,6 +1765,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing listActiveChatModelsWithProviderStmt: %w", cerr)
 		}
 	}
+	if q.listActiveDocumentsForDedupeStmt != nil {
+		if cerr := q.listActiveDocumentsForDedupeStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listActiveDocumentsForDedupeStmt: %w", cerr)
+		}
+	}
 	if q.listActiveLLMModelsByTypeStmt != nil {
 		if cerr := q.listActiveLLMModelsByTypeStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listActiveLLMModelsByTypeStmt: %w", cerr)
@@ -1697,6 +1793,11 @@ func (q *Queries) Close() error {
 	if q.listAdminConversationsNoFeedbackStmt != nil {
 		if cerr := q.listAdminConversationsNoFeedbackStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listAdminConversationsNoFeedbackStmt: %w", cerr)
+		}
+	}
+	if q.listAdminUserIDsStmt != nil {
+		if cerr := q.listAdminUserIDsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listAdminUserIDsStmt: %w", cerr)
 		}
 	}
 	if q.listAgentPromptsStmt != nil {
@@ -1747,6 +1848,11 @@ func (q *Queries) Close() error {
 	if q.listAllRegulationIDsChronologicalStmt != nil {
 		if cerr := q.listAllRegulationIDsChronologicalStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listAllRegulationIDsChronologicalStmt: %w", cerr)
+		}
+	}
+	if q.listAuditLogPairsMissingEdgeStmt != nil {
+		if cerr := q.listAuditLogPairsMissingEdgeStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listAuditLogPairsMissingEdgeStmt: %w", cerr)
 		}
 	}
 	if q.listAuditLogsByDocIDStmt != nil {
@@ -1802,6 +1908,11 @@ func (q *Queries) Close() error {
 	if q.listDistinctSubstitutionMajorsStmt != nil {
 		if cerr := q.listDistinctSubstitutionMajorsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listDistinctSubstitutionMajorsStmt: %w", cerr)
+		}
+	}
+	if q.listDocumentIDsMissingGraphNodeStmt != nil {
+		if cerr := q.listDocumentIDsMissingGraphNodeStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listDocumentIDsMissingGraphNodeStmt: %w", cerr)
 		}
 	}
 	if q.listDueJobScheduleIDsStmt != nil {
@@ -1894,6 +2005,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing listPrerequisitesForCourseStmt: %w", cerr)
 		}
 	}
+	if q.listRecentJobStatusesByTypeStmt != nil {
+		if cerr := q.listRecentJobStatusesByTypeStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listRecentJobStatusesByTypeStmt: %w", cerr)
+		}
+	}
 	if q.listRecentNotificationIDsStmt != nil {
 		if cerr := q.listRecentNotificationIDsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listRecentNotificationIDsStmt: %w", cerr)
@@ -1934,6 +2050,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing listSupersededDocumentsStmt: %w", cerr)
 		}
 	}
+	if q.listSupersessionPairsMissingEdgeStmt != nil {
+		if cerr := q.listSupersessionPairsMissingEdgeStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listSupersessionPairsMissingEdgeStmt: %w", cerr)
+		}
+	}
 	if q.listTLUClawMessagesBySessionIDStmt != nil {
 		if cerr := q.listTLUClawMessagesBySessionIDStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listTLUClawMessagesBySessionIDStmt: %w", cerr)
@@ -1957,6 +2078,16 @@ func (q *Queries) Close() error {
 	if q.listTranscriptGradeIDsByUserIDStmt != nil {
 		if cerr := q.listTranscriptGradeIDsByUserIDStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listTranscriptGradeIDsByUserIDStmt: %w", cerr)
+		}
+	}
+	if q.listUserIDsByCohortStmt != nil {
+		if cerr := q.listUserIDsByCohortStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listUserIDsByCohortStmt: %w", cerr)
+		}
+	}
+	if q.listUserIDsByCohortsStmt != nil {
+		if cerr := q.listUserIDsByCohortsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listUserIDsByCohortsStmt: %w", cerr)
 		}
 	}
 	if q.listUserMemoriesByUserIDStmt != nil {
@@ -2009,19 +2140,19 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing removeChainNodeStmt: %w", cerr)
 		}
 	}
-	if q.resetAllChunkSupersessionsStmt != nil {
-		if cerr := q.resetAllChunkSupersessionsStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing resetAllChunkSupersessionsStmt: %w", cerr)
+	if q.resetRegulationChunkSupersessionsStmt != nil {
+		if cerr := q.resetRegulationChunkSupersessionsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing resetRegulationChunkSupersessionsStmt: %w", cerr)
 		}
 	}
-	if q.resetAllDocumentSupersessionsStmt != nil {
-		if cerr := q.resetAllDocumentSupersessionsStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing resetAllDocumentSupersessionsStmt: %w", cerr)
+	if q.resetRegulationDocumentSupersessionsStmt != nil {
+		if cerr := q.resetRegulationDocumentSupersessionsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing resetRegulationDocumentSupersessionsStmt: %w", cerr)
 		}
 	}
-	if q.resetAllRuleSupersessionsStmt != nil {
-		if cerr := q.resetAllRuleSupersessionsStmt.Close(); cerr != nil {
-			err = fmt.Errorf("error closing resetAllRuleSupersessionsStmt: %w", cerr)
+	if q.resetRegulationRuleSupersessionsStmt != nil {
+		if cerr := q.resetRegulationRuleSupersessionsStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing resetRegulationRuleSupersessionsStmt: %w", cerr)
 		}
 	}
 	if q.restoreUserStmt != nil {
@@ -2177,6 +2308,11 @@ func (q *Queries) Close() error {
 	if q.updateRuleStatusStmt != nil {
 		if cerr := q.updateRuleStatusStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing updateRuleStatusStmt: %w", cerr)
+		}
+	}
+	if q.updateSupersessionAuditRunProgressStmt != nil {
+		if cerr := q.updateSupersessionAuditRunProgressStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing updateSupersessionAuditRunProgressStmt: %w", cerr)
 		}
 	}
 	if q.updateSystemRoleDescriptionStmt != nil {
@@ -2358,10 +2494,12 @@ type Queries struct {
 	clearAllDocumentsStmt                     *sql.Stmt
 	clearAllKGEdgesStmt                       *sql.Stmt
 	clearAllKGNodesStmt                       *sql.Stmt
-	clearAllSupersessionAuditLogsStmt         *sql.Stmt
-	clearAllSupersessionEdgesStmt             *sql.Stmt
 	clearAllUserMemoriesStmt                  *sql.Stmt
 	clearChainNodesStmt                       *sql.Stmt
+	clearRegulationSupersessionAuditLogsStmt  *sql.Stmt
+	clearRegulationSupersessionEdgesStmt      *sql.Stmt
+	clearSupersessionAuditLogsStmt            *sql.Stmt
+	completeSupersessionAuditRunStmt          *sql.Stmt
 	countActiveAdminUsersStmt                 *sql.Stmt
 	countActiveDocumentsStmt                  *sql.Stmt
 	countAdminConversationsFeedbackDownStmt   *sql.Stmt
@@ -2369,6 +2507,8 @@ type Queries struct {
 	countAdminConversationsNoFeedbackStmt     *sql.Stmt
 	countAllAuditLogsStmt                     *sql.Stmt
 	countArchivedDocumentsStmt                *sql.Stmt
+	countAuditLogPairsStmt                    *sql.Stmt
+	countAuditLogsByActiveDocStmt             *sql.Stmt
 	countChunksTotalStmt                      *sql.Stmt
 	countConversationsByUserIDStmt            *sql.Stmt
 	countCoursesFilteredStmt                  *sql.Stmt
@@ -2400,6 +2540,7 @@ type Queries struct {
 	createMessageStmt                         *sql.Stmt
 	createNotificationStmt                    *sql.Stmt
 	createRoleStmt                            *sql.Stmt
+	createSupersessionAuditRunStmt            *sql.Stmt
 	createTLUClawMessageStmt                  *sql.Stmt
 	createTLUClawSessionStmt                  *sql.Stmt
 	createTLUClawSnapshotStmt                 *sql.Stmt
@@ -2430,6 +2571,7 @@ type Queries struct {
 	deleteUserMemoryStmt                      *sql.Stmt
 	documentExistsByURLStmt                   *sql.Stmt
 	expireInquiryStmt                         *sql.Stmt
+	failSupersessionAuditRunStmt              *sql.Stmt
 	findCourseMetadataByCodeStmt              *sql.Stmt
 	findDirectSubstitutionsStmt               *sql.Stmt
 	findDocumentByIdentifierStmt              *sql.Stmt
@@ -2472,6 +2614,7 @@ type Queries struct {
 	getLLMModelByKeyStmt                      *sql.Stmt
 	getLLMModelWithProviderStmt               *sql.Stmt
 	getLLMProviderByIDStmt                    *sql.Stmt
+	getLatestSupersessionAuditRunStmt         *sql.Stmt
 	getNotificationByIDStmt                   *sql.Stmt
 	getNotificationsByIDsStmt                 *sql.Stmt
 	getPermissionsByKeysStmt                  *sql.Stmt
@@ -2482,6 +2625,7 @@ type Queries struct {
 	getRolePermissionsStmt                    *sql.Stmt
 	getRolePermissionsByIDsStmt               *sql.Stmt
 	getRolesByIDsStmt                         *sql.Stmt
+	getRunningSupersessionAuditRunStmt        *sql.Stmt
 	getSetupStateStmt                         *sql.Stmt
 	getStudentProfileByUserIDStmt             *sql.Stmt
 	getSubstitutionByIDStmt                   *sql.Stmt
@@ -2506,11 +2650,13 @@ type Queries struct {
 	listActiveAgentPromptsStmt                *sql.Stmt
 	listActiveAnsweredInquiriesStmt           *sql.Stmt
 	listActiveChatModelsWithProviderStmt      *sql.Stmt
+	listActiveDocumentsForDedupeStmt          *sql.Stmt
 	listActiveLLMModelsByTypeStmt             *sql.Stmt
 	listActiveRulesByDocumentIDStmt           *sql.Stmt
 	listAdminConversationsFeedbackDownStmt    *sql.Stmt
 	listAdminConversationsFeedbackUpStmt      *sql.Stmt
 	listAdminConversationsNoFeedbackStmt      *sql.Stmt
+	listAdminUserIDsStmt                      *sql.Stmt
 	listAgentPromptsStmt                      *sql.Stmt
 	listAgentSkillsStmt                       *sql.Stmt
 	listAllAuditLogsStmt                      *sql.Stmt
@@ -2521,6 +2667,7 @@ type Queries struct {
 	listAllMajorsStmt                         *sql.Stmt
 	listAllPrerequisitesForCohortAndMajorStmt *sql.Stmt
 	listAllRegulationIDsChronologicalStmt     *sql.Stmt
+	listAuditLogPairsMissingEdgeStmt          *sql.Stmt
 	listAuditLogsByDocIDStmt                  *sql.Stmt
 	listChainNodesWithDetailsStmt             *sql.Stmt
 	listChainsStmt                            *sql.Stmt
@@ -2532,6 +2679,7 @@ type Queries struct {
 	listCurriculumsByCohortStmt               *sql.Stmt
 	listDependentCoursesStmt                  *sql.Stmt
 	listDistinctSubstitutionMajorsStmt        *sql.Stmt
+	listDocumentIDsMissingGraphNodeStmt       *sql.Stmt
 	listDueJobScheduleIDsStmt                 *sql.Stmt
 	listEnabledAgentSkillsStmt                *sql.Stmt
 	listFilteredJobIDsStmt                    *sql.Stmt
@@ -2550,6 +2698,7 @@ type Queries struct {
 	listPermissionKeysStmt                    *sql.Stmt
 	listPermissionsStmt                       *sql.Stmt
 	listPrerequisitesForCourseStmt            *sql.Stmt
+	listRecentJobStatusesByTypeStmt           *sql.Stmt
 	listRecentNotificationIDsStmt             *sql.Stmt
 	listRolePermissionIDsStmt                 *sql.Stmt
 	listRolePermissionsStmt                   *sql.Stmt
@@ -2558,11 +2707,14 @@ type Queries struct {
 	listSubstitutionsByCohortAndMajorStmt     *sql.Stmt
 	listSubstitutionsPaginatedStmt            *sql.Stmt
 	listSupersededDocumentsStmt               *sql.Stmt
+	listSupersessionPairsMissingEdgeStmt      *sql.Stmt
 	listTLUClawMessagesBySessionIDStmt        *sql.Stmt
 	listTLUClawSessionIDsByAdminStmt          *sql.Stmt
 	listTLUClawSnapshotsBySessionIDStmt       *sql.Stmt
 	listTLUClawSnapshotsPaginatedStmt         *sql.Stmt
 	listTranscriptGradeIDsByUserIDStmt        *sql.Stmt
+	listUserIDsByCohortStmt                   *sql.Stmt
+	listUserIDsByCohortsStmt                  *sql.Stmt
 	listUserMemoriesByUserIDStmt              *sql.Stmt
 	listUserMemoryIDsByUserIDStmt             *sql.Stmt
 	markAllNotificationsAsReadStmt            *sql.Stmt
@@ -2573,9 +2725,9 @@ type Queries struct {
 	recordSupersessionAuditStmt               *sql.Stmt
 	releaseJobScheduleClaimStmt               *sql.Stmt
 	removeChainNodeStmt                       *sql.Stmt
-	resetAllChunkSupersessionsStmt            *sql.Stmt
-	resetAllDocumentSupersessionsStmt         *sql.Stmt
-	resetAllRuleSupersessionsStmt             *sql.Stmt
+	resetRegulationChunkSupersessionsStmt     *sql.Stmt
+	resetRegulationDocumentSupersessionsStmt  *sql.Stmt
+	resetRegulationRuleSupersessionsStmt      *sql.Stmt
 	restoreUserStmt                           *sql.Stmt
 	revokeUserSessionsStmt                    *sql.Stmt
 	rotateUserRefreshTokenStmt                *sql.Stmt
@@ -2607,6 +2759,7 @@ type Queries struct {
 	updateRoleStmt                            *sql.Stmt
 	updateRolePositionStmt                    *sql.Stmt
 	updateRuleStatusStmt                      *sql.Stmt
+	updateSupersessionAuditRunProgressStmt    *sql.Stmt
 	updateSystemRoleDescriptionStmt           *sql.Stmt
 	updateTLUClawSessionTitleStmt             *sql.Stmt
 	updateTLUClawSnapshotStatusStmt           *sql.Stmt
@@ -2649,10 +2802,12 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		clearAllDocumentsStmt:                     q.clearAllDocumentsStmt,
 		clearAllKGEdgesStmt:                       q.clearAllKGEdgesStmt,
 		clearAllKGNodesStmt:                       q.clearAllKGNodesStmt,
-		clearAllSupersessionAuditLogsStmt:         q.clearAllSupersessionAuditLogsStmt,
-		clearAllSupersessionEdgesStmt:             q.clearAllSupersessionEdgesStmt,
 		clearAllUserMemoriesStmt:                  q.clearAllUserMemoriesStmt,
 		clearChainNodesStmt:                       q.clearChainNodesStmt,
+		clearRegulationSupersessionAuditLogsStmt:  q.clearRegulationSupersessionAuditLogsStmt,
+		clearRegulationSupersessionEdgesStmt:      q.clearRegulationSupersessionEdgesStmt,
+		clearSupersessionAuditLogsStmt:            q.clearSupersessionAuditLogsStmt,
+		completeSupersessionAuditRunStmt:          q.completeSupersessionAuditRunStmt,
 		countActiveAdminUsersStmt:                 q.countActiveAdminUsersStmt,
 		countActiveDocumentsStmt:                  q.countActiveDocumentsStmt,
 		countAdminConversationsFeedbackDownStmt:   q.countAdminConversationsFeedbackDownStmt,
@@ -2660,6 +2815,8 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		countAdminConversationsNoFeedbackStmt:     q.countAdminConversationsNoFeedbackStmt,
 		countAllAuditLogsStmt:                     q.countAllAuditLogsStmt,
 		countArchivedDocumentsStmt:                q.countArchivedDocumentsStmt,
+		countAuditLogPairsStmt:                    q.countAuditLogPairsStmt,
+		countAuditLogsByActiveDocStmt:             q.countAuditLogsByActiveDocStmt,
 		countChunksTotalStmt:                      q.countChunksTotalStmt,
 		countConversationsByUserIDStmt:            q.countConversationsByUserIDStmt,
 		countCoursesFilteredStmt:                  q.countCoursesFilteredStmt,
@@ -2691,6 +2848,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		createMessageStmt:                         q.createMessageStmt,
 		createNotificationStmt:                    q.createNotificationStmt,
 		createRoleStmt:                            q.createRoleStmt,
+		createSupersessionAuditRunStmt:            q.createSupersessionAuditRunStmt,
 		createTLUClawMessageStmt:                  q.createTLUClawMessageStmt,
 		createTLUClawSessionStmt:                  q.createTLUClawSessionStmt,
 		createTLUClawSnapshotStmt:                 q.createTLUClawSnapshotStmt,
@@ -2721,6 +2879,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		deleteUserMemoryStmt:                      q.deleteUserMemoryStmt,
 		documentExistsByURLStmt:                   q.documentExistsByURLStmt,
 		expireInquiryStmt:                         q.expireInquiryStmt,
+		failSupersessionAuditRunStmt:              q.failSupersessionAuditRunStmt,
 		findCourseMetadataByCodeStmt:              q.findCourseMetadataByCodeStmt,
 		findDirectSubstitutionsStmt:               q.findDirectSubstitutionsStmt,
 		findDocumentByIdentifierStmt:              q.findDocumentByIdentifierStmt,
@@ -2763,6 +2922,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getLLMModelByKeyStmt:                      q.getLLMModelByKeyStmt,
 		getLLMModelWithProviderStmt:               q.getLLMModelWithProviderStmt,
 		getLLMProviderByIDStmt:                    q.getLLMProviderByIDStmt,
+		getLatestSupersessionAuditRunStmt:         q.getLatestSupersessionAuditRunStmt,
 		getNotificationByIDStmt:                   q.getNotificationByIDStmt,
 		getNotificationsByIDsStmt:                 q.getNotificationsByIDsStmt,
 		getPermissionsByKeysStmt:                  q.getPermissionsByKeysStmt,
@@ -2773,6 +2933,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getRolePermissionsStmt:                    q.getRolePermissionsStmt,
 		getRolePermissionsByIDsStmt:               q.getRolePermissionsByIDsStmt,
 		getRolesByIDsStmt:                         q.getRolesByIDsStmt,
+		getRunningSupersessionAuditRunStmt:        q.getRunningSupersessionAuditRunStmt,
 		getSetupStateStmt:                         q.getSetupStateStmt,
 		getStudentProfileByUserIDStmt:             q.getStudentProfileByUserIDStmt,
 		getSubstitutionByIDStmt:                   q.getSubstitutionByIDStmt,
@@ -2797,11 +2958,13 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listActiveAgentPromptsStmt:                q.listActiveAgentPromptsStmt,
 		listActiveAnsweredInquiriesStmt:           q.listActiveAnsweredInquiriesStmt,
 		listActiveChatModelsWithProviderStmt:      q.listActiveChatModelsWithProviderStmt,
+		listActiveDocumentsForDedupeStmt:          q.listActiveDocumentsForDedupeStmt,
 		listActiveLLMModelsByTypeStmt:             q.listActiveLLMModelsByTypeStmt,
 		listActiveRulesByDocumentIDStmt:           q.listActiveRulesByDocumentIDStmt,
 		listAdminConversationsFeedbackDownStmt:    q.listAdminConversationsFeedbackDownStmt,
 		listAdminConversationsFeedbackUpStmt:      q.listAdminConversationsFeedbackUpStmt,
 		listAdminConversationsNoFeedbackStmt:      q.listAdminConversationsNoFeedbackStmt,
+		listAdminUserIDsStmt:                      q.listAdminUserIDsStmt,
 		listAgentPromptsStmt:                      q.listAgentPromptsStmt,
 		listAgentSkillsStmt:                       q.listAgentSkillsStmt,
 		listAllAuditLogsStmt:                      q.listAllAuditLogsStmt,
@@ -2812,6 +2975,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listAllMajorsStmt:                         q.listAllMajorsStmt,
 		listAllPrerequisitesForCohortAndMajorStmt: q.listAllPrerequisitesForCohortAndMajorStmt,
 		listAllRegulationIDsChronologicalStmt:     q.listAllRegulationIDsChronologicalStmt,
+		listAuditLogPairsMissingEdgeStmt:          q.listAuditLogPairsMissingEdgeStmt,
 		listAuditLogsByDocIDStmt:                  q.listAuditLogsByDocIDStmt,
 		listChainNodesWithDetailsStmt:             q.listChainNodesWithDetailsStmt,
 		listChainsStmt:                            q.listChainsStmt,
@@ -2823,6 +2987,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listCurriculumsByCohortStmt:               q.listCurriculumsByCohortStmt,
 		listDependentCoursesStmt:                  q.listDependentCoursesStmt,
 		listDistinctSubstitutionMajorsStmt:        q.listDistinctSubstitutionMajorsStmt,
+		listDocumentIDsMissingGraphNodeStmt:       q.listDocumentIDsMissingGraphNodeStmt,
 		listDueJobScheduleIDsStmt:                 q.listDueJobScheduleIDsStmt,
 		listEnabledAgentSkillsStmt:                q.listEnabledAgentSkillsStmt,
 		listFilteredJobIDsStmt:                    q.listFilteredJobIDsStmt,
@@ -2841,6 +3006,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listPermissionKeysStmt:                    q.listPermissionKeysStmt,
 		listPermissionsStmt:                       q.listPermissionsStmt,
 		listPrerequisitesForCourseStmt:            q.listPrerequisitesForCourseStmt,
+		listRecentJobStatusesByTypeStmt:           q.listRecentJobStatusesByTypeStmt,
 		listRecentNotificationIDsStmt:             q.listRecentNotificationIDsStmt,
 		listRolePermissionIDsStmt:                 q.listRolePermissionIDsStmt,
 		listRolePermissionsStmt:                   q.listRolePermissionsStmt,
@@ -2849,11 +3015,14 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listSubstitutionsByCohortAndMajorStmt:     q.listSubstitutionsByCohortAndMajorStmt,
 		listSubstitutionsPaginatedStmt:            q.listSubstitutionsPaginatedStmt,
 		listSupersededDocumentsStmt:               q.listSupersededDocumentsStmt,
+		listSupersessionPairsMissingEdgeStmt:      q.listSupersessionPairsMissingEdgeStmt,
 		listTLUClawMessagesBySessionIDStmt:        q.listTLUClawMessagesBySessionIDStmt,
 		listTLUClawSessionIDsByAdminStmt:          q.listTLUClawSessionIDsByAdminStmt,
 		listTLUClawSnapshotsBySessionIDStmt:       q.listTLUClawSnapshotsBySessionIDStmt,
 		listTLUClawSnapshotsPaginatedStmt:         q.listTLUClawSnapshotsPaginatedStmt,
 		listTranscriptGradeIDsByUserIDStmt:        q.listTranscriptGradeIDsByUserIDStmt,
+		listUserIDsByCohortStmt:                   q.listUserIDsByCohortStmt,
+		listUserIDsByCohortsStmt:                  q.listUserIDsByCohortsStmt,
 		listUserMemoriesByUserIDStmt:              q.listUserMemoriesByUserIDStmt,
 		listUserMemoryIDsByUserIDStmt:             q.listUserMemoryIDsByUserIDStmt,
 		markAllNotificationsAsReadStmt:            q.markAllNotificationsAsReadStmt,
@@ -2864,9 +3033,9 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		recordSupersessionAuditStmt:               q.recordSupersessionAuditStmt,
 		releaseJobScheduleClaimStmt:               q.releaseJobScheduleClaimStmt,
 		removeChainNodeStmt:                       q.removeChainNodeStmt,
-		resetAllChunkSupersessionsStmt:            q.resetAllChunkSupersessionsStmt,
-		resetAllDocumentSupersessionsStmt:         q.resetAllDocumentSupersessionsStmt,
-		resetAllRuleSupersessionsStmt:             q.resetAllRuleSupersessionsStmt,
+		resetRegulationChunkSupersessionsStmt:     q.resetRegulationChunkSupersessionsStmt,
+		resetRegulationDocumentSupersessionsStmt:  q.resetRegulationDocumentSupersessionsStmt,
+		resetRegulationRuleSupersessionsStmt:      q.resetRegulationRuleSupersessionsStmt,
 		restoreUserStmt:                           q.restoreUserStmt,
 		revokeUserSessionsStmt:                    q.revokeUserSessionsStmt,
 		rotateUserRefreshTokenStmt:                q.rotateUserRefreshTokenStmt,
@@ -2898,6 +3067,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		updateRoleStmt:                            q.updateRoleStmt,
 		updateRolePositionStmt:                    q.updateRolePositionStmt,
 		updateRuleStatusStmt:                      q.updateRuleStatusStmt,
+		updateSupersessionAuditRunProgressStmt:    q.updateSupersessionAuditRunProgressStmt,
 		updateSystemRoleDescriptionStmt:           q.updateSystemRoleDescriptionStmt,
 		updateTLUClawSessionTitleStmt:             q.updateTLUClawSessionTitleStmt,
 		updateTLUClawSnapshotStatusStmt:           q.updateTLUClawSnapshotStatusStmt,

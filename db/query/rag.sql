@@ -125,6 +125,7 @@ FROM document_chunks c
 JOIN documents d ON c.document_id = d.id
 WHERE c.status = 'ACTIVE'
   AND d.status = 'ACTIVE'
+  AND (d.char_count = 0 OR d.char_count >= sqlc.arg('min_char_count'))
   AND (sqlc.narg('cohort') IS NULL OR sqlc.narg('cohort') = '' OR c.applicable_cohort = 'ALL' OR (',' || REPLACE(c.applicable_cohort, ' ', '') || ',') LIKE ('%,' || sqlc.narg('cohort') || ',%'))
   AND (sqlc.narg('domain') IS NULL OR sqlc.narg('domain') = '' OR c.domain = sqlc.narg('domain'));
 
@@ -228,12 +229,16 @@ SET status = ?
 WHERE id = ?;
 
 -- name: SearchActiveChunkIDsFTS :many
-SELECT chunk_id
-FROM document_chunks_fts
-WHERE content MATCH sqlc.arg('query')
-  AND status = 'ACTIVE'
-  AND (sqlc.narg('domain') IS NULL OR sqlc.narg('domain') = '' OR domain = sqlc.narg('domain'))
-  AND (sqlc.narg('cohort') IS NULL OR sqlc.narg('cohort') = '' OR applicable_cohort = 'ALL' OR (',' || REPLACE(applicable_cohort, ' ', '') || ',') LIKE ('%,' || sqlc.narg('cohort') || ',%'))
+SELECT f.chunk_id
+FROM document_chunks_fts f
+JOIN document_chunks c ON c.id = f.chunk_id
+JOIN documents d ON d.id = c.document_id
+WHERE f.content MATCH sqlc.arg('query')
+  AND f.status = 'ACTIVE'
+  AND d.status = 'ACTIVE'
+  AND (d.char_count = 0 OR d.char_count >= sqlc.arg('min_char_count'))
+  AND (sqlc.narg('domain') IS NULL OR sqlc.narg('domain') = '' OR f.domain = sqlc.narg('domain'))
+  AND (sqlc.narg('cohort') IS NULL OR sqlc.narg('cohort') = '' OR f.applicable_cohort = 'ALL' OR (',' || REPLACE(f.applicable_cohort, ' ', '') || ',') LIKE ('%,' || sqlc.narg('cohort') || ',%'))
 ORDER BY rank
 LIMIT sqlc.arg('limit');
 
@@ -293,27 +298,39 @@ DELETE FROM document_chunks;
 -- name: ClearAllDocumentRules :exec
 DELETE FROM document_rules;
 
--- name: ClearAllSupersessionAuditLogs :exec
+-- name: ClearSupersessionAuditLogs :exec
 DELETE FROM supersession_audit_log;
 
--- name: ResetAllDocumentSupersessions :exec
+-- name: ResetRegulationDocumentSupersessions :exec
 UPDATE documents
 SET status = 'ACTIVE', superseded_by_id = '', updated_at = CURRENT_TIMESTAMP
-WHERE status != 'ACTIVE' OR (superseded_by_id IS NOT NULL AND superseded_by_id != '');
+WHERE type IN ('QUY_CHE', 'QUY_DINH', 'QUYET_DINH', 'DE_AN', 'KE_HOACH', 'CTDT', 'SO_TAY')
+  AND (status != 'ACTIVE' OR (superseded_by_id IS NOT NULL AND superseded_by_id != ''));
 
--- name: ResetAllRuleSupersessions :exec
+-- name: ResetRegulationRuleSupersessions :exec
 UPDATE document_rules
 SET status = 'ACTIVE'
-WHERE status != 'ACTIVE';
+WHERE status != 'ACTIVE'
+  AND document_id IN (SELECT id FROM documents WHERE type IN ('QUY_CHE', 'QUY_DINH', 'QUYET_DINH', 'DE_AN', 'KE_HOACH', 'CTDT', 'SO_TAY'));
 
--- name: ResetAllChunkSupersessions :exec
+-- name: ResetRegulationChunkSupersessions :exec
 UPDATE document_chunks
 SET status = 'ACTIVE'
-WHERE status != 'ACTIVE';
+WHERE status != 'ACTIVE'
+  AND document_id IN (SELECT id FROM documents WHERE type IN ('QUY_CHE', 'QUY_DINH', 'QUYET_DINH', 'DE_AN', 'KE_HOACH', 'CTDT', 'SO_TAY'));
 
--- name: ClearAllSupersessionEdges :exec
+-- name: ClearRegulationSupersessionEdges :exec
 DELETE FROM kg_edges
-WHERE relation_type IN ('SUPERSEDES', 'PARTIALLY_AMENDS');
+WHERE relation_type IN ('SUPERSEDES', 'PARTIALLY_AMENDS')
+  AND (
+      substr(target_node_id, 5) IN (SELECT id FROM documents WHERE type IN ('QUY_CHE', 'QUY_DINH', 'QUYET_DINH', 'DE_AN', 'KE_HOACH', 'CTDT', 'SO_TAY'))
+      OR substr(source_node_id, 5) IN (SELECT id FROM documents WHERE type IN ('QUY_CHE', 'QUY_DINH', 'QUYET_DINH', 'DE_AN', 'KE_HOACH', 'CTDT', 'SO_TAY'))
+  );
+
+-- name: ClearRegulationSupersessionAuditLogs :exec
+DELETE FROM supersession_audit_log
+WHERE superseded_doc_id IN (SELECT id FROM documents WHERE type IN ('QUY_CHE', 'QUY_DINH', 'QUYET_DINH', 'DE_AN', 'KE_HOACH', 'CTDT', 'SO_TAY'))
+   OR active_doc_id IN (SELECT id FROM documents WHERE type IN ('QUY_CHE', 'QUY_DINH', 'QUYET_DINH', 'DE_AN', 'KE_HOACH', 'CTDT', 'SO_TAY'));
 
 -- name: ClearAllKGEdges :exec
 DELETE FROM kg_edges;
@@ -333,3 +350,94 @@ ORDER BY
 
 -- name: ListAllDocumentIdentifiers :many
 SELECT id, title, file_path FROM documents;
+
+-- name: ListActiveDocumentsForDedupe :many
+SELECT id, title, publish_date, char_count
+FROM documents
+WHERE status = 'ACTIVE';
+
+-- name: CreateSupersessionAuditRun :one
+INSERT INTO supersession_audit_runs (id, status, cursor_doc_id, total_docs, processed)
+VALUES (?, 'RUNNING', ?, ?, ?)
+RETURNING *;
+
+-- name: GetRunningSupersessionAuditRun :one
+SELECT * FROM supersession_audit_runs
+WHERE status = 'RUNNING'
+ORDER BY started_at DESC, rowid DESC
+LIMIT 1;
+
+-- name: GetLatestSupersessionAuditRun :one
+SELECT * FROM supersession_audit_runs
+ORDER BY started_at DESC, rowid DESC
+LIMIT 1;
+
+-- name: UpdateSupersessionAuditRunProgress :exec
+UPDATE supersession_audit_runs
+SET cursor_doc_id = ?, processed = ?, total_docs = ?, updated_at = CURRENT_TIMESTAMP
+WHERE id = ?;
+
+-- name: CompleteSupersessionAuditRun :exec
+UPDATE supersession_audit_runs
+SET status = 'COMPLETED', cursor_doc_id = '', processed = total_docs, last_error = '', updated_at = CURRENT_TIMESTAMP
+WHERE id = ?;
+
+-- name: FailSupersessionAuditRun :exec
+UPDATE supersession_audit_runs
+SET status = 'FAILED', last_error = ?, updated_at = CURRENT_TIMESTAMP
+WHERE id = ?;
+
+-- name: CountAuditLogPairs :one
+SELECT COUNT(*) FROM supersession_audit_log
+WHERE active_doc_id = ? AND superseded_doc_id = ?;
+
+-- name: CountAuditLogsByActiveDoc :one
+SELECT COUNT(*) FROM supersession_audit_log
+WHERE active_doc_id = ?;
+
+-- name: ListDocumentIDsMissingGraphNode :many
+SELECT d.id
+FROM documents d
+WHERE NOT EXISTS (
+    SELECT 1 FROM kg_nodes n WHERE n.id = 'doc:' || d.id
+)
+ORDER BY d.created_at ASC
+LIMIT ?;
+
+-- name: ListSupersessionPairsMissingEdge :many
+SELECT
+    d.superseded_by_id AS active_doc_id,
+    d.id AS superseded_doc_id,
+    'SUPERSEDES' AS relation_type
+FROM documents d
+WHERE d.status = 'SUPERSEDED'
+  AND d.superseded_by_id IS NOT NULL
+  AND trim(d.superseded_by_id) != ''
+  AND NOT EXISTS (
+      SELECT 1 FROM kg_edges e
+      WHERE e.source_node_id = 'doc:' || d.superseded_by_id
+        AND e.target_node_id = 'doc:' || d.id
+        AND e.relation_type IN ('SUPERSEDES', 'PARTIALLY_AMENDS')
+  )
+ORDER BY d.created_at ASC
+LIMIT ?;
+
+-- name: ListAuditLogPairsMissingEdge :many
+SELECT
+    l.active_doc_id,
+    l.superseded_doc_id,
+    CASE
+        WHEN SUM(CASE WHEN l.rule_type IN ('DOCUMENT_REPLACEMENT', 'ADMIN_OVERRIDE') THEN 1 ELSE 0 END) > 0
+        THEN 'SUPERSEDES'
+        ELSE 'PARTIALLY_AMENDS'
+    END AS relation_type
+FROM supersession_audit_log l
+WHERE NOT EXISTS (
+    SELECT 1 FROM kg_edges e
+    WHERE e.source_node_id = 'doc:' || l.active_doc_id
+      AND e.target_node_id = 'doc:' || l.superseded_doc_id
+      AND e.relation_type IN ('SUPERSEDES', 'PARTIALLY_AMENDS')
+)
+GROUP BY l.active_doc_id, l.superseded_doc_id
+ORDER BY MIN(l.id) ASC
+LIMIT ?;

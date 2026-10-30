@@ -141,6 +141,21 @@ func TestInquiryService_SelfEvolutionAndOutdatedExpiry(t *testing.T) {
 		t.Fatalf("Expected inquiry to be marked EXPIRED, got status=%s isExpired=%v", refetchedInq.Status, refetchedInq.IsExpired)
 	}
 
+	notifsAfterExpiry, err := notificationRepo.ListNotificationsByUserID(ctx, studentID, 10, 0)
+	if err != nil {
+		t.Fatalf("Failed to list notifications after expiry: %v", err)
+	}
+	foundExpiredNotif := false
+	for _, n := range notifsAfterExpiry {
+		if n.Type == "INQUIRY_EXPIRED" {
+			foundExpiredNotif = true
+			break
+		}
+	}
+	if !foundExpiredNotif {
+		t.Fatalf("Expected an INQUIRY_EXPIRED notification for the student, got %+v", notifsAfterExpiry)
+	}
+
 	chunk, err := ragRepo.GetChunkByID(ctx, answered.KnowledgeChunkID)
 	if err != nil || chunk.Status != "EXPIRED" {
 		t.Fatalf("Expected RAG chunk to be marked EXPIRED, got status=%s", chunk.Status)

@@ -429,6 +429,35 @@ type SupersessionAuditLog struct {
 	CreatedAt       string `json:"created_at"`
 }
 
+const (
+	AuditRunStatusRunning   = "RUNNING"
+	AuditRunStatusCompleted = "COMPLETED"
+	AuditRunStatusFailed    = "FAILED"
+)
+
+type SupersessionAuditRun struct {
+	ID          string `json:"id"`
+	Status      string `json:"status"`
+	CursorDocID string `json:"cursor_doc_id"`
+	TotalDocs   int64  `json:"total_docs"`
+	Processed   int64  `json:"processed"`
+	LastError   string `json:"last_error"`
+	StartedAt   string `json:"started_at"`
+	UpdatedAt   string `json:"updated_at"`
+}
+
+func (r *SupersessionAuditRun) FromSqlc(row sqlc.SupersessionAuditRun) *SupersessionAuditRun {
+	r.ID = row.ID
+	r.Status = row.Status
+	r.CursorDocID = row.CursorDocID
+	r.TotalDocs = row.TotalDocs
+	r.Processed = row.Processed
+	r.LastError = row.LastError
+	r.StartedAt = row.StartedAt.Format(time.RFC3339)
+	r.UpdatedAt = row.UpdatedAt.Format(time.RFC3339)
+	return r
+}
+
 // ToResponse converts a SupersessionAuditLog domain model to a response DTO.
 func (l *SupersessionAuditLog) ToResponse() *response.SupersessionAuditLogResponse {
 	if l == nil {
@@ -637,4 +666,23 @@ func CosineSimilarity(a, b []float32) float32 {
 		return 0
 	}
 	return dot / (float32(math.Sqrt(float64(normA))) * float32(math.Sqrt(float64(normB))))
+}
+
+// SupersessionPair identifies an authoritative supersession relation that should exist as a graph edge.
+type SupersessionPair struct {
+	ActiveDocID     string
+	SupersededDocID string
+	RelationType    string
+}
+
+// GraphRepairResult reports how many graph entities a repair pass recreated.
+type DuplicateRepairResult struct {
+	Groups     int `json:"groups"`
+	Superseded int `json:"superseded"`
+}
+
+type GraphRepairResult struct {
+	NodesCreated int
+	EdgesCreated int
+	DocsScanned  int
 }

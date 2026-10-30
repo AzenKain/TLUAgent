@@ -31,21 +31,21 @@ type TLUClawToolEngine interface {
 }
 
 type tluclawToolEngine struct {
-	curriculumRepo repositories.CurriculumRepository
-	ragRepo        repositories.RAGRepository
-	ragService     RAGService
-	tluclawRepo    repositories.TLUClawRepository
-	skillLoader    agent.SkillLoader
-	memoryService  MemoryService
-	userRepo       repositories.UserRepository
-	roleRepo       repositories.RoleRepository
-	transcriptRepo repositories.TranscriptRepository
-	inquiryRepo    repositories.InquiryRepository
-	llmConfigSvc   LLMConfigService
-	memoryRepo     repositories.MemoryRepository
-	notifRepo      repositories.NotificationRepository
-	jobService     JobService
-	tuitionClient  *tuition.Client
+	curriculumRepo   repositories.CurriculumRepository
+	ragRepo          repositories.RAGRepository
+	ragService       RAGService
+	tluclawRepo      repositories.TLUClawRepository
+	skillLoader      agent.SkillLoader
+	memoryService    MemoryService
+	userRepo         repositories.UserRepository
+	roleRepo         repositories.RoleRepository
+	transcriptRepo   repositories.TranscriptRepository
+	inquiryRepo      repositories.InquiryRepository
+	llmConfigSvc     LLMConfigService
+	memoryRepo       repositories.MemoryRepository
+	notifRepo        repositories.NotificationRepository
+	jobService       JobService
+	tuitionClient    *tuition.Client
 	roleService      RoleService
 	c                cache.Cache
 	llmManager       *llm.Manager
@@ -63,10 +63,10 @@ func NewTLUClawToolEngine(params TLUClawParams) TLUClawToolEngine {
 		disEngine = NewRegulatoryDissectionEngine(EngineParams{
 			RAGRepo:        params.RAGRepo,
 			CurriculumRepo: params.CurriculumRepo,
-			InquiryRepo: params.InquiryRepo,
-			NotifRepo:   params.NotifRepo,
-			UserRepo:    params.UserRepo,
-			LLMManager:  params.LLMManager,
+			InquiryRepo:    params.InquiryRepo,
+			NotifRepo:      params.NotifRepo,
+			UserRepo:       params.UserRepo,
+			LLMManager:     params.LLMManager,
 		})
 	}
 	return &tluclawToolEngine{
@@ -1431,9 +1431,20 @@ func (e *tluclawToolEngine) executeSubstitutionOperations(ctx context.Context, s
 		diffJSON, _ := json.Marshal(diffItems)
 		blastJSON, _ := json.Marshal(blastRadius)
 
+		curriculumCourseID := ""
+		if matches, err := e.curriculumRepo.GetCoursesByCodeAndCohort(ctx, cohort, courseCode); err == nil {
+			for _, match := range matches {
+				if majorName == "" || strings.EqualFold(match.MajorName, majorName) {
+					curriculumCourseID = match.ID
+					majorName = match.MajorName
+					break
+				}
+			}
+		}
+
 		statePayload, _ := json.Marshal(request.TLUClawPrerequisiteSnapshotState{
 			ID:                     prereqID,
-			CurriculumCourseID:     "",
+			CurriculumCourseID:     curriculumCourseID,
 			Cohort:                 cohort,
 			MajorName:              majorName,
 			CourseCode:             courseCode,
@@ -1558,7 +1569,7 @@ func (e *tluclawToolEngine) executeStudentAcademicOperations(ctx context.Context
 			return fmt.Sprintf("Không thể tra cứu học phí cho sinh viên %s: %v", targetCode, err), nil, nil
 		}
 		if !tInfo.Found {
-			return fmt.Sprintf("Không tìm thấy dữ liệu học phí cho sinh viên có mã '%s' trên cổng hocphi.thanglong.edu.vn.", targetCode), nil, nil
+			return fmt.Sprintf("Không tìm thấy dữ liệu học phí cho sinh viên có mã '%s' trên cổng thanh toán học phí của Trường.", targetCode), nil, nil
 		}
 
 		var sb strings.Builder

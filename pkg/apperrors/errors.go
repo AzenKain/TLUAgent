@@ -13,6 +13,7 @@ var (
 	ErrBadRequest      = errors.New("bad request")
 	ErrTooManyRequests = errors.New("too many requests")
 	ErrInternalError   = errors.New("internal server error")
+	ErrMissingCohort   = errors.New("missing cohort")
 )
 
 type AppError struct {

@@ -1,6 +1,7 @@
 package embedding
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -30,21 +31,21 @@ func TestRuntimeLibraryPath_PerPlatform(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if path != "/data/onnx/runtime/windows-amd64/onnxruntime.dll" {
+	if filepath.ToSlash(path) != "/data/onnx/runtime/windows-amd64/onnxruntime.dll" {
 		t.Fatalf("unexpected path: %s", path)
 	}
 	path, err = RuntimeLibraryPath("/data/onnx", "linux", "arm64")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if path != "/data/onnx/runtime/linux-arm64/libonnxruntime.so" {
+	if filepath.ToSlash(path) != "/data/onnx/runtime/linux-arm64/libonnxruntime.so" {
 		t.Fatalf("unexpected path: %s", path)
 	}
 	path, err = RuntimeLibraryPath("/data/onnx", "darwin", "arm64")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if path != "/data/onnx/runtime/darwin-arm64/libonnxruntime.dylib" {
+	if filepath.ToSlash(path) != "/data/onnx/runtime/darwin-arm64/libonnxruntime.dylib" {
 		t.Fatalf("unexpected path: %s", path)
 	}
 }

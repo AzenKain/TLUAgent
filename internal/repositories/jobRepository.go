@@ -26,6 +26,7 @@ type JobRepository interface {
 	ListJobs(ctx context.Context, status, jobType string, limit, offset int64) ([]*models.JobEntity, int64, error)
 	MarkRunningJobsInterrupted(ctx context.Context) error
 	PruneFinishedJobs(ctx context.Context, keep int64) error
+	ListRecentJobStatusesByType(ctx context.Context, jobType string, limit int64) ([]string, error)
 	InvalidateJobCache(ctx context.Context, id string)
 	WithTx(tx *sql.Tx) JobRepository
 }
@@ -65,11 +66,22 @@ func (r *jobRepository) InvalidateJobCache(ctx context.Context, id string) {
 	_ = r.c.DelByPattern(ctx, "job_ids*")
 }
 
+// jobStateCacheable reports whether a job reached a state that will not change again,
+// so caching cannot hide progress made by a worker that just picked the job up.
+func jobStateCacheable(status string) bool {
+	switch status {
+	case constants.JobStatusCompleted, constants.JobStatusFailed, constants.JobStatusInterrupted:
+		return true
+	default:
+		return false
+	}
+}
+
 func (r *jobRepository) GetJob(ctx context.Context, id string) (*models.JobEntity, error) {
 	key := cache.BuildKey("job", "id", id)
 	if r.c != nil && !r.inTx {
 		var job models.JobEntity
-		if err := r.c.Get(ctx, key, &job); err == nil {
+		if err := r.c.Get(ctx, key, &job); err == nil && jobStateCacheable(job.Status) {
 			return &job, nil
 		}
 	}
@@ -81,7 +93,11 @@ func (r *jobRepository) GetJob(ctx context.Context, id string) (*models.JobEntit
 		}
 		job := (&models.JobEntity{}).FromSqlc(row)
 		if r.c != nil && !r.inTx {
-			_ = r.c.Set(ctx, key, job, constants.NormalCacheDuration)
+			if jobStateCacheable(job.Status) {
+				_ = r.c.Set(ctx, key, job, constants.NormalCacheDuration)
+			} else {
+				_ = r.c.Del(ctx, key)
+			}
 		}
 		return job, nil
 	})
@@ -109,7 +125,7 @@ func (r *jobRepository) GetJobsByIDs(ctx context.Context, ids []string) ([]*mode
 		for i, bytes := range cachedBytes {
 			if len(bytes) > 0 {
 				var job models.JobEntity
-				if err := jsonx.Unmarshal(bytes, &job); err == nil {
+				if err := jsonx.Unmarshal(bytes, &job); err == nil && jobStateCacheable(job.Status) {
 					jobs = append(jobs, &job)
 					continue
 				}
@@ -134,7 +150,9 @@ func (r *jobRepository) GetJobsByIDs(ctx context.Context, ids []string) ([]*mode
 			for i, row := range rows {
 				job := (&models.JobEntity{}).FromSqlc(row)
 				dbJobs[i] = job
-				toCache[cache.BuildKey("job", "id", row.ID)] = job
+				if jobStateCacheable(job.Status) {
+					toCache[cache.BuildKey("job", "id", row.ID)] = job
+				}
 			}
 			if r.c != nil && !r.inTx && len(toCache) > 0 {
 				_ = r.c.MSet(ctx, toCache, constants.NormalCacheDuration)
@@ -285,4 +303,11 @@ func (r *jobRepository) MarkRunningJobsInterrupted(ctx context.Context) error {
 func (r *jobRepository) PruneFinishedJobs(ctx context.Context, keep int64) error {
 	_, err := r.q.PruneFinishedJobs(ctx, keep)
 	return err
+}
+
+func (r *jobRepository) ListRecentJobStatusesByType(ctx context.Context, jobType string, limit int64) ([]string, error) {
+	return r.q.ListRecentJobStatusesByType(ctx, sqlc.ListRecentJobStatusesByTypeParams{
+		Type:  jobType,
+		Limit: limit,
+	})
 }

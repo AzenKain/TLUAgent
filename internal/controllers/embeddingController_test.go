@@ -83,6 +83,8 @@ func (f *fakeEmbeddingService) DeleteModel(ctx context.Context, modelID string) 
 
 func (f *fakeEmbeddingService) SyncActiveEmbedder(_ context.Context) error { return nil }
 
+func (f *fakeEmbeddingService) EnsureActiveEmbedderAvailable(_ context.Context) error { return nil }
+
 func newFakeEmbeddingServer(t *testing.T) (*fakeEmbeddingService, *httptest.Server) {
 	t.Helper()
 	svc := &fakeEmbeddingService{

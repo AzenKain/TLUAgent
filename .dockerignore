@@ -25,3 +25,6 @@ data/
 *.db-shm
 .env
 *.secret
+
+# Local environment (secrets)
+.env

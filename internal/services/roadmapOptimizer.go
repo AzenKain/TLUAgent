@@ -10,6 +10,7 @@ import (
 	"tluagent-web/internal/dtos/response"
 	"tluagent-web/internal/models"
 	"tluagent-web/internal/repositories"
+	"tluagent-web/pkg/apperrors"
 )
 
 // RoadmapOptimizer orchestrates DAG-based curriculum progression, rule waterfalls, and pacing optimization.
@@ -20,13 +21,16 @@ type RoadmapOptimizer interface {
 
 type roadmapOptimizer struct {
 	curriculumRepo repositories.CurriculumRepository
+	memoryRepo     repositories.MemoryRepository
 }
 
 // NewRoadmapOptimizer creates a new instance of RoadmapOptimizer.
-func NewRoadmapOptimizer(curriculumRepo repositories.CurriculumRepository) RoadmapOptimizer {
-	return &roadmapOptimizer{
-		curriculumRepo: curriculumRepo,
+func NewRoadmapOptimizer(curriculumRepo repositories.CurriculumRepository, memoryRepo ...repositories.MemoryRepository) RoadmapOptimizer {
+	o := &roadmapOptimizer{curriculumRepo: curriculumRepo}
+	if len(memoryRepo) > 0 {
+		o.memoryRepo = memoryRepo[0]
 	}
+	return o
 }
 
 type dagNode struct {
@@ -51,7 +55,7 @@ func (s *roadmapOptimizer) EvaluateDiagnosticQuiz(ctx context.Context, answers *
 				"programming": 75.0,
 				"mathematics": 75.0,
 				"networking":  75.0,
-				"softskills":   75.0,
+				"softskills":  75.0,
 			},
 			DeliveryBias: "balanced",
 			SummaryNotes: "Standard 4-year curriculum (8 semesters) with average load of 16-18 credits per semester.",
@@ -76,7 +80,7 @@ func (s *roadmapOptimizer) EvaluateDiagnosticQuiz(ctx context.Context, answers *
 		"programming": 70.0,
 		"mathematics": 70.0,
 		"networking":  70.0,
-		"softskills":   70.0,
+		"softskills":  70.0,
 	}
 
 	switch strings.ToLower(strings.TrimSpace(answers.PrimaryStrength)) {
@@ -134,7 +138,7 @@ func (s *roadmapOptimizer) OptimizeRoadmap(ctx context.Context, req *models.Road
 
 	cohort := strings.ToUpper(strings.TrimSpace(req.Cohort))
 	if cohort == "" {
-		cohort = "K35"
+		return nil, apperrors.New(apperrors.ErrMissingCohort, "cohort is required to optimize a study roadmap")
 	}
 
 	majorName := strings.TrimSpace(req.MajorName)
@@ -267,16 +271,24 @@ func (s *roadmapOptimizer) OptimizeRoadmap(ctx context.Context, req *models.Road
 
 	waterfall := s.calculateFreeElectivesWaterfall(passedMap, crossMajorCourses, extraLanguages)
 
+	standing := s.resolveAcademicStanding(ctx, req)
 	maxRetakeAllowed := totalCurrCredits * 0.05
 	downgradeWarning := models.DegreeDowngradeRiskWarning{
 		TotalRetakeCredits: retakeCredits,
 		MaxAllowedCredits:  maxRetakeAllowed,
-		IsAtRisk:           retakeCredits > maxRetakeAllowed,
 	}
-	if downgradeWarning.IsAtRisk {
-		downgradeWarning.WarningMessage = fmt.Sprintf(
-			"Warning: Accumulated %.1f retake credits exceeds 5%% curriculum threshold (max %.1f credits). Honors classifications may be downgraded by one rank upon graduation.",
-			retakeCredits, maxRetakeAllowed,
+	if isHonorsStanding(standing) {
+		downgradeWarning.IsAtRisk = retakeCredits > maxRetakeAllowed
+		if downgradeWarning.IsAtRisk {
+			downgradeWarning.WarningMessage = fmt.Sprintf(
+				"Warning: Accumulated %.1f retake credits exceeds 5%% curriculum threshold (max %.1f credits). Honors classifications may be downgraded by one rank upon graduation.",
+				retakeCredits, maxRetakeAllowed,
+			)
+		}
+	} else {
+		downgradeWarning.Note = fmt.Sprintf(
+			"Ngưỡng hạ bậc bằng tốt nghiệp 5%% (%.1f tín chỉ) chỉ áp dụng cho học lực Xuất sắc/Giỏi; học lực hiện tại (%s) không bị xét hạ bậc vì số tín chỉ học lại.",
+			maxRetakeAllowed, displayStanding(standing),
 		)
 	}
 
@@ -374,7 +386,6 @@ func (s *roadmapOptimizer) calculateFreeElectivesWaterfall(passedMap map[string]
 	var earned float64
 	var cross []string
 	var extraLang []string
-	var excess []string
 
 	for _, code := range crossMajor {
 		cross = append(cross, code)
@@ -402,7 +413,6 @@ func (s *roadmapOptimizer) calculateFreeElectivesWaterfall(passedMap map[string]
 		EarnedCredits:     math.Min(earned, target),
 		CrossMajorCourses: cross,
 		ExtraLanguages:    extraLang,
-		ExcessElectives:   excess,
 		IsFulfilled:       earned >= target,
 	}
 }
@@ -737,6 +747,8 @@ func (s *roadmapOptimizer) generateRecommendations(
 			"Critical warning: Accumulated %.1f retake credits. Avoid further retakes to prevent degree classification downgrade.",
 			downgrade.TotalRetakeCredits,
 		))
+	} else if downgrade.Note != "" {
+		recs = append(recs, downgrade.Note)
 	} else if downgrade.TotalRetakeCredits > 0 {
 		recs = append(recs, fmt.Sprintf(
 			"Retake credit monitoring: Currently accumulated %.1f / %.1f safe retake credits.",
@@ -754,7 +766,7 @@ func (s *roadmapOptimizer) generateRecommendations(
 	if !waterfall.IsFulfilled {
 		missing := waterfall.TargetCredits - waterfall.EarnedCredits
 		recs = append(recs, fmt.Sprintf(
-			"Free electives: Need %.1f additional free elective credits (cross-major, 3rd language, or overflow electives).",
+			"Free electives: Need %.1f additional free elective credits (cross-major or additional foreign language courses).",
 			missing,
 		))
 	} else {
@@ -809,3 +821,27 @@ func getTranscriptCredits(transcript []models.StudentCourseGrade, code string) f
 	return 0
 }
 
+func (s *roadmapOptimizer) resolveAcademicStanding(ctx context.Context, req *models.RoadmapOptimizationRequest) string {
+	if standing := strings.ToUpper(strings.TrimSpace(req.AcademicStanding)); standing != "" {
+		return standing
+	}
+	if s.memoryRepo == nil || req.UserID == "" {
+		return ""
+	}
+	profile, err := s.memoryRepo.GetStudentProfile(ctx, req.UserID)
+	if err != nil || profile == nil {
+		return ""
+	}
+	return strings.ToUpper(strings.TrimSpace(profile.AcademicStanding))
+}
+
+func isHonorsStanding(standing string) bool {
+	return standing == "XUAT_SAC" || standing == "GIOI"
+}
+
+func displayStanding(standing string) string {
+	if standing == "" {
+		return "chưa xác định"
+	}
+	return standing
+}

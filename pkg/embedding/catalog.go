@@ -1,5 +1,7 @@
 package embedding
 
+import "runtime"
+
 const OnnxRuntimeVersion = "1.30.0"
 
 const onnxRuntimeReleaseURL = "https://github.com/microsoft/onnxruntime/releases/download/v" + OnnxRuntimeVersion
@@ -207,4 +209,14 @@ func BuiltinCatalog() Catalog {
 			},
 		},
 	}
+}
+
+// RuntimePresetID returns the catalog runtime preset matching the current platform.
+func RuntimePresetID() (string, bool) {
+	for _, rt := range BuiltinCatalog().Runtimes {
+		if rt.GOOS == runtime.GOOS && rt.GOArch == runtime.GOARCH {
+			return rt.PresetID, true
+		}
+	}
+	return "", false
 }

@@ -29,7 +29,6 @@ type FreeElectiveWaterfallResponse struct {
 	EarnedCredits     float64  `json:"earned_credits"`
 	CrossMajorCourses []string `json:"cross_major_courses"`
 	ExtraLanguages    []string `json:"extra_languages"`
-	ExcessElectives   []string `json:"excess_electives"`
 	IsFulfilled       bool     `json:"is_fulfilled"`
 }
 
@@ -39,6 +38,7 @@ type DegreeDowngradeRiskWarningResponse struct {
 	MaxAllowedCredits  float64 `json:"max_allowed_credits"`
 	IsAtRisk           bool    `json:"is_at_risk"`
 	WarningMessage     string  `json:"warning_message"`
+	Note               string  `json:"note,omitempty"`
 }
 
 // RoadmapOptimizationResultResponse mirrors the serialized shape of the optimized multi-semester plan.

@@ -619,17 +619,17 @@ func (s *llmConfigService) GetActiveChatModels(ctx context.Context) ([]response.
 	res := make([]response.ChatModelClientDTO, len(rows))
 	for i, r := range rows {
 		res[i] = response.ChatModelClientDTO{
-			ID:             r.ModelID,
-			Name:           r.ModelName,
-			ModelKey:       r.ModelKey,
-			IsDefault:      r.ModelIsDefault == 1,
-			ContextLength:  int(r.ContextLength),
-			SupportsVision: r.SupportsVision == 1,
-			MaxImages:      int(r.MaxImages),
+			ID:              r.ModelID,
+			Name:            r.ModelName,
+			ModelKey:        r.ModelKey,
+			IsDefault:       r.ModelIsDefault == 1,
+			ContextLength:   int(r.ContextLength),
+			SupportsVision:  r.SupportsVision == 1,
+			MaxImages:       int(r.MaxImages),
 			ThinkingEnabled: r.ThinkingEnabled == 1,
 			ThinkingBudget:  int(r.ThinkingBudget),
 			EffortLevel:     r.EffortLevel,
-			ProviderName:   r.ProviderName,
+			ProviderName:    r.ProviderName,
 		}
 	}
 	return res, nil
@@ -1050,15 +1050,16 @@ func (s *llmConfigService) SyncLLMManager(ctx context.Context) error {
 					IsActive:     nr.NodeIsActive == 1,
 				}
 
-				if chainType == llm.ChainTypeChat {
+				switch chainType {
+				case llm.ChainTypeChat:
 					if p, err := s.manager.Get(nr.ProviderID); err == nil {
 						node.Provider = p
 					}
-				} else if chainType == llm.ChainTypeRerank {
+				case llm.ChainTypeRerank:
 					if rawKey, err := crypto.DecryptAESGCM(nr.ApiKeyCiphertext, cipherKey); err == nil {
 						node.Reranker = llm.NewOpenRouterReranker(nr.BaseUrl, rawKey, nr.ModelKey, nr.AllowPrivateNetworks == 1)
 					}
-				} else if chainType == llm.ChainTypeEmbedding {
+				case llm.ChainTypeEmbedding:
 					if rawKey, err := crypto.DecryptAESGCM(nr.ApiKeyCiphertext, cipherKey); err == nil {
 						node.Embedder = llm.NewOpenAIEmbedder(nr.BaseUrl, rawKey, nr.ModelKey, nr.AllowPrivateNetworks == 1)
 					}
@@ -1195,23 +1196,23 @@ func maskCustomHeaders(rawJSON string, cipherKey []byte) string {
 
 func mapModelResponse(m sqlc.LlmModel) response.LLMModelResponse {
 	return response.LLMModelResponse{
-		ID:             m.ID,
-		ProviderID:     m.ProviderID,
-		Name:           m.Name,
-		ModelKey:       m.ModelKey,
-		ModelType:      m.ModelType,
-		IsActive:       m.IsActive == 1,
-		IsDefault:      m.IsDefault == 1,
-		OrderIndex:     int(m.OrderIndex),
-		ContextLength:  int(m.ContextLength),
-		VisionMode:     m.VisionMode,
-		SupportsVision: m.SupportsVision == 1,
-		MaxImages:      int(m.MaxImages),
+		ID:              m.ID,
+		ProviderID:      m.ProviderID,
+		Name:            m.Name,
+		ModelKey:        m.ModelKey,
+		ModelType:       m.ModelType,
+		IsActive:        m.IsActive == 1,
+		IsDefault:       m.IsDefault == 1,
+		OrderIndex:      int(m.OrderIndex),
+		ContextLength:   int(m.ContextLength),
+		VisionMode:      m.VisionMode,
+		SupportsVision:  m.SupportsVision == 1,
+		MaxImages:       int(m.MaxImages),
 		ThinkingEnabled: m.ThinkingEnabled == 1,
 		ThinkingBudget:  int(m.ThinkingBudget),
 		EffortLevel:     m.EffortLevel,
-		CreatedAt:      m.CreatedAt,
-		UpdatedAt:      m.UpdatedAt,
+		CreatedAt:       m.CreatedAt,
+		UpdatedAt:       m.UpdatedAt,
 	}
 }
 
@@ -1917,4 +1918,3 @@ func (s *llmConfigService) UpdateVisionSettings(ctx context.Context, req request
 
 	return s.GetVisionSettings(ctx)
 }
-

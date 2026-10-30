@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 
 	_ "modernc.org/sqlite"
@@ -30,6 +31,36 @@ func defaultMaxOpenConns() int {
 	return conns
 }
 
+// sortMigrationFiles orders migrations by numeric prefix, since 100_* must run after 99_*.
+func sortMigrationFiles(files []string) {
+	sort.Slice(files, func(i, j int) bool {
+		ni, oki := migrationNumber(files[i])
+		nj, okj := migrationNumber(files[j])
+		if oki && okj && ni != nj {
+			return ni < nj
+		}
+		if oki != okj {
+			return oki
+		}
+		return files[i] < files[j]
+	})
+}
+
+func migrationNumber(name string) (int64, bool) {
+	end := 0
+	for end < len(name) && name[end] >= '0' && name[end] <= '9' {
+		end++
+	}
+	if end == 0 || (end < len(name) && name[end] != '_' && name[end] != '.') {
+		return 0, false
+	}
+	n, err := strconv.ParseInt(name[:end], 10, 64)
+	if err != nil {
+		return 0, false
+	}
+	return n, true
+}
+
 func ApplySchema(db *sql.DB) error {
 	if _, err := db.ExecContext(context.Background(), `CREATE TABLE IF NOT EXISTS schema_migrations (version TEXT PRIMARY KEY);`); err != nil {
 		return fmt.Errorf("create schema_migrations: %w", err)
@@ -46,7 +77,7 @@ func ApplySchema(db *sql.DB) error {
 		}
 		files = append(files, entry.Name())
 	}
-	sort.Strings(files)
+	sortMigrationFiles(files)
 
 	for _, file := range files {
 		var count int
@@ -116,12 +147,33 @@ func autoSQLiteMmapSize() int64 {
 	return mmap
 }
 
-func NewSQLiteDB() (*sql.DB, error) {
+// SQLiteDBPath resolves the database file location from the environment.
+func SQLiteDBPath() string {
 	dataDir := config.GetConfigWithDefault("DATA_DIR", "./data")
-	dbPath := config.GetConfigWithDefault("SQLITE_DB_PATH", filepath.Join(dataDir, "tluagent.db"))
+	return config.GetConfigWithDefault("SQLITE_DB_PATH", filepath.Join(dataDir, "tluagent.db"))
+}
+
+// dropStaleSHM removes a leftover shared-memory index before the database is opened.
+// SQLite rebuilds it from the write-ahead log, and a copy produced by another operating
+// system cannot be mapped, which would make the database unopenable after a move.
+func dropStaleSHM(dbPath string) {
+	shmPath := dbPath + "-shm"
+	if _, err := os.Stat(shmPath); err != nil {
+		return
+	}
+	if err := os.Remove(shmPath); err != nil && !os.IsNotExist(err) {
+		log.Printf("Warning: failed to remove stale shared-memory file %s: %v", shmPath, err)
+		return
+	}
+	log.Printf("Removed stale SQLite shared-memory file %s", shmPath)
+}
+
+func NewSQLiteDB() (*sql.DB, error) {
+	dbPath := SQLiteDBPath()
 	if err := os.MkdirAll(filepath.Dir(dbPath), 0700); err != nil {
 		return nil, err
 	}
+	dropStaleSHM(dbPath)
 	if _, err := os.Stat(dbPath); err == nil {
 		_ = os.Chmod(dbPath, 0600)
 	}
@@ -158,6 +210,8 @@ func sqliteDSN(dbPath string, cacheKB int, mmapBytes int64) string {
 	values.Add("_pragma", "temp_store(MEMORY)")
 	values.Add("_pragma", fmt.Sprintf("cache_size(-%d)", cacheKB))
 	values.Add("_pragma", fmt.Sprintf("mmap_size(%d)", mmapBytes))
+	values.Add("_time_format", "datetime")
+	values.Add("_timezone", "UTC")
 
 	separator := "?"
 	if strings.Contains(dbPath, "?") {
@@ -166,12 +220,44 @@ func sqliteDSN(dbPath string, cacheKB int, mmapBytes int64) string {
 	return dbPath + separator + values.Encode()
 }
 
+// CheckpointWALAndClose flushes every pending write into the database file, switches the
+// journal back to DELETE and removes the -wal/-shm sidecars so the data directory stays a
+// single portable file that survives a move between operating systems.
 func CheckpointWALAndClose(db *sql.DB) error {
 	if db == nil {
 		return nil
 	}
-	if _, err := db.ExecContext(context.Background(), `PRAGMA wal_checkpoint(TRUNCATE)`); err != nil {
-		log.Printf("Warning: WAL checkpoint failed: %v", err)
+	dbPath := SQLiteDBPath()
+	ctx := context.Background()
+
+	db.SetMaxIdleConns(0)
+	if conn, err := db.Conn(ctx); err == nil {
+		if _, err := conn.ExecContext(ctx, `PRAGMA wal_checkpoint(TRUNCATE)`); err != nil {
+			log.Printf("Warning: WAL checkpoint failed: %v", err)
+		}
+		if _, err := conn.ExecContext(ctx, `PRAGMA journal_mode=DELETE`); err != nil {
+			log.Printf("Warning: switching journal mode to DELETE failed: %v", err)
+		}
+		_ = conn.Close()
 	}
-	return db.Close()
+	if err := db.Close(); err != nil {
+		return err
+	}
+	return removeWALSidecars(dbPath)
+}
+
+func removeWALSidecars(dbPath string) error {
+	walPath := dbPath + "-wal"
+	if info, err := os.Stat(walPath); err == nil {
+		if info.Size() > 0 {
+			return fmt.Errorf("write-ahead log still holds %d bytes after checkpoint: %s", info.Size(), walPath)
+		}
+		if err := os.Remove(walPath); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("remove write-ahead log: %w", err)
+		}
+	}
+	if err := os.Remove(dbPath + "-shm"); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("remove shared-memory file: %w", err)
+	}
+	return nil
 }

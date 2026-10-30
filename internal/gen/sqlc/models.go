@@ -400,6 +400,17 @@ type SupersessionAuditLog struct {
 	CreatedAt       time.Time `json:"created_at"`
 }
 
+type SupersessionAuditRun struct {
+	ID          string    `json:"id"`
+	Status      string    `json:"status"`
+	CursorDocID string    `json:"cursor_doc_id"`
+	TotalDocs   int64     `json:"total_docs"`
+	Processed   int64     `json:"processed"`
+	LastError   string    `json:"last_error"`
+	StartedAt   time.Time `json:"started_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
 type TluclawActionSnapshot struct {
 	ID                string       `json:"id"`
 	BatchID           string       `json:"batch_id"`

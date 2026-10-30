@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"golang.org/x/sync/singleflight"
 
@@ -48,6 +49,8 @@ type RAGService interface {
 	BuildDocumentFilter(ctx context.Context) (func(id, rawURL, title string) bool, error)
 	ListAuditLogs(ctx context.Context, dto *request.ListAuditLogsDto) ([]*response.SupersessionAuditLogResponse, int, error)
 	WipeCorpus(ctx context.Context) error
+	RepairDocumentGraph(ctx context.Context, limit int) (*models.GraphRepairResult, error)
+	RepairDuplicateDocuments(ctx context.Context) (*models.DuplicateRepairResult, error)
 }
 
 type ragService struct {
@@ -266,7 +269,6 @@ func scoreChunk(chunk *models.DocumentChunk, doc *models.Document, queryEmbeddin
 
 	return item
 }
-
 
 func (s *ragService) Search(ctx context.Context, params models.RAGSearchParams, queryEmbedding []float32) ([]*response.RAGSearchResultItemResponse, error) {
 	if chk := guardrail.CheckQuery(params.Query); chk.Decision == guardrail.DecisionBlockedInjection {
@@ -498,6 +500,240 @@ func (s *ragService) executeSearch(ctx context.Context, params models.RAGSearchP
 	return validResults, nil
 }
 
+func buildDocumentGraphEntities(doc *models.Document) (*models.KGNode, []*models.KGNode, []*models.KGEdge) {
+	docNode := &models.KGNode{
+		ID:       constants.PrefixDocNode + doc.ID,
+		NodeType: constants.KGNodeTypeDocument,
+		Name:     doc.Title,
+		Code:     doc.DocCode,
+		Status:   constants.DocStatusActive,
+	}
+
+	nodes := []*models.KGNode{docNode}
+	var edges []*models.KGEdge
+
+	if doc.ApplicableCohort != "" && doc.ApplicableCohort != constants.DocCohortAll {
+		for _, c := range strings.Split(doc.ApplicableCohort, ",") {
+			c = strings.TrimSpace(c)
+			if c == "" {
+				continue
+			}
+			cohortNode := &models.KGNode{
+				ID:       constants.PrefixCohortNode + c,
+				NodeType: constants.KGNodeTypeCohort,
+				Name:     "Cohort " + c,
+				Code:     c,
+				Status:   constants.DocStatusActive,
+			}
+			nodes = append(nodes, cohortNode)
+			edges = append(edges, &models.KGEdge{
+				ID:           fmt.Sprintf("%s%s:%s", constants.PrefixEdgeCohort, doc.ID, c),
+				SourceNodeID: docNode.ID,
+				TargetNodeID: cohortNode.ID,
+				RelationType: constants.KGRelationAppliesToCohort,
+				Weight:       1.0,
+				Status:       constants.DocStatusActive,
+			})
+		}
+	}
+
+	if doc.Domain != "" {
+		topicNode := &models.KGNode{
+			ID:       constants.PrefixTopicNode + doc.Domain,
+			NodeType: constants.KGNodeTypeTopic,
+			Name:     doc.Domain,
+			Code:     doc.Domain,
+			Status:   constants.DocStatusActive,
+		}
+		nodes = append(nodes, topicNode)
+		edges = append(edges, &models.KGEdge{
+			ID:           fmt.Sprintf("%s%s:%s", constants.PrefixEdgeTopic, doc.ID, doc.Domain),
+			SourceNodeID: docNode.ID,
+			TargetNodeID: topicNode.ID,
+			RelationType: constants.KGRelationCoversTopic,
+			Weight:       1.0,
+			Status:       constants.DocStatusActive,
+		})
+	}
+
+	return docNode, nodes, edges
+}
+
+func (s *ragService) RepairDocumentGraph(ctx context.Context, limit int) (*models.GraphRepairResult, error) {
+	result := &models.GraphRepairResult{}
+	if limit <= 0 {
+		limit = 200
+	}
+
+	missingNodeIDs, err := s.ragRepo.ListDocumentIDsMissingGraphNode(ctx, int64(limit))
+	if err != nil {
+		return result, fmt.Errorf("list documents missing graph node: %w", err)
+	}
+	for _, docID := range missingNodeIDs {
+		doc, err := s.ragRepo.GetDocumentByID(ctx, docID)
+		if err != nil || doc == nil {
+			continue
+		}
+		docNode, nodes, edges := buildDocumentGraphEntities(doc)
+		if _, err := s.ragRepo.UpsertKGNode(ctx, docNode); err != nil {
+			return result, fmt.Errorf("upsert document node %s: %w", docNode.ID, err)
+		}
+		result.NodesCreated++
+		for _, node := range nodes[1:] {
+			if _, err := s.ragRepo.UpsertKGNode(ctx, node); err != nil {
+				return result, fmt.Errorf("upsert node %s: %w", node.ID, err)
+			}
+			result.NodesCreated++
+		}
+		for _, edge := range edges {
+			if _, err := s.ragRepo.UpsertKGEdge(ctx, edge); err != nil {
+				return result, fmt.Errorf("upsert edge %s: %w", edge.ID, err)
+			}
+			result.EdgesCreated++
+		}
+		result.DocsScanned++
+	}
+
+	pairs, err := s.ragRepo.ListSupersessionPairsMissingEdge(ctx, int64(limit))
+	if err != nil {
+		return result, fmt.Errorf("list supersession pairs missing edge: %w", err)
+	}
+	logPairs, err := s.ragRepo.ListAuditLogPairsMissingEdge(ctx, int64(limit))
+	if err != nil {
+		return result, fmt.Errorf("list audit log pairs missing edge: %w", err)
+	}
+	seen := make(map[string]bool, len(pairs))
+	for _, pair := range append(pairs, logPairs...) {
+		if pair.ActiveDocID == "" || pair.SupersededDocID == "" || pair.ActiveDocID == pair.SupersededDocID {
+			continue
+		}
+		edgeID := fmt.Sprintf("edge_repair_%s_%s", pair.ActiveDocID, pair.SupersededDocID)
+		if seen[edgeID] {
+			continue
+		}
+		seen[edgeID] = true
+		for _, docID := range []string{pair.ActiveDocID, pair.SupersededDocID} {
+			if _, err := s.ragRepo.GetKGNodeByID(ctx, constants.PrefixDocNode+docID); err == nil {
+				continue
+			}
+			doc, err := s.ragRepo.GetDocumentByID(ctx, docID)
+			if err != nil || doc == nil {
+				continue
+			}
+			if _, err := s.ragRepo.UpsertKGNode(ctx, &models.KGNode{
+				ID:       constants.PrefixDocNode + doc.ID,
+				NodeType: constants.KGNodeTypeDocument,
+				Name:     doc.Title,
+				Code:     doc.DocCode,
+				Status:   constants.DocStatusActive,
+			}); err == nil {
+				result.NodesCreated++
+			}
+		}
+		edge := &models.KGEdge{
+			ID:           edgeID,
+			SourceNodeID: constants.PrefixDocNode + pair.ActiveDocID,
+			TargetNodeID: constants.PrefixDocNode + pair.SupersededDocID,
+			RelationType: pair.RelationType,
+			Weight:       1.0,
+			Status:       constants.DocStatusActive,
+		}
+		if _, err := s.ragRepo.UpsertKGEdge(ctx, edge); err != nil {
+			return result, fmt.Errorf("upsert supersession edge %s: %w", edgeID, err)
+		}
+		result.EdgesCreated++
+	}
+
+	if s.c != nil && (result.NodesCreated > 0 || result.EdgesCreated > 0) {
+		_ = s.c.DelByPattern(ctx, constants.CachePrefixRAGSearch)
+		_ = s.c.DelByPattern(ctx, constants.CachePrefixRAGCandidates)
+	}
+
+	return result, nil
+}
+
+// RepairDuplicateDocuments supersedes active documents that repeat another document with the
+// same title and publish date, keeping the longest copy as the active one.
+func (s *ragService) RepairDuplicateDocuments(ctx context.Context) (*models.DuplicateRepairResult, error) {
+	result := &models.DuplicateRepairResult{}
+	rows, err := s.ragRepo.ListActiveDocumentsForDedupe(ctx)
+	if err != nil {
+		return result, fmt.Errorf("list active documents: %w", err)
+	}
+
+	type group struct {
+		winner string
+		title  string
+		losers []string
+		size   int64
+	}
+	groups := make(map[string]*group, len(rows))
+	for _, row := range rows {
+		key := documentTitleKey(row.Title) + "\x00" + row.PublishDate
+		if key == "\x00" {
+			continue
+		}
+		current, ok := groups[key]
+		if !ok {
+			groups[key] = &group{winner: row.ID, title: row.Title, size: row.CharCount}
+			continue
+		}
+		if row.CharCount > current.size || (row.CharCount == current.size && row.ID < current.winner) {
+			current.losers = append(current.losers, current.winner)
+			current.winner = row.ID
+			current.size = row.CharCount
+			continue
+		}
+		current.losers = append(current.losers, row.ID)
+	}
+
+	for _, g := range groups {
+		if len(g.losers) == 0 {
+			continue
+		}
+		result.Groups++
+		for _, loser := range g.losers {
+			loserDoc, err := s.ragRepo.GetDocumentByID(ctx, loser)
+			if err != nil || loserDoc == nil {
+				continue
+			}
+			if err := s.ragRepo.UpdateDocumentStatus(ctx, loser, constants.DocStatusSuperseded, g.winner); err != nil {
+				return result, fmt.Errorf("supersede duplicate %s: %w", loser, err)
+			}
+			for _, node := range []*models.KGNode{
+				{ID: constants.PrefixDocNode + g.winner, NodeType: constants.KGNodeTypeDocument, Name: g.title, Status: constants.DocStatusActive},
+				{ID: constants.PrefixDocNode + loser, NodeType: constants.KGNodeTypeDocument, Name: loserDoc.Title, Code: loserDoc.DocCode, Status: constants.DocStatusActive},
+			} {
+				if _, err := s.ragRepo.UpsertKGNode(ctx, node); err != nil {
+					return result, fmt.Errorf("upsert duplicate node %s: %w", node.ID, err)
+				}
+			}
+			edge := &models.KGEdge{
+				ID:           fmt.Sprintf("edge:super:%s:%s", g.winner, loser),
+				SourceNodeID: constants.PrefixDocNode + g.winner,
+				TargetNodeID: constants.PrefixDocNode + loser,
+				RelationType: constants.KGRelationSupersedes,
+				Weight:       1.0,
+				Status:       constants.DocStatusActive,
+			}
+			if _, err := s.ragRepo.UpsertKGEdge(ctx, edge); err != nil {
+				return result, fmt.Errorf("upsert duplicate edge %s: %w", edge.ID, err)
+			}
+			result.Superseded++
+		}
+	}
+
+	if s.c != nil && result.Superseded > 0 {
+		_ = s.c.DelByPattern(ctx, constants.CachePrefixRAGSearch)
+		_ = s.c.DelByPattern(ctx, constants.CachePrefixRAGCandidates)
+	}
+	return result, nil
+}
+
+func documentTitleKey(title string) string {
+	return strings.Join(strings.Fields(strings.ToLower(strings.TrimSpace(title))), " ")
+}
+
 func (s *ragService) IngestDocument(ctx context.Context, doc *models.Document, chunks []*models.DocumentChunk, nodes []*models.KGNode, edges []*models.KGEdge) error {
 	if _, err := s.ragRepo.UpsertDocument(ctx, doc); err != nil {
 		return fmt.Errorf("insert document: %w", err)
@@ -545,6 +781,7 @@ type processedIndexEntry struct {
 	CharCount        int    `json:"char_count"`
 	Domain           string `json:"domain"`
 	ValidityTier     string `json:"validity_tier"`
+	EffectiveFrom    string `json:"effective_from,omitempty"`
 	AcademicYear     string `json:"academic_year"`
 	Semester         string `json:"semester"`
 	ApplicableCohort string `json:"applicable_cohort"`
@@ -592,62 +829,20 @@ func (s *ragService) IngestFromIndexJSONL(ctx context.Context, jsonlPath string,
 			FilePath:         entry.MDPath,
 			CharCount:        entry.CharCount,
 		}
-
-		docNode := &models.KGNode{
-			ID:       constants.PrefixDocNode + doc.ID,
-			NodeType: constants.KGNodeTypeDocument,
-			Name:     doc.Title,
-			Code:     doc.DocCode,
-			Status:   constants.DocStatusActive,
+		if doc.ValidityTier == "" {
+			doc.ValidityTier = constants.DefaultValidityTier(doc.Type)
 		}
-
-		nodes := []*models.KGNode{docNode}
-		var edges []*models.KGEdge
-
-		if doc.ApplicableCohort != "" && doc.ApplicableCohort != constants.DocCohortAll {
-			cohorts := strings.Split(doc.ApplicableCohort, ",")
-			for _, c := range cohorts {
-				c = strings.TrimSpace(c)
-				if c == "" {
-					continue
-				}
-				cohortNode := &models.KGNode{
-					ID:       constants.PrefixCohortNode + c,
-					NodeType: constants.KGNodeTypeCohort,
-					Name:     "Cohort " + c,
-					Code:     c,
-					Status:   constants.DocStatusActive,
-				}
-				nodes = append(nodes, cohortNode)
-				edges = append(edges, &models.KGEdge{
-					ID:           fmt.Sprintf("%s%s:%s", constants.PrefixEdgeCohort, doc.ID, c),
-					SourceNodeID: docNode.ID,
-					TargetNodeID: cohortNode.ID,
-					RelationType: constants.KGRelationAppliesToCohort,
-					Weight:       1.0,
-					Status:       constants.DocStatusActive,
-				})
+		if doc.EffectiveFrom == "" {
+			doc.EffectiveFrom = entry.EffectiveFrom
+			if doc.EffectiveFrom == "" {
+				doc.EffectiveFrom = doc.PublishDate
+			}
+			if doc.EffectiveFrom == "" {
+				doc.EffectiveFrom = constants.DeriveEffectiveFromAcademicYear(doc.AcademicYear)
 			}
 		}
 
-		if doc.Domain != "" {
-			topicNode := &models.KGNode{
-				ID:       constants.PrefixTopicNode + doc.Domain,
-				NodeType: constants.KGNodeTypeTopic,
-				Name:     doc.Domain,
-				Code:     doc.Domain,
-				Status:   constants.DocStatusActive,
-			}
-			nodes = append(nodes, topicNode)
-			edges = append(edges, &models.KGEdge{
-				ID:           fmt.Sprintf("%s%s:%s", constants.PrefixEdgeTopic, doc.ID, doc.Domain),
-				SourceNodeID: docNode.ID,
-				TargetNodeID: topicNode.ID,
-				RelationType: constants.KGRelationCoversTopic,
-				Weight:       1.0,
-				Status:       constants.DocStatusActive,
-			})
-		}
+		_, nodes, edges := buildDocumentGraphEntities(doc)
 
 		var chunks []*models.DocumentChunk
 		contentToChunk := entry.OcrText
@@ -757,30 +952,105 @@ func resolvePriorityLevel(validityTier, docType string) int {
 }
 
 func splitIntoChunks(text string, maxChunkLen, overlap int) []string {
-	if len(text) <= maxChunkLen {
-		return []string{text}
+	if maxChunkLen <= 0 {
+		maxChunkLen = 1200
+	}
+	trimmed := strings.TrimSpace(text)
+	if trimmed == "" {
+		return nil
+	}
+	if overlap < 0 {
+		overlap = 0
+	}
+	if limit := maxChunkLen / 4; overlap > limit {
+		overlap = limit
+	}
+	if utf8.RuneCountInString(trimmed) <= maxChunkLen {
+		return []string{trimmed}
+	}
+
+	pieceCap := maxChunkLen - overlap - 1
+	if pieceCap < maxChunkLen/2 {
+		pieceCap = maxChunkLen / 2
+	}
+
+	var segments []string
+	for _, line := range strings.Split(trimmed, "\n") {
+		line = strings.TrimRight(line, " \t\r")
+		if line == "" {
+			continue
+		}
+		if utf8.RuneCountInString(line) <= pieceCap {
+			segments = append(segments, line)
+			continue
+		}
+		segments = append(segments, splitOverlongLine(line, pieceCap)...)
 	}
 
 	var chunks []string
-	lines := strings.Split(text, "\n")
-	var current strings.Builder
-
-	for _, line := range lines {
-		if current.Len()+len(line)+1 > maxChunkLen && current.Len() > 0 {
-			chunks = append(chunks, current.String())
-			current.Reset()
+	current := ""
+	for _, seg := range segments {
+		if current == "" {
+			current = seg
+			continue
 		}
-		if current.Len() > 0 {
-			current.WriteString("\n")
+		if utf8.RuneCountInString(current)+1+utf8.RuneCountInString(seg) <= maxChunkLen {
+			current += "\n" + seg
+			continue
 		}
-		current.WriteString(line)
+		chunks = append(chunks, current)
+		prefix := overlapTail(current, overlap)
+		switch {
+		case prefix != "" && utf8.RuneCountInString(prefix)+1+utf8.RuneCountInString(seg) <= maxChunkLen:
+			current = prefix + "\n" + seg
+		default:
+			current = seg
+		}
 	}
-
-	if current.Len() > 0 {
-		chunks = append(chunks, current.String())
+	if current != "" {
+		chunks = append(chunks, current)
 	}
-
 	return chunks
+}
+
+func splitOverlongLine(line string, limit int) []string {
+	runes := []rune(line)
+	var pieces []string
+	for len(runes) > limit {
+		cut := limit
+		for i := limit; i > limit/2; i-- {
+			if runes[i] == ' ' {
+				cut = i
+				break
+			}
+		}
+		if piece := strings.TrimSpace(string(runes[:cut])); piece != "" {
+			pieces = append(pieces, piece)
+		}
+		runes = []rune(strings.TrimLeft(string(runes[cut:]), " \t"))
+	}
+	if rest := strings.TrimSpace(string(runes)); rest != "" {
+		pieces = append(pieces, rest)
+	}
+	return pieces
+}
+
+func overlapTail(s string, overlap int) string {
+	if overlap <= 0 {
+		return ""
+	}
+	runes := []rune(s)
+	if len(runes) <= overlap {
+		return strings.TrimSpace(s)
+	}
+	tail := runes[len(runes)-overlap:]
+	for i := 0; i < len(tail)-1; i++ {
+		if tail[i] == ' ' || tail[i] == '\n' {
+			tail = tail[i+1:]
+			break
+		}
+	}
+	return strings.TrimSpace(string(tail))
 }
 
 // BuildDocumentFilter preloads all existing document identifiers into memory and returns an ultra-fast O(1) deduplication checker.
@@ -800,11 +1070,16 @@ func (s *ragService) BuildDocumentFilter(ctx context.Context) (func(id, rawURL, 
 
 	reNode := regexp.MustCompile(`-(\d+)\.html|/node/(\d+)|DOC_[A-Z]+_(\d+)_`)
 
-	normalize := func(u string) string {
-		u = strings.ToLower(strings.TrimSpace(u))
-		u = strings.TrimPrefix(u, "https://")
-		u = strings.TrimPrefix(u, "http://")
-		u = strings.TrimPrefix(u, "thanglong.edu.vn")
+	normalize := func(raw string) string {
+		u := strings.ToLower(strings.TrimSpace(raw))
+		if idx := strings.Index(u, "://"); idx >= 0 {
+			u = u[idx+3:]
+			if slash := strings.Index(u, "/"); slash >= 0 {
+				u = u[slash:]
+			} else {
+				u = ""
+			}
+		}
 		return strings.TrimRight(u, "/")
 	}
 
@@ -1100,4 +1375,3 @@ func (s *ragService) WipeCorpus(ctx context.Context) error {
 	}
 	return nil
 }
-

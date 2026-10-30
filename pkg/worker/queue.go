@@ -9,6 +9,8 @@ import (
 
 	"github.com/alitto/pond/v2"
 	"github.com/rs/zerolog/log"
+
+	"tluagent-web/pkg/constants"
 )
 
 var ErrQueueStopped = errors.New("job queue stopped")
@@ -43,6 +45,13 @@ type Queue struct {
 }
 
 const BufferSize = 5000
+
+func maxAttempts(jobType string) int {
+	if jobType == constants.JobTypeSupersedeCheck {
+		return 1
+	}
+	return 3
+}
 
 func NewQueue(workers int, bufferSize ...int) *Queue {
 	size := BufferSize
@@ -174,7 +183,8 @@ func (q *Queue) process(job Job) {
 
 	start := time.Now()
 	var lastErr error
-	for attempt := 1; attempt <= 3; attempt++ {
+	attempts := maxAttempts(job.Type)
+	for attempt := 1; attempt <= attempts; attempt++ {
 		ctx, cancel := context.WithTimeout(q.ctx, 4*time.Hour)
 		err := handler(ctx, job.ID, job.Payload)
 		cancel()
@@ -187,7 +197,7 @@ func (q *Queue) process(job Job) {
 		}
 		lastErr = err
 		log.Warn().Err(err).Int("attempt", attempt).Str("job_id", job.ID).Msg("Job failed, retrying...")
-		if attempt < 3 {
+		if attempt < attempts {
 			select {
 			case <-q.ctx.Done():
 				if lc := q.lc(); lc != nil {

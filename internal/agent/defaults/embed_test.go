@@ -1,6 +1,7 @@
 package defaults
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -53,5 +54,21 @@ func TestDiscoverDefaultSkills(t *testing.T) {
 		if !foundIDs[id] {
 			t.Errorf("expected skill %s was not discovered", id)
 		}
+	}
+}
+
+func TestReadDefaultFileExpandsConfiguredEndpoints(t *testing.T) {
+	t.Setenv("TUITION_PORTAL_URL", "https://portal.example.test/pay/tenant")
+	t.Setenv("CMS_SITE_URL", "https://site.example.test")
+
+	content, err := ReadDefaultFile("skills/tuition_calculation.md")
+	if err != nil {
+		t.Fatalf("unexpected error reading default skill: %v", err)
+	}
+	if !strings.Contains(content, "https://portal.example.test/pay/tenant") {
+		t.Fatal("expected the tuition portal env value to be substituted into the default skill")
+	}
+	if strings.Contains(content, "{{tuition_portal_url}}") || strings.Contains(content, "{{university_site_url}}") {
+		t.Fatal("expected every placeholder to be substituted")
 	}
 }

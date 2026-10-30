@@ -245,7 +245,22 @@ func (s *inquiryService) ExpireInquiry(ctx context.Context, inquiryID, supersede
 	_ = s.ragRepo.RecordSupersessionLog(ctx, activeDocID, inquiryID, constants.RuleTypeTeacherQAExpired, reason)
 
 	_, err = s.inquiryRepo.ExpireInquiry(ctx, inquiryID, supersededByDocID, reason, time.Now())
-	return err
+	if err != nil {
+		return err
+	}
+
+	if s.notificationRepo != nil && inq.UserID != "" {
+		content := fmt.Sprintf("Câu hỏi: %s\nLý do hết hiệu lực: %s", inq.Question, reason)
+		_, _ = s.notificationRepo.CreateNotification(ctx, &models.UserNotification{
+			ID:        "notif_" + uuid.NewString(),
+			UserID:    inq.UserID,
+			InquiryID: inquiryID,
+			Title:     "Thắc mắc học vụ của bạn đã hết hiệu lực",
+			Content:   content,
+			Type:      constants.NotifTypeInquiryExpired,
+		})
+	}
+	return nil
 }
 
 func (s *inquiryService) CheckAndExpireOutdatedQA(ctx context.Context, doc *models.Document) (int, error) {

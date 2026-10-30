@@ -1,11 +1,13 @@
 package constants
 
+import "strings"
+
 const (
-	DocStatusActive            = "ACTIVE"
-	DocStatusSuperseded        = "SUPERSEDED"
-	DocStatusDraft             = "DRAFT"
-	DocStatusArchived          = "ARCHIVED"
-	DocStatusPartiallyAmended  = "PARTIALLY_AMENDED"
+	DocStatusActive           = "ACTIVE"
+	DocStatusSuperseded       = "SUPERSEDED"
+	DocStatusDraft            = "DRAFT"
+	DocStatusArchived         = "ARCHIVED"
+	DocStatusPartiallyAmended = "PARTIALLY_AMENDED"
 
 	DocTypeNotice     = "THONG_BAO"
 	DocTypeNews       = "TIN_TUC"
@@ -31,11 +33,12 @@ const (
 	DomainGeneral    = "CHUNG"
 	DomainAdvisoryQA = "ADVISORY_QA"
 
-	ValidityTierEmergency           = "EMERGENCY_OVERRIDE"
-	ValidityTierCurrentOperational  = "CURRENT_OPERATIONAL"
-	ValidityTierCorePermanent       = "CORE_PERMANENT"
-	ValidityTierHistoricalArchive   = "HISTORICAL_ARCHIVE"
-	ValidityTierSemesterDynamic     = "SEMESTER_DYNAMIC"
+	ValidityTierEmergency          = "EMERGENCY_OVERRIDE"
+	ValidityTierCurrentOperational = "CURRENT_OPERATIONAL"
+	ValidityTierCorePermanent      = "CORE_PERMANENT"
+	ValidityTierHistoricalArchive  = "HISTORICAL_ARCHIVE"
+	ValidityTierSemesterDynamic    = "SEMESTER_DYNAMIC"
+	ValidityTierOfficial           = "OFFICIAL"
 
 	KGNodeTypeDocument = "DOCUMENT"
 	KGNodeTypeTopic    = "TOPIC"
@@ -74,7 +77,10 @@ const (
 	InquiryStatusExpired  = "EXPIRED"
 
 	NotifTypeInquiryAnswered    = "INQUIRY_ANSWERED"
+	NotifTypeInquiryExpired     = "INQUIRY_EXPIRED"
 	NotifTypeSupersededProposed = "SUPERSEDED_PROPOSED"
+	NotifTypeCurriculumUpdated  = "CURRICULUM_UPDATED"
+	NotifTypeJobFailure         = "JOB_FAILURE_ALERT"
 
 	DocCohortAll = "ALL"
 
@@ -98,3 +104,37 @@ const (
 	CachePrefixRAGSearch     = "rag_search:*"
 	CachePrefixRAGCandidates = "rag_candidates*"
 )
+
+// MinRetrievableCharCount keeps stub documents (title-only notices) out of retrieval results.
+const MinRetrievableCharCount = 100
+
+var defaultValidityTiers = map[string]string{
+	DocTypeRegulation: ValidityTierOfficial,
+	DocTypeRule:       ValidityTierOfficial,
+	DocTypeDecision:   ValidityTierOfficial,
+	DocTypeGuideline:  ValidityTierOfficial,
+	DocTypeHandbook:   ValidityTierOfficial,
+	DocTypeCurriculum: ValidityTierOfficial,
+	DocTypePlan:       ValidityTierOfficial,
+	DocTypeScheme:     ValidityTierOfficial,
+	DocTypeNotice:     ValidityTierSemesterDynamic,
+	DocTypeNews:       ValidityTierCurrentOperational,
+	DocTypeStatic:     ValidityTierCurrentOperational,
+}
+
+func DefaultValidityTier(docType string) string {
+	return defaultValidityTiers[docType]
+}
+
+func DeriveEffectiveFromAcademicYear(academicYear string) string {
+	year := strings.TrimSpace(academicYear)
+	if len(year) < 4 {
+		return ""
+	}
+	for _, r := range year[:4] {
+		if r < '0' || r > '9' {
+			return ""
+		}
+	}
+	return year[:4] + "-09-01"
+}

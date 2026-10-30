@@ -6,20 +6,35 @@ import (
 	"html"
 	"io"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
 	"time"
+
+	"tluagent-web/pkg/config"
 )
 
-const PortalBaseURL = "https://hocphi.thanglong.edu.vn/pay/thanglong"
+// HostLabel returns the tuition portal host shown to users in citations.
+func HostLabel() string {
+	parsed, err := url.Parse(PortalURL())
+	if err != nil || parsed.Host == "" {
+		return "cổng học phí của Trường"
+	}
+	return parsed.Host
+}
+
+// PortalURL returns the tuition portal base URL configured for this deployment.
+func PortalURL() string {
+	return config.GetConfigWithDefault("TUITION_PORTAL_URL", "")
+}
 
 var (
-	hotenRegex    = regexp.MustCompile(`(?i)id=["']hoten["'][^>]*value=["']([^"']*)["']`)
-	khoaRegex     = regexp.MustCompile(`(?i)id=["']khoa["'][^>]*value=["']([^"']*)["']`)
-	debtRegex     = regexp.MustCompile(`(?i)id=["']totalAmount["']>([^<]+)<`)
-	studentRegex  = regexp.MustCompile(`^[A-Za-z0-9]{4,15}$`)
-	debtRowRegex  = regexp.MustCompile(`(?s)<tr[^>]*>.*?data-title="Mã Học Phần:">([^<]+)<.*?data-title="Tên Học Phần:">([^<]+)<.*?data-title="Loại Học Phần">([^<]*)<.*?data-title="Giá tiền:">.*?([0-9\.,]+).*?</tr>`)
-	invRowRegex   = regexp.MustCompile(`(?s)<tr[^>]*>.*?data-title="Mã hóa đơn:">([^<]+)<.*?data-title="Ngày tạo:">([^<]+)<.*?data-title="Ngày hết hạn:">([^<]+)<.*?data-title="Tổng:">([^<]+)<.*?data-title="Thanh toán:">([^<]+)<.*?</tr>`)
+	hotenRegex   = regexp.MustCompile(`(?i)id=["']hoten["'][^>]*value=["']([^"']*)["']`)
+	khoaRegex    = regexp.MustCompile(`(?i)id=["']khoa["'][^>]*value=["']([^"']*)["']`)
+	debtRegex    = regexp.MustCompile(`(?i)id=["']totalAmount["']>([^<]+)<`)
+	studentRegex = regexp.MustCompile(`^[A-Za-z0-9]{4,15}$`)
+	debtRowRegex = regexp.MustCompile(`(?s)<tr[^>]*>.*?data-title="Mã Học Phần:">([^<]+)<.*?data-title="Tên Học Phần:">([^<]+)<.*?data-title="Loại Học Phần">([^<]*)<.*?data-title="Giá tiền:">.*?([0-9\.,]+).*?</tr>`)
+	invRowRegex  = regexp.MustCompile(`(?s)<tr[^>]*>.*?data-title="Mã hóa đơn:">([^<]+)<.*?data-title="Ngày tạo:">([^<]+)<.*?data-title="Ngày hết hạn:">([^<]+)<.*?data-title="Tổng:">([^<]+)<.*?data-title="Thanh toán:">([^<]+)<.*?</tr>`)
 )
 
 // UnpaidBill represents a tuition or fee item pending payment.
@@ -59,7 +74,7 @@ type Client struct {
 
 // NewClient creates a new tuition portal client.
 func NewClient(timeout time.Duration, customBaseURL ...string) *Client {
-	base := PortalBaseURL
+	base := PortalURL()
 	if len(customBaseURL) > 0 && strings.TrimSpace(customBaseURL[0]) != "" {
 		base = strings.TrimSpace(customBaseURL[0])
 	}
@@ -77,6 +92,9 @@ func (c *Client) LookupTuition(ctx context.Context, studentID string) (*TuitionI
 	cleanID := strings.ToUpper(strings.TrimSpace(studentID))
 	if !studentRegex.MatchString(cleanID) {
 		return nil, fmt.Errorf("invalid student id: %s", studentID)
+	}
+	if strings.TrimSpace(c.baseURL) == "" {
+		return nil, fmt.Errorf("tuition portal is not configured: set TUITION_PORTAL_URL")
 	}
 
 	url := fmt.Sprintf("%s?customer=%s", c.baseURL, cleanID)
@@ -168,7 +186,7 @@ func FormatPromptContext(info *TuitionInfo) string {
 	}
 
 	var sb strings.Builder
-	sb.WriteString("[DỮ LIỆU TRA CỨU HỌC PHÍ THỜI GIAN THỰC TỪ CỔNG HOCPHI.THANGLONG.EDU.VN]\n")
+	sb.WriteString("[DỮ LIỆU TRA CỨU HỌC PHÍ THỜI GIAN THỰC TỪ CỔNG THANH TOÁN CỦA TRƯỜNG]\n")
 	fmt.Fprintf(&sb, "- Mã sinh viên: %s\n", info.StudentID)
 	fmt.Fprintf(&sb, "- Họ và tên: %s\n", info.StudentName)
 	if info.Faculty != "" {

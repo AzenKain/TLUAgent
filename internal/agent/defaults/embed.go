@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+
+	"tluagent-web/pkg/config"
 )
 
 //go:embed soul.md rule.md skills/*.md
@@ -38,6 +40,18 @@ const (
 	SkillTLUClawAdminMemoryOpsID     = "tluclaw_admin_memory_ops"
 	SkillRegulatoryDissectionOpsID   = "regulatory_dissection_ops"
 )
+
+// expandPlaceholders substitutes deployment endpoints into bundled default content.
+func expandPlaceholders(content string) string {
+	replacements := map[string]string{
+		"{{tuition_portal_url}}":  config.GetConfigWithDefault("TUITION_PORTAL_URL", ""),
+		"{{university_site_url}}": config.GetConfigWithDefault("CMS_SITE_URL", ""),
+	}
+	for placeholder, value := range replacements {
+		content = strings.ReplaceAll(content, placeholder, value)
+	}
+	return content
+}
 
 // DefaultPromptMeta holds metadata for embedded default prompts.
 type DefaultPromptMeta struct {
@@ -96,7 +110,7 @@ func DiscoverDefaultSkills() ([]DefaultSkillMeta, error) {
 			continue
 		}
 
-		meta, _ := parseSkillFrontmatter(string(data), filePath, entry.Name())
+		meta, _ := parseSkillFrontmatter(expandPlaceholders(string(data)), filePath, entry.Name())
 		skills = append(skills, meta)
 	}
 
@@ -192,7 +206,7 @@ func ReadDefaultFile(path string) (string, error) {
 		return "", fmt.Errorf("failed to read embedded default file %s: %w", path, err)
 	}
 
-	content := string(data)
+	content := expandPlaceholders(string(data))
 	if strings.HasPrefix(path, "skills/") {
 		_, body := parseSkillFrontmatter(content, path, path)
 		if body != "" {

@@ -113,3 +113,10 @@ FROM users u
 JOIN user_roles ur ON u.id = ur.user_id
 JOIN roles r ON ur.role_id = r.id
 WHERE u.is_deleted = 0 AND r.is_deleted = 0 AND (r.name = 'ADMIN' OR r.is_admin = 1);
+
+-- name: ListAdminUserIDs :many
+SELECT DISTINCT u.id
+FROM users u
+JOIN user_roles ur ON u.id = ur.user_id
+JOIN roles r ON ur.role_id = r.id
+WHERE u.is_deleted = 0 AND r.is_deleted = 0 AND (r.name = 'ADMIN' OR r.is_admin = 1);

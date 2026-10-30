@@ -57,22 +57,48 @@ func (q *Queries) ClearAllKGNodes(ctx context.Context) error {
 	return err
 }
 
-const clearAllSupersessionAuditLogs = `-- name: ClearAllSupersessionAuditLogs :exec
+const clearRegulationSupersessionAuditLogs = `-- name: ClearRegulationSupersessionAuditLogs :exec
 DELETE FROM supersession_audit_log
+WHERE superseded_doc_id IN (SELECT id FROM documents WHERE type IN ('QUY_CHE', 'QUY_DINH', 'QUYET_DINH', 'DE_AN', 'KE_HOACH', 'CTDT', 'SO_TAY'))
+   OR active_doc_id IN (SELECT id FROM documents WHERE type IN ('QUY_CHE', 'QUY_DINH', 'QUYET_DINH', 'DE_AN', 'KE_HOACH', 'CTDT', 'SO_TAY'))
 `
 
-func (q *Queries) ClearAllSupersessionAuditLogs(ctx context.Context) error {
-	_, err := q.exec(ctx, q.clearAllSupersessionAuditLogsStmt, clearAllSupersessionAuditLogs)
+func (q *Queries) ClearRegulationSupersessionAuditLogs(ctx context.Context) error {
+	_, err := q.exec(ctx, q.clearRegulationSupersessionAuditLogsStmt, clearRegulationSupersessionAuditLogs)
 	return err
 }
 
-const clearAllSupersessionEdges = `-- name: ClearAllSupersessionEdges :exec
+const clearRegulationSupersessionEdges = `-- name: ClearRegulationSupersessionEdges :exec
 DELETE FROM kg_edges
 WHERE relation_type IN ('SUPERSEDES', 'PARTIALLY_AMENDS')
+  AND (
+      substr(target_node_id, 5) IN (SELECT id FROM documents WHERE type IN ('QUY_CHE', 'QUY_DINH', 'QUYET_DINH', 'DE_AN', 'KE_HOACH', 'CTDT', 'SO_TAY'))
+      OR substr(source_node_id, 5) IN (SELECT id FROM documents WHERE type IN ('QUY_CHE', 'QUY_DINH', 'QUYET_DINH', 'DE_AN', 'KE_HOACH', 'CTDT', 'SO_TAY'))
+  )
 `
 
-func (q *Queries) ClearAllSupersessionEdges(ctx context.Context) error {
-	_, err := q.exec(ctx, q.clearAllSupersessionEdgesStmt, clearAllSupersessionEdges)
+func (q *Queries) ClearRegulationSupersessionEdges(ctx context.Context) error {
+	_, err := q.exec(ctx, q.clearRegulationSupersessionEdgesStmt, clearRegulationSupersessionEdges)
+	return err
+}
+
+const clearSupersessionAuditLogs = `-- name: ClearSupersessionAuditLogs :exec
+DELETE FROM supersession_audit_log
+`
+
+func (q *Queries) ClearSupersessionAuditLogs(ctx context.Context) error {
+	_, err := q.exec(ctx, q.clearSupersessionAuditLogsStmt, clearSupersessionAuditLogs)
+	return err
+}
+
+const completeSupersessionAuditRun = `-- name: CompleteSupersessionAuditRun :exec
+UPDATE supersession_audit_runs
+SET status = 'COMPLETED', cursor_doc_id = '', processed = total_docs, last_error = '', updated_at = CURRENT_TIMESTAMP
+WHERE id = ?
+`
+
+func (q *Queries) CompleteSupersessionAuditRun(ctx context.Context, id string) error {
+	_, err := q.exec(ctx, q.completeSupersessionAuditRunStmt, completeSupersessionAuditRun, id)
 	return err
 }
 
@@ -104,6 +130,35 @@ SELECT COUNT(*) FROM documents WHERE status = 'ARCHIVED'
 
 func (q *Queries) CountArchivedDocuments(ctx context.Context) (int64, error) {
 	row := q.queryRow(ctx, q.countArchivedDocumentsStmt, countArchivedDocuments)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countAuditLogPairs = `-- name: CountAuditLogPairs :one
+SELECT COUNT(*) FROM supersession_audit_log
+WHERE active_doc_id = ? AND superseded_doc_id = ?
+`
+
+type CountAuditLogPairsParams struct {
+	ActiveDocID     string `json:"active_doc_id"`
+	SupersededDocID string `json:"superseded_doc_id"`
+}
+
+func (q *Queries) CountAuditLogPairs(ctx context.Context, arg CountAuditLogPairsParams) (int64, error) {
+	row := q.queryRow(ctx, q.countAuditLogPairsStmt, countAuditLogPairs, arg.ActiveDocID, arg.SupersededDocID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countAuditLogsByActiveDoc = `-- name: CountAuditLogsByActiveDoc :one
+SELECT COUNT(*) FROM supersession_audit_log
+WHERE active_doc_id = ?
+`
+
+func (q *Queries) CountAuditLogsByActiveDoc(ctx context.Context, activeDocID string) (int64, error) {
+	row := q.queryRow(ctx, q.countAuditLogsByActiveDocStmt, countAuditLogsByActiveDoc, activeDocID)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -205,6 +260,40 @@ func (q *Queries) CountSupersededDocuments(ctx context.Context) (int64, error) {
 	return count, err
 }
 
+const createSupersessionAuditRun = `-- name: CreateSupersessionAuditRun :one
+INSERT INTO supersession_audit_runs (id, status, cursor_doc_id, total_docs, processed)
+VALUES (?, 'RUNNING', ?, ?, ?)
+RETURNING id, status, cursor_doc_id, total_docs, processed, last_error, started_at, updated_at
+`
+
+type CreateSupersessionAuditRunParams struct {
+	ID          string `json:"id"`
+	CursorDocID string `json:"cursor_doc_id"`
+	TotalDocs   int64  `json:"total_docs"`
+	Processed   int64  `json:"processed"`
+}
+
+func (q *Queries) CreateSupersessionAuditRun(ctx context.Context, arg CreateSupersessionAuditRunParams) (SupersessionAuditRun, error) {
+	row := q.queryRow(ctx, q.createSupersessionAuditRunStmt, createSupersessionAuditRun,
+		arg.ID,
+		arg.CursorDocID,
+		arg.TotalDocs,
+		arg.Processed,
+	)
+	var i SupersessionAuditRun
+	err := row.Scan(
+		&i.ID,
+		&i.Status,
+		&i.CursorDocID,
+		&i.TotalDocs,
+		&i.Processed,
+		&i.LastError,
+		&i.StartedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const deleteChunksByDocumentID = `-- name: DeleteChunksByDocumentID :exec
 DELETE FROM document_chunks
 WHERE document_id = ?
@@ -256,6 +345,22 @@ func (q *Queries) DocumentExistsByURL(ctx context.Context, arg DocumentExistsByU
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
+}
+
+const failSupersessionAuditRun = `-- name: FailSupersessionAuditRun :exec
+UPDATE supersession_audit_runs
+SET status = 'FAILED', last_error = ?, updated_at = CURRENT_TIMESTAMP
+WHERE id = ?
+`
+
+type FailSupersessionAuditRunParams struct {
+	LastError string `json:"last_error"`
+	ID        string `json:"id"`
+}
+
+func (q *Queries) FailSupersessionAuditRun(ctx context.Context, arg FailSupersessionAuditRunParams) error {
+	_, err := q.exec(ctx, q.failSupersessionAuditRunStmt, failSupersessionAuditRun, arg.LastError, arg.ID)
+	return err
 }
 
 const findDocumentByIdentifier = `-- name: FindDocumentByIdentifier :one
@@ -604,6 +709,92 @@ func (q *Queries) GetKGNodeByID(ctx context.Context, id string) (KgNode, error) 
 	return i, err
 }
 
+const getLatestSupersessionAuditRun = `-- name: GetLatestSupersessionAuditRun :one
+SELECT id, status, cursor_doc_id, total_docs, processed, last_error, started_at, updated_at FROM supersession_audit_runs
+ORDER BY started_at DESC, rowid DESC
+LIMIT 1
+`
+
+func (q *Queries) GetLatestSupersessionAuditRun(ctx context.Context) (SupersessionAuditRun, error) {
+	row := q.queryRow(ctx, q.getLatestSupersessionAuditRunStmt, getLatestSupersessionAuditRun)
+	var i SupersessionAuditRun
+	err := row.Scan(
+		&i.ID,
+		&i.Status,
+		&i.CursorDocID,
+		&i.TotalDocs,
+		&i.Processed,
+		&i.LastError,
+		&i.StartedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getRunningSupersessionAuditRun = `-- name: GetRunningSupersessionAuditRun :one
+SELECT id, status, cursor_doc_id, total_docs, processed, last_error, started_at, updated_at FROM supersession_audit_runs
+WHERE status = 'RUNNING'
+ORDER BY started_at DESC, rowid DESC
+LIMIT 1
+`
+
+func (q *Queries) GetRunningSupersessionAuditRun(ctx context.Context) (SupersessionAuditRun, error) {
+	row := q.queryRow(ctx, q.getRunningSupersessionAuditRunStmt, getRunningSupersessionAuditRun)
+	var i SupersessionAuditRun
+	err := row.Scan(
+		&i.ID,
+		&i.Status,
+		&i.CursorDocID,
+		&i.TotalDocs,
+		&i.Processed,
+		&i.LastError,
+		&i.StartedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const listActiveDocumentsForDedupe = `-- name: ListActiveDocumentsForDedupe :many
+SELECT id, title, publish_date, char_count
+FROM documents
+WHERE status = 'ACTIVE'
+`
+
+type ListActiveDocumentsForDedupeRow struct {
+	ID          string `json:"id"`
+	Title       string `json:"title"`
+	PublishDate string `json:"publish_date"`
+	CharCount   int64  `json:"char_count"`
+}
+
+func (q *Queries) ListActiveDocumentsForDedupe(ctx context.Context) ([]ListActiveDocumentsForDedupeRow, error) {
+	rows, err := q.query(ctx, q.listActiveDocumentsForDedupeStmt, listActiveDocumentsForDedupe)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListActiveDocumentsForDedupeRow{}
+	for rows.Next() {
+		var i ListActiveDocumentsForDedupeRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Title,
+			&i.PublishDate,
+			&i.CharCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listActiveRulesByDocumentID = `-- name: ListActiveRulesByDocumentID :many
 SELECT id, document_id, rule_index, chapter, article_number, title, content, status, superseded_by_id, created_at FROM document_rules
 WHERE document_id = ? AND status = 'ACTIVE'
@@ -821,6 +1012,56 @@ func (q *Queries) ListAllRegulationIDsChronological(ctx context.Context) ([]stri
 	return items, nil
 }
 
+const listAuditLogPairsMissingEdge = `-- name: ListAuditLogPairsMissingEdge :many
+SELECT
+    l.active_doc_id,
+    l.superseded_doc_id,
+    CASE
+        WHEN SUM(CASE WHEN l.rule_type IN ('DOCUMENT_REPLACEMENT', 'ADMIN_OVERRIDE') THEN 1 ELSE 0 END) > 0
+        THEN 'SUPERSEDES'
+        ELSE 'PARTIALLY_AMENDS'
+    END AS relation_type
+FROM supersession_audit_log l
+WHERE NOT EXISTS (
+    SELECT 1 FROM kg_edges e
+    WHERE e.source_node_id = 'doc:' || l.active_doc_id
+      AND e.target_node_id = 'doc:' || l.superseded_doc_id
+      AND e.relation_type IN ('SUPERSEDES', 'PARTIALLY_AMENDS')
+)
+GROUP BY l.active_doc_id, l.superseded_doc_id
+ORDER BY MIN(l.id) ASC
+LIMIT ?
+`
+
+type ListAuditLogPairsMissingEdgeRow struct {
+	ActiveDocID     string `json:"active_doc_id"`
+	SupersededDocID string `json:"superseded_doc_id"`
+	RelationType    string `json:"relation_type"`
+}
+
+func (q *Queries) ListAuditLogPairsMissingEdge(ctx context.Context, limit int64) ([]ListAuditLogPairsMissingEdgeRow, error) {
+	rows, err := q.query(ctx, q.listAuditLogPairsMissingEdgeStmt, listAuditLogPairsMissingEdge, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListAuditLogPairsMissingEdgeRow{}
+	for rows.Next() {
+		var i ListAuditLogPairsMissingEdgeRow
+		if err := rows.Scan(&i.ActiveDocID, &i.SupersededDocID, &i.RelationType); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listAuditLogsByDocID = `-- name: ListAuditLogsByDocID :many
 SELECT id, active_doc_id, superseded_doc_id, rule_type, reason, created_at
 FROM supersession_audit_log
@@ -896,6 +1137,39 @@ func (q *Queries) ListChunksByDocumentID(ctx context.Context, documentID string)
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listDocumentIDsMissingGraphNode = `-- name: ListDocumentIDsMissingGraphNode :many
+SELECT d.id
+FROM documents d
+WHERE NOT EXISTS (
+    SELECT 1 FROM kg_nodes n WHERE n.id = 'doc:' || d.id
+)
+ORDER BY d.created_at ASC
+LIMIT ?
+`
+
+func (q *Queries) ListDocumentIDsMissingGraphNode(ctx context.Context, limit int64) ([]string, error) {
+	rows, err := q.query(ctx, q.listDocumentIDsMissingGraphNodeStmt, listDocumentIDsMissingGraphNode, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err
@@ -996,6 +1270,54 @@ func (q *Queries) ListSupersededDocuments(ctx context.Context, supersededByID sq
 	return items, nil
 }
 
+const listSupersessionPairsMissingEdge = `-- name: ListSupersessionPairsMissingEdge :many
+SELECT
+    d.superseded_by_id AS active_doc_id,
+    d.id AS superseded_doc_id,
+    'SUPERSEDES' AS relation_type
+FROM documents d
+WHERE d.status = 'SUPERSEDED'
+  AND d.superseded_by_id IS NOT NULL
+  AND trim(d.superseded_by_id) != ''
+  AND NOT EXISTS (
+      SELECT 1 FROM kg_edges e
+      WHERE e.source_node_id = 'doc:' || d.superseded_by_id
+        AND e.target_node_id = 'doc:' || d.id
+        AND e.relation_type IN ('SUPERSEDES', 'PARTIALLY_AMENDS')
+  )
+ORDER BY d.created_at ASC
+LIMIT ?
+`
+
+type ListSupersessionPairsMissingEdgeRow struct {
+	ActiveDocID     sql.NullString `json:"active_doc_id"`
+	SupersededDocID string         `json:"superseded_doc_id"`
+	RelationType    string         `json:"relation_type"`
+}
+
+func (q *Queries) ListSupersessionPairsMissingEdge(ctx context.Context, limit int64) ([]ListSupersessionPairsMissingEdgeRow, error) {
+	rows, err := q.query(ctx, q.listSupersessionPairsMissingEdgeStmt, listSupersessionPairsMissingEdge, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListSupersessionPairsMissingEdgeRow{}
+	for rows.Next() {
+		var i ListSupersessionPairsMissingEdgeRow
+		if err := rows.Scan(&i.ActiveDocID, &i.SupersededDocID, &i.RelationType); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const queryActiveChunkCandidates = `-- name: QueryActiveChunkCandidates :many
 SELECT c.id, c.document_id, c.rule_id, c.chunk_index, c.chunk_type, c.content, c.status,
        c.domain, c.applicable_cohort, c.academic_year, c.priority_level, c.embedding, c.created_at,
@@ -1004,13 +1326,15 @@ FROM document_chunks c
 JOIN documents d ON c.document_id = d.id
 WHERE c.status = 'ACTIVE'
   AND d.status = 'ACTIVE'
-  AND (?1 IS NULL OR ?1 = '' OR c.applicable_cohort = 'ALL' OR (',' || REPLACE(c.applicable_cohort, ' ', '') || ',') LIKE ('%,' || ?1 || ',%'))
-  AND (?2 IS NULL OR ?2 = '' OR c.domain = ?2)
+  AND (d.char_count = 0 OR d.char_count >= ?1)
+  AND (?2 IS NULL OR ?2 = '' OR c.applicable_cohort = 'ALL' OR (',' || REPLACE(c.applicable_cohort, ' ', '') || ',') LIKE ('%,' || ?2 || ',%'))
+  AND (?3 IS NULL OR ?3 = '' OR c.domain = ?3)
 `
 
 type QueryActiveChunkCandidatesParams struct {
-	Cohort interface{} `json:"cohort"`
-	Domain interface{} `json:"domain"`
+	MinCharCount int64       `json:"min_char_count"`
+	Cohort       interface{} `json:"cohort"`
+	Domain       interface{} `json:"domain"`
 }
 
 type QueryActiveChunkCandidatesRow struct {
@@ -1032,7 +1356,7 @@ type QueryActiveChunkCandidatesRow struct {
 }
 
 func (q *Queries) QueryActiveChunkCandidates(ctx context.Context, arg QueryActiveChunkCandidatesParams) ([]QueryActiveChunkCandidatesRow, error) {
-	rows, err := q.query(ctx, q.queryActiveChunkCandidatesStmt, queryActiveChunkCandidates, arg.Cohort, arg.Domain)
+	rows, err := q.query(ctx, q.queryActiveChunkCandidatesStmt, queryActiveChunkCandidates, arg.MinCharCount, arg.Cohort, arg.Domain)
 	if err != nil {
 		return nil, err
 	}
@@ -1104,60 +1428,69 @@ func (q *Queries) RecordSupersessionAudit(ctx context.Context, arg RecordSuperse
 	return i, err
 }
 
-const resetAllChunkSupersessions = `-- name: ResetAllChunkSupersessions :exec
+const resetRegulationChunkSupersessions = `-- name: ResetRegulationChunkSupersessions :exec
 UPDATE document_chunks
 SET status = 'ACTIVE'
 WHERE status != 'ACTIVE'
+  AND document_id IN (SELECT id FROM documents WHERE type IN ('QUY_CHE', 'QUY_DINH', 'QUYET_DINH', 'DE_AN', 'KE_HOACH', 'CTDT', 'SO_TAY'))
 `
 
-func (q *Queries) ResetAllChunkSupersessions(ctx context.Context) error {
-	_, err := q.exec(ctx, q.resetAllChunkSupersessionsStmt, resetAllChunkSupersessions)
+func (q *Queries) ResetRegulationChunkSupersessions(ctx context.Context) error {
+	_, err := q.exec(ctx, q.resetRegulationChunkSupersessionsStmt, resetRegulationChunkSupersessions)
 	return err
 }
 
-const resetAllDocumentSupersessions = `-- name: ResetAllDocumentSupersessions :exec
+const resetRegulationDocumentSupersessions = `-- name: ResetRegulationDocumentSupersessions :exec
 UPDATE documents
 SET status = 'ACTIVE', superseded_by_id = '', updated_at = CURRENT_TIMESTAMP
-WHERE status != 'ACTIVE' OR (superseded_by_id IS NOT NULL AND superseded_by_id != '')
+WHERE type IN ('QUY_CHE', 'QUY_DINH', 'QUYET_DINH', 'DE_AN', 'KE_HOACH', 'CTDT', 'SO_TAY')
+  AND (status != 'ACTIVE' OR (superseded_by_id IS NOT NULL AND superseded_by_id != ''))
 `
 
-func (q *Queries) ResetAllDocumentSupersessions(ctx context.Context) error {
-	_, err := q.exec(ctx, q.resetAllDocumentSupersessionsStmt, resetAllDocumentSupersessions)
+func (q *Queries) ResetRegulationDocumentSupersessions(ctx context.Context) error {
+	_, err := q.exec(ctx, q.resetRegulationDocumentSupersessionsStmt, resetRegulationDocumentSupersessions)
 	return err
 }
 
-const resetAllRuleSupersessions = `-- name: ResetAllRuleSupersessions :exec
+const resetRegulationRuleSupersessions = `-- name: ResetRegulationRuleSupersessions :exec
 UPDATE document_rules
 SET status = 'ACTIVE'
 WHERE status != 'ACTIVE'
+  AND document_id IN (SELECT id FROM documents WHERE type IN ('QUY_CHE', 'QUY_DINH', 'QUYET_DINH', 'DE_AN', 'KE_HOACH', 'CTDT', 'SO_TAY'))
 `
 
-func (q *Queries) ResetAllRuleSupersessions(ctx context.Context) error {
-	_, err := q.exec(ctx, q.resetAllRuleSupersessionsStmt, resetAllRuleSupersessions)
+func (q *Queries) ResetRegulationRuleSupersessions(ctx context.Context) error {
+	_, err := q.exec(ctx, q.resetRegulationRuleSupersessionsStmt, resetRegulationRuleSupersessions)
 	return err
 }
 
 const searchActiveChunkIDsFTS = `-- name: SearchActiveChunkIDsFTS :many
-SELECT chunk_id
-FROM document_chunks_fts
-WHERE content MATCH ?1
-  AND status = 'ACTIVE'
-  AND (?2 IS NULL OR ?2 = '' OR domain = ?2)
-  AND (?3 IS NULL OR ?3 = '' OR applicable_cohort = 'ALL' OR (',' || REPLACE(applicable_cohort, ' ', '') || ',') LIKE ('%,' || ?3 || ',%'))
+SELECT f.chunk_id
+FROM document_chunks_fts f
+JOIN document_chunks c ON c.id = f.chunk_id
+JOIN documents d ON d.id = c.document_id
+WHERE f.content MATCH ?1
+  AND f.status = 'ACTIVE'
+  AND d.status = 'ACTIVE'
+  AND (d.char_count = 0 OR d.char_count >= ?2)
+  AND (?3 IS NULL OR ?3 = '' OR f.domain = ?3)
+  AND (?4 IS NULL OR ?4 = '' OR f.applicable_cohort = 'ALL' OR (',' || REPLACE(f.applicable_cohort, ' ', '') || ',') LIKE ('%,' || ?4 || ',%'))
 ORDER BY rank
-LIMIT ?4
+LIMIT ?5
 `
 
 type SearchActiveChunkIDsFTSParams struct {
-	Query  string      `json:"query"`
-	Domain interface{} `json:"domain"`
-	Cohort interface{} `json:"cohort"`
-	Limit  int64       `json:"limit"`
+	Query        string      `json:"query"`
+	MinCharCount int64       `json:"min_char_count"`
+	Domain       interface{} `json:"domain"`
+	Cohort       interface{} `json:"cohort"`
+	Limit        int64       `json:"limit"`
 }
 
 func (q *Queries) SearchActiveChunkIDsFTS(ctx context.Context, arg SearchActiveChunkIDsFTSParams) ([]string, error) {
 	rows, err := q.query(ctx, q.searchActiveChunkIDsFTSStmt, searchActiveChunkIDsFTS,
 		arg.Query,
+		arg.MinCharCount,
 		arg.Domain,
 		arg.Cohort,
 		arg.Limit,
@@ -1320,6 +1653,29 @@ type UpdateRuleStatusParams struct {
 
 func (q *Queries) UpdateRuleStatus(ctx context.Context, arg UpdateRuleStatusParams) error {
 	_, err := q.exec(ctx, q.updateRuleStatusStmt, updateRuleStatus, arg.Status, arg.SupersededByID, arg.ID)
+	return err
+}
+
+const updateSupersessionAuditRunProgress = `-- name: UpdateSupersessionAuditRunProgress :exec
+UPDATE supersession_audit_runs
+SET cursor_doc_id = ?, processed = ?, total_docs = ?, updated_at = CURRENT_TIMESTAMP
+WHERE id = ?
+`
+
+type UpdateSupersessionAuditRunProgressParams struct {
+	CursorDocID string `json:"cursor_doc_id"`
+	Processed   int64  `json:"processed"`
+	TotalDocs   int64  `json:"total_docs"`
+	ID          string `json:"id"`
+}
+
+func (q *Queries) UpdateSupersessionAuditRunProgress(ctx context.Context, arg UpdateSupersessionAuditRunProgressParams) error {
+	_, err := q.exec(ctx, q.updateSupersessionAuditRunProgressStmt, updateSupersessionAuditRunProgress,
+		arg.CursorDocID,
+		arg.Processed,
+		arg.TotalDocs,
+		arg.ID,
+	)
 	return err
 }
 

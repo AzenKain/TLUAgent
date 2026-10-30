@@ -1001,8 +1001,10 @@ func (r *Reader) initEncrypt(password string) error {
 	p, _ := encrypt["P"].(int64)
 	P := uint32(p)
 
-	// TODO: Password should be converted to Latin-1.
-	pw := []byte(password)
+	pw, err := latin1Bytes(password)
+	if err != nil {
+		return ErrInvalidPassword
+	}
 	h := md5.New()
 	if len(pw) >= len(passwordPad) {
 		h.Write(pw[:len(passwordPad)])
@@ -1066,6 +1068,17 @@ func (r *Reader) initEncrypt(password string) error {
 }
 
 var ErrInvalidPassword = fmt.Errorf("encrypted PDF: invalid password")
+
+func latin1Bytes(s string) ([]byte, error) {
+	out := make([]byte, 0, len(s))
+	for _, r := range s {
+		if r > 0xFF {
+			return nil, fmt.Errorf("password contains a rune outside Latin-1")
+		}
+		out = append(out, byte(r))
+	}
+	return out, nil
+}
 
 func okayV4(encrypt dict) bool {
 	cf, ok := encrypt["CF"].(dict)

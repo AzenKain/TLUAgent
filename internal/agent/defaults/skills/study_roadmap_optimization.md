@@ -184,10 +184,10 @@ Kỹ năng này chịu trách nhiệm tư vấn, thiết kế và tối ưu hóa
    - **Tràn sang Tín chỉ tự do**: Khi đã đạt cặp chuẩn, mọi môn ngoại ngữ học thêm (như `GK101 Hàn 1`, `GZ101 Trung 1`...) sẽ **tự động được tính vào Giỏ 5 Tín chỉ tự do**.
 
 3. **Cơ Chế Thác Nước Tín Chỉ Tự Do (5 TC - Dynamic Free Electives)**:
-   - 5 tín chỉ tự do **không cố định trong danh mục cứng**, mà được gom linh hoạt từ 3 nguồn:
+   - 5 tín chỉ tự do **không cố định trong danh mục cứng**, mà được gom linh hoạt từ 2 nguồn:
      - Nguồn 1: Môn học đăng ký từ các khoa/ngành khác (Kinh tế, Quản trị, Marketing, Luật...).
      - Nguồn 2: Môn ngoại ngữ học thêm ngoài cặp chuẩn ngoại ngữ phụ.
-     - Nguồn 3: Tín chỉ tự chọn ngành học vượt định mức (ví dụ yêu cầu 18 TC, học 21 TC thì 3 TC thừa tự động tràn sang giỏ tự do).
+   - Hệ thống không tự tính nguồn "tín chỉ chuyên ngành vượt định mức" vì danh mục `curriculum_courses` không phân biệt môn bắt buộc và môn tự chọn trong cùng khối kiến thức.
 
 4. **Giáo Dục Quốc Phòng & Thể Chất**:
    - **Giáo dục quốc phòng (PG121)**: Tổ chức tập trung cho toàn khóa vào **Hè năm thứ nhất**; không bố trí tự đăng ký ở các kỳ chính.

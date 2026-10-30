@@ -238,6 +238,70 @@ func (q *Queries) ListStudentProfilesByStanding(ctx context.Context, arg ListStu
 	return items, nil
 }
 
+const listUserIDsByCohort = `-- name: ListUserIDsByCohort :many
+SELECT DISTINCT user_id FROM student_academic_profiles WHERE cohort = ?
+`
+
+func (q *Queries) ListUserIDsByCohort(ctx context.Context, cohort string) ([]string, error) {
+	rows, err := q.query(ctx, q.listUserIDsByCohortStmt, listUserIDsByCohort, cohort)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var user_id string
+		if err := rows.Scan(&user_id); err != nil {
+			return nil, err
+		}
+		items = append(items, user_id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listUserIDsByCohorts = `-- name: ListUserIDsByCohorts :many
+SELECT DISTINCT user_id FROM student_academic_profiles WHERE cohort IN (/*SLICE:cohorts*/?)
+`
+
+func (q *Queries) ListUserIDsByCohorts(ctx context.Context, cohorts []string) ([]string, error) {
+	query := listUserIDsByCohorts
+	var queryParams []interface{}
+	if len(cohorts) > 0 {
+		for _, v := range cohorts {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:cohorts*/?", strings.Repeat(",?", len(cohorts))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:cohorts*/?", "NULL", 1)
+	}
+	rows, err := q.query(ctx, nil, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var user_id string
+		if err := rows.Scan(&user_id); err != nil {
+			return nil, err
+		}
+		items = append(items, user_id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listUserMemoriesByUserID = `-- name: ListUserMemoriesByUserID :many
 SELECT id, user_id, category, memory_key, memory_value, confidence, source, is_active, created_at, updated_at FROM user_memories
 WHERE user_id = ? AND is_active = 1

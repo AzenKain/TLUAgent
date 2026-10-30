@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import {
   Compass,
   CheckCircle2,
@@ -42,10 +43,10 @@ const extractCreditRequirementDetail = (text: string): string | null => {
   return null;
 };
 
-const extractCreditBadge = (text: string): string | null => {
+const extractCreditBadge = (text: string, t: TFunction): string | null => {
   const credits = extractCreditRequirementDetail(text);
   if (!credits) return null;
-  return `≥ ${credits} TC`;
+  return t('common.credit_badge', { credits });
 };
 
 export const StudentRoadmapPage: React.FC = () => {
@@ -472,7 +473,7 @@ export const StudentRoadmapPage: React.FC = () => {
                         );
                       }
 
-                      const creditBadge = extractCreditBadge(c.prerequisites_text);
+                      const creditBadge = extractCreditBadge(c.prerequisites_text, t);
 
                       return (
                         <div

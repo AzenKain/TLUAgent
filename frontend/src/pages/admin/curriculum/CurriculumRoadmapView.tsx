@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import {
   Layers,
   ArrowRight,
@@ -33,10 +34,10 @@ const extractCreditRequirementDetail = (text: string): string | null => {
   return null;
 };
 
-const extractCreditBadge = (text: string): string | null => {
+const extractCreditBadge = (text: string, t: TFunction): string | null => {
   const credits = extractCreditRequirementDetail(text);
   if (!credits) return null;
-  return `≥ ${credits} TC`;
+  return t('common.credit_badge', { credits });
 };
 
 
@@ -1009,7 +1010,7 @@ export const CurriculumRoadmapView: React.FC<CurriculumRoadmapViewProps> = ({
                           const prereqCount = (incomingEdgesMap.get(codeUpper) || []).length;
                           const unlockCount = (outgoingEdgesMap.get(codeUpper) || []).length;
                           const isElective = isElectiveCourse(c);
-                          const creditBadge = extractCreditBadge(c.prerequisites_text);
+                          const creditBadge = extractCreditBadge(c.prerequisites_text, t);
 
                           return (
                             <div
@@ -1128,7 +1129,7 @@ export const CurriculumRoadmapView: React.FC<CurriculumRoadmapViewProps> = ({
                       const isDescendant = activeDependencySets.descendants.has(codeUpper);
                       const isDimmed =
                         selectedCourseCode && !isSelected && !isAncestor && !isDescendant;
-                      const creditBadge = extractCreditBadge(c.prerequisites_text);
+                      const creditBadge = extractCreditBadge(c.prerequisites_text, t);
 
                       return (
                         <div

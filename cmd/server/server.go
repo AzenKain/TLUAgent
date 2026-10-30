@@ -100,7 +100,7 @@ func NewServer(addr string) *Server {
 	authSvc := services.NewAuthService(userRepo, roleRepo, settingsRepo, txManager)
 	userSvc := services.NewUserService(userRepo, roleRepo, settingsRepo, txManager, permCache)
 	curriculumSvc := services.NewCurriculumService(curriculumRepo)
-	roadmapOptimizer := services.NewRoadmapOptimizer(curriculumRepo)
+	roadmapOptimizer := services.NewRoadmapOptimizer(curriculumRepo, memoryRepo)
 	transcriptSvc := services.NewTranscriptService(transcriptRepo, memoryRepo, llmManager)
 
 	advisorySvc := services.NewAdvisoryService(services.AdvisoryParams{
@@ -132,14 +132,15 @@ func NewServer(addr string) *Server {
 		DB:             db,
 		RAGRepo:        ragRepo,
 		CurriculumRepo: curriculumRepo,
-		InquiryRepo: inquiryRepo,
-		NotifRepo:   notificationRepo,
-		UserRepo:    userRepo,
-		LLMManager:  llmManager,
+		InquiryRepo:    inquiryRepo,
+		NotifRepo:      notificationRepo,
+		UserRepo:       userRepo,
+		LLMManager:     llmManager,
 	})
 	detector := services.NewDetector(db, llmManager)
 	detector.SetEngine(dissectionEngine)
 	jobSvc := services.NewJobService(jobRepo, jobQueue, llmManager, ragSvc, detector)
+	jobSvc.SetFailureNotifier(notificationRepo, userRepo)
 	jobQueue.Start()
 	_ = jobSvc.Recover(context.Background())
 	jobScheduleSvc := services.NewJobScheduleService(jobScheduleRepo, jobSvc)
@@ -147,6 +148,28 @@ func NewServer(addr string) *Server {
 		log.Warn().Err(err).Msg("Failed to seed default job schedules")
 	}
 	jobScheduleSvc.Start()
+	go func() {
+		repairCtx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
+		if dup, err := ragSvc.RepairDuplicateDocuments(repairCtx); err != nil {
+			log.Warn().Err(err).Msg("Duplicate document repair failed")
+		} else if dup.Superseded > 0 {
+			log.Info().Int("groups", dup.Groups).Int("superseded", dup.Superseded).Msg("Superseded duplicate documents")
+		}
+
+		res, err := ragSvc.RepairDocumentGraph(repairCtx, 500)
+		if err != nil {
+			log.Warn().Err(err).Msg("Knowledge graph repair pass failed")
+			return
+		}
+		if res.NodesCreated > 0 || res.EdgesCreated > 0 {
+			log.Info().
+				Int("documents", res.DocsScanned).
+				Int("nodes", res.NodesCreated).
+				Int("edges", res.EdgesCreated).
+				Msg("Restored missing knowledge graph entities")
+		}
+	}()
 
 	tluclawSvc := services.NewTLUClawService(services.TLUClawParams{
 		TLUClawRepo:      tluclawRepo,
@@ -169,6 +192,7 @@ func NewServer(addr string) *Server {
 		RoleService:      roleSvc,
 		SettingsRepo:     settingsRepo,
 		DissectionEngine: dissectionEngine,
+		TxManager:        txManager,
 	})
 
 	healthCtrl := controllers.NewHealthController()
@@ -190,7 +214,7 @@ func NewServer(addr string) *Server {
 
 	embeddingRoot := filepath.Join(config.GetConfigWithDefault("DATA_DIR", "./data"), "onnx")
 	embeddingSvc := services.NewEmbeddingService(settingsRepo, embeddingRoot, llmManager)
-	if err := embeddingSvc.SyncActiveEmbedder(context.Background()); err != nil {
+	if err := embeddingSvc.EnsureActiveEmbedderAvailable(context.Background()); err != nil {
 		log.Warn().Err(err).Msg("Failed initial active ONNX embedder synchronization")
 	}
 	embeddingCtrl := controllers.NewEmbeddingController(embeddingSvc)
@@ -284,8 +308,13 @@ func (s *Server) Shutdown(ctx context.Context) error {
 		s.jobQueue.Stop()
 	}
 
-	log.Info().Msg("Performing SQLite WAL checkpoint and closing database...")
+	log.Info().Msg("Flushing SQLite write-ahead log and closing database...")
 	dbErr := database.CheckpointWALAndClose(s.db)
+	if dbErr != nil {
+		log.Error().Err(dbErr).Msg("SQLite flush on shutdown failed")
+	} else {
+		log.Info().Msg("SQLite flushed; no -wal/-shm files left behind")
+	}
 
 	if serverErr != nil {
 		return serverErr

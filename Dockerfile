@@ -22,9 +22,13 @@ RUN bun run build
 # ==============================================================================
 # Stage 2: Build Backend (Go with CGO enabled for C libraries / ONNX Runtime)
 # ==============================================================================
-FROM golang:bookworm AS backend-builder
+FROM golang:1.27.3-trixie AS backend-builder
 
 WORKDIR /build
+
+# Runtime assets that the distroless runner stage cannot install itself (no apt there)
+RUN apt-get update && apt-get install -y --no-install-recommends tzdata ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
 # Enable CGO: essential for onnxruntime_go C bindings and native system libraries
 ENV CGO_ENABLED=1 \
@@ -46,33 +50,23 @@ COPY --from=frontend-builder /app/cmd/server/dist ./cmd/server/dist
 # Build production binary with stripped debugging symbols
 RUN go build -trimpath -ldflags="-s -w" -o /build/bin/server ./cmd/server
 
-# ==============================================================================
-# Stage 3: Minimal Production Runtime
-# ==============================================================================
-FROM debian:bookworm-slim AS runner
+# Writable data directories, pre-owned by the runtime UID (distroless has no shell to mkdir)
+RUN mkdir -p /build/appdata/logs /build/appdata/onnx && chown -R 1000:1000 /build/appdata
 
-# Install essential runtime libraries:
-# - ca-certificates: required for outbound HTTPS connections (LLM APIs)
-# - tzdata: accurate timezone support
-# - libstdc++6: C++ standard library runtime (required by libonnxruntime.so)
-# - curl: required for container healthcheck
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates \
-    tzdata \
-    libstdc++6 \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
+# ==============================================================================
+# Stage 3: Minimal Production Runtime (distroless: glibc + libstdc++, no shell/apt)
+# ==============================================================================
+FROM gcr.io/distroless/cc-debian13 AS runner
 
 WORKDIR /app
 
-# Create a non-root group and user (UID/GID 1000 aligns with standard host permissions)
-RUN groupadd -g 1000 appgroup && \
-    useradd -u 1000 -g appgroup -m -s /bin/bash appuser && \
-    mkdir -p /app/data /app/data/logs /app/data/onnx && \
-    chown -R appuser:appgroup /app
+# distroless ships no package manager, so timezone data and the CA bundle come from the builder
+COPY --from=backend-builder /usr/share/zoneinfo /usr/share/zoneinfo
+COPY --from=backend-builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
-# Copy compiled single-binary server
-COPY --from=backend-builder --chown=appuser:appgroup /build/bin/server /app/server
+# Copy compiled single-binary server and the writable data directories
+COPY --from=backend-builder --chown=1000:1000 /build/appdata /app/data
+COPY --from=backend-builder --chown=1000:1000 /build/bin/server /app/server
 
 # Default environment configuration
 ENV HOST=0.0.0.0 \
@@ -84,12 +78,13 @@ ENV HOST=0.0.0.0 \
 # Expose HTTP port
 EXPOSE 3434
 
-# Run container as non-root user
-USER appuser
+# Run container as the same UID as before (keeps host volume permissions working)
+USER 1000:1000
 
-# Healthcheck
+# Healthcheck runs the binary itself, since curl is not available in distroless
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD curl -f http://localhost:3434/api/health || exit 1
+    CMD ["/app/server", "-healthcheck"]
 
 # Start the server
 ENTRYPOINT ["/app/server"]
+

@@ -175,7 +175,7 @@ export const SubstitutionModal: React.FC<SubstitutionModalProps> = ({
               disabled={Boolean(initialSubstitution)}
               value={origCode}
               onChange={(e) => setOrigCode(e.target.value)}
-              placeholder="MI322"
+              placeholder={t('curriculum.form.placeholder_code')}
               className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 disabled:opacity-60 focus:border-tlu-blue focus:ring-1 focus:ring-tlu-blue focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
             />
           </div>
@@ -189,7 +189,7 @@ export const SubstitutionModal: React.FC<SubstitutionModalProps> = ({
               required
               value={origName}
               onChange={(e) => setOrigName(e.target.value)}
-              placeholder="Image Processing"
+              placeholder={t('curriculum.substitutions.placeholder_course_name')}
               className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-tlu-blue focus:ring-1 focus:ring-tlu-blue focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
             />
           </div>
@@ -204,7 +204,7 @@ export const SubstitutionModal: React.FC<SubstitutionModalProps> = ({
               disabled={Boolean(initialSubstitution)}
               value={replCode}
               onChange={(e) => setReplCode(e.target.value)}
-              placeholder="AI130"
+              placeholder={t('curriculum.form.placeholder_code')}
               className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 disabled:opacity-60 focus:border-tlu-blue focus:ring-1 focus:ring-tlu-blue focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
             />
           </div>
@@ -218,7 +218,7 @@ export const SubstitutionModal: React.FC<SubstitutionModalProps> = ({
               required
               value={replName}
               onChange={(e) => setReplName(e.target.value)}
-              placeholder="Computer Vision"
+              placeholder={t('curriculum.substitutions.placeholder_course_name')}
               className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-tlu-blue focus:ring-1 focus:ring-tlu-blue focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
             />
           </div>
@@ -391,7 +391,7 @@ export const SubstitutionModal: React.FC<SubstitutionModalProps> = ({
               type="text"
               value={ruleType}
               onChange={(e) => setRuleType(e.target.value)}
-              placeholder="DIRECT_EQUIVALENT"
+              placeholder={t('curriculum.substitutions.placeholder_rule_type')}
               className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-tlu-blue focus:ring-1 focus:ring-tlu-blue focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
             />
           </div>
@@ -404,7 +404,7 @@ export const SubstitutionModal: React.FC<SubstitutionModalProps> = ({
               type="text"
               value={sourceReference}
               onChange={(e) => setSourceReference(e.target.value)}
-              placeholder="QD_2608 or TT_K1-K35"
+              placeholder={t('curriculum.substitutions.placeholder_source_reference')}
               className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-tlu-blue focus:ring-1 focus:ring-tlu-blue focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
             />
           </div>
@@ -417,7 +417,7 @@ export const SubstitutionModal: React.FC<SubstitutionModalProps> = ({
               type="text"
               value={ruleNote}
               onChange={(e) => setRuleNote(e.target.value)}
-              placeholder="Pairwise equivalent"
+              placeholder={t('curriculum.substitutions.placeholder_rule_note')}
               className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-tlu-blue focus:ring-1 focus:ring-tlu-blue focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
             />
           </div>

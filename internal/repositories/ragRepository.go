@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -19,6 +20,9 @@ import (
 
 // RAGRepository defines database persistence and graph operations for documents, chunks, and knowledge entities.
 type RAGRepository interface {
+	ListDocumentIDsMissingGraphNode(ctx context.Context, limit int64) ([]string, error)
+	ListSupersessionPairsMissingEdge(ctx context.Context, limit int64) ([]*models.SupersessionPair, error)
+	ListAuditLogPairsMissingEdge(ctx context.Context, limit int64) ([]*models.SupersessionPair, error)
 	GetDocumentByID(ctx context.Context, id string) (*models.Document, error)
 	GetDocumentByURL(ctx context.Context, rawURL string) (*models.Document, error)
 	DocumentExistsByURL(ctx context.Context, rawURL string) (bool, error)
@@ -27,6 +31,7 @@ type RAGRepository interface {
 	ListDocuments(ctx context.Context, dto *request.ListDocumentsDto) ([]*models.Document, int, error)
 	ListAllRegulationsChronological(ctx context.Context) ([]*models.Document, error)
 	ListAllDocumentIdentifiers(ctx context.Context) ([]sqlc.ListAllDocumentIdentifiersRow, error)
+	ListActiveDocumentsForDedupe(ctx context.Context) ([]sqlc.ListActiveDocumentsForDedupeRow, error)
 	UpsertDocument(ctx context.Context, doc *models.Document) (*models.Document, error)
 	UpdateDocumentStatus(ctx context.Context, id, status, supersededByID string) error
 	ListSupersededDocuments(ctx context.Context, docID string) ([]*models.Document, error)
@@ -64,12 +69,21 @@ type RAGRepository interface {
 	RecordSupersessionLog(ctx context.Context, activeID, supersededID, ruleType, reason string) error
 	ListAuditLogsByDocID(ctx context.Context, docID string) ([]*models.SupersessionAuditLog, error)
 	ListAllAuditLogs(ctx context.Context, limit, offset int) ([]*models.SupersessionAuditLog, int, error)
+	AuditLogPairExists(ctx context.Context, activeID, supersededID string) (bool, error)
+	DocumentHasAuditLog(ctx context.Context, activeID string) (bool, error)
+
+	CreateAuditRun(ctx context.Context, id, cursorDocID string, totalDocs int64) (*models.SupersessionAuditRun, error)
+	GetRunningAuditRun(ctx context.Context) (*models.SupersessionAuditRun, error)
+	GetLatestAuditRun(ctx context.Context) (*models.SupersessionAuditRun, error)
+	UpdateAuditRunProgress(ctx context.Context, id, cursorDocID string, processed, totalDocs int64) error
+	CompleteAuditRun(ctx context.Context, id string) error
+	FailAuditRun(ctx context.Context, id, lastError string) error
 
 	CountStats(ctx context.Context) (docs int, chunks int, nodes int, edges int, err error)
 	GetKnowledgeStats(ctx context.Context) (*models.KnowledgeStats, error)
 
 	WipeCorpus(ctx context.Context) error
-	ResetAllSupersessions(ctx context.Context) error
+	ResetRegulationSupersessions(ctx context.Context) error
 	InvalidateDocumentCache(ctx context.Context, id string)
 	InvalidateChunkCache(ctx context.Context, id string)
 	WithTx(tx *sql.Tx) RAGRepository
@@ -392,6 +406,11 @@ func (r *ragRepository) ListAllRegulationsChronological(ctx context.Context) ([]
 	return r.GetDocumentsByIDs(ctx, ids)
 }
 
+// ListActiveDocumentsForDedupe returns the metadata needed to collapse duplicate titles.
+func (r *ragRepository) ListActiveDocumentsForDedupe(ctx context.Context) ([]sqlc.ListActiveDocumentsForDedupeRow, error) {
+	return r.q.ListActiveDocumentsForDedupe(ctx)
+}
+
 // ListAllDocumentIdentifiers retrieves lightweight identifier metadata (id, title, file_path) for all documents.
 func (r *ragRepository) ListAllDocumentIdentifiers(ctx context.Context) ([]sqlc.ListAllDocumentIdentifiersRow, error) {
 	key := cache.BuildKey("rag_all_document_identifiers")
@@ -638,8 +657,9 @@ func (r *ragRepository) QueryActiveCandidates(ctx context.Context, cohort, domai
 		}
 
 		rows, err := r.q.QueryActiveChunkCandidates(ctx, sqlc.QueryActiveChunkCandidatesParams{
-			Cohort: cohortArg,
-			Domain: domainArg,
+			MinCharCount: constants.MinRetrievableCharCount,
+			Cohort:       cohortArg,
+			Domain:       domainArg,
 		})
 		if err != nil {
 			return nil, err
@@ -683,10 +703,11 @@ func (r *ragRepository) SearchActiveChunkIDsFTS(ctx context.Context, query, coho
 		}
 
 		ids, err := r.q.SearchActiveChunkIDsFTS(ctx, sqlc.SearchActiveChunkIDsFTSParams{
-			Query:  query,
-			Cohort: cohortArg,
-			Domain: domainArg,
-			Limit:  int64(limit),
+			Query:        query,
+			MinCharCount: constants.MinRetrievableCharCount,
+			Cohort:       cohortArg,
+			Domain:       domainArg,
+			Limit:        int64(limit),
 		})
 		if err != nil {
 			return nil, err
@@ -994,6 +1015,80 @@ func (r *ragRepository) ListAllAuditLogs(ctx context.Context, limit, offset int)
 	return res.Logs, res.Total, nil
 }
 
+func (r *ragRepository) AuditLogPairExists(ctx context.Context, activeID, supersededID string) (bool, error) {
+	n, err := r.q.CountAuditLogPairs(ctx, sqlc.CountAuditLogPairsParams{
+		ActiveDocID:     activeID,
+		SupersededDocID: supersededID,
+	})
+	if err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
+func (r *ragRepository) DocumentHasAuditLog(ctx context.Context, activeID string) (bool, error) {
+	n, err := r.q.CountAuditLogsByActiveDoc(ctx, activeID)
+	if err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
+func (r *ragRepository) CreateAuditRun(ctx context.Context, id, cursorDocID string, totalDocs int64) (*models.SupersessionAuditRun, error) {
+	row, err := r.q.CreateSupersessionAuditRun(ctx, sqlc.CreateSupersessionAuditRunParams{
+		ID:          id,
+		CursorDocID: cursorDocID,
+		TotalDocs:   totalDocs,
+		Processed:   0,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return (&models.SupersessionAuditRun{}).FromSqlc(row), nil
+}
+
+func (r *ragRepository) GetRunningAuditRun(ctx context.Context) (*models.SupersessionAuditRun, error) {
+	row, err := r.q.GetRunningSupersessionAuditRun(ctx)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return (&models.SupersessionAuditRun{}).FromSqlc(row), nil
+}
+
+func (r *ragRepository) GetLatestAuditRun(ctx context.Context) (*models.SupersessionAuditRun, error) {
+	row, err := r.q.GetLatestSupersessionAuditRun(ctx)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return (&models.SupersessionAuditRun{}).FromSqlc(row), nil
+}
+
+func (r *ragRepository) UpdateAuditRunProgress(ctx context.Context, id, cursorDocID string, processed, totalDocs int64) error {
+	return r.q.UpdateSupersessionAuditRunProgress(ctx, sqlc.UpdateSupersessionAuditRunProgressParams{
+		ID:          id,
+		CursorDocID: cursorDocID,
+		Processed:   processed,
+		TotalDocs:   totalDocs,
+	})
+}
+
+func (r *ragRepository) CompleteAuditRun(ctx context.Context, id string) error {
+	return r.q.CompleteSupersessionAuditRun(ctx, id)
+}
+
+func (r *ragRepository) FailAuditRun(ctx context.Context, id, lastError string) error {
+	return r.q.FailSupersessionAuditRun(ctx, sqlc.FailSupersessionAuditRunParams{
+		ID:        id,
+		LastError: lastError,
+	})
+}
+
 func (r *ragRepository) CountStats(ctx context.Context) (docs int, chunks int, nodes int, edges int, err error) {
 	st, err := r.GetKnowledgeStats(ctx)
 	if err != nil {
@@ -1286,7 +1381,7 @@ func (r *ragRepository) WipeCorpus(ctx context.Context) error {
 	if err := r.q.ClearAllDocumentRules(ctx); err != nil {
 		return err
 	}
-	if err := r.q.ClearAllSupersessionAuditLogs(ctx); err != nil {
+	if err := r.q.ClearSupersessionAuditLogs(ctx); err != nil {
 		return err
 	}
 	if err := r.q.ClearAllKGEdges(ctx); err != nil {
@@ -1304,21 +1399,22 @@ func (r *ragRepository) WipeCorpus(ctx context.Context) error {
 	return nil
 }
 
-// ResetAllSupersessions restores all documents, rules, and chunks to active status and clears supersession logs and edges.
-func (r *ragRepository) ResetAllSupersessions(ctx context.Context) error {
-	if err := r.q.ResetAllDocumentSupersessions(ctx); err != nil {
+// ResetRegulationSupersessions clears supersession state of the documents covered by the audit,
+// leaving announcements and news already reconciled by other repair passes untouched.
+func (r *ragRepository) ResetRegulationSupersessions(ctx context.Context) error {
+	if err := r.q.ResetRegulationDocumentSupersessions(ctx); err != nil {
 		return err
 	}
-	if err := r.q.ResetAllRuleSupersessions(ctx); err != nil {
+	if err := r.q.ResetRegulationRuleSupersessions(ctx); err != nil {
 		return err
 	}
-	if err := r.q.ResetAllChunkSupersessions(ctx); err != nil {
+	if err := r.q.ResetRegulationChunkSupersessions(ctx); err != nil {
 		return err
 	}
-	if err := r.q.ClearAllSupersessionEdges(ctx); err != nil {
+	if err := r.q.ClearRegulationSupersessionEdges(ctx); err != nil {
 		return err
 	}
-	if err := r.q.ClearAllSupersessionAuditLogs(ctx); err != nil {
+	if err := r.q.ClearRegulationSupersessionAuditLogs(ctx); err != nil {
 		return err
 	}
 	if r.c != nil {
@@ -1327,5 +1423,38 @@ func (r *ragRepository) ResetAllSupersessions(ctx context.Context) error {
 	return nil
 }
 
+func (r *ragRepository) ListDocumentIDsMissingGraphNode(ctx context.Context, limit int64) ([]string, error) {
+	return r.q.ListDocumentIDsMissingGraphNode(ctx, limit)
+}
 
+func (r *ragRepository) ListSupersessionPairsMissingEdge(ctx context.Context, limit int64) ([]*models.SupersessionPair, error) {
+	rows, err := r.q.ListSupersessionPairsMissingEdge(ctx, limit)
+	if err != nil {
+		return nil, err
+	}
+	pairs := make([]*models.SupersessionPair, len(rows))
+	for i, row := range rows {
+		pairs[i] = &models.SupersessionPair{
+			ActiveDocID:     row.ActiveDocID.String,
+			SupersededDocID: row.SupersededDocID,
+			RelationType:    row.RelationType,
+		}
+	}
+	return pairs, nil
+}
 
+func (r *ragRepository) ListAuditLogPairsMissingEdge(ctx context.Context, limit int64) ([]*models.SupersessionPair, error) {
+	rows, err := r.q.ListAuditLogPairsMissingEdge(ctx, limit)
+	if err != nil {
+		return nil, err
+	}
+	pairs := make([]*models.SupersessionPair, len(rows))
+	for i, row := range rows {
+		pairs[i] = &models.SupersessionPair{
+			ActiveDocID:     row.ActiveDocID,
+			SupersededDocID: row.SupersededDocID,
+			RelationType:    row.RelationType,
+		}
+	}
+	return pairs, nil
+}

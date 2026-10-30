@@ -3,6 +3,7 @@ package embedding
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -58,6 +59,9 @@ func TestValidateModel_UnigramModel(t *testing.T) {
 	}
 
 	res := ValidateModel(t.Context(), dataOnnxDir, "bge-m3")
+	if !res.OK && isRuntimeUnavailable(res.Error) {
+		t.Skipf("Skipping TestValidateModel_UnigramModel: ONNX Runtime unavailable: %s", res.Error)
+	}
 	require.True(t, res.OK, "model validation failed: %s", res.Error)
 	assert.Equal(t, 1024, res.Dim)
 	assert.Greater(t, res.LatencyMs, 0.0)
@@ -65,4 +69,14 @@ func TestValidateModel_UnigramModel(t *testing.T) {
 	rec, err := VerifyValidationIntegrity(modelDir)
 	require.NoError(t, err)
 	require.True(t, rec.OK)
+}
+
+func isRuntimeUnavailable(errMsg string) bool {
+	lower := strings.ToLower(errMsg)
+	for _, marker := range []string{"onnxruntime", "onnx runtime", "ort api", "missing", "not found", "no such file", "cannot open shared object"} {
+		if strings.Contains(lower, marker) {
+			return true
+		}
+	}
+	return false
 }

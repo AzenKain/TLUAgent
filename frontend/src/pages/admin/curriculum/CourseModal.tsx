@@ -122,7 +122,7 @@ export const CourseModal: React.FC<CourseModalProps> = ({
                   required
                   value={cohort}
                   onChange={(e) => setCohort(e.target.value)}
-                  placeholder="K36"
+                  placeholder={t('curriculum.form.placeholder_cohort')}
                   className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-tlu-blue focus:ring-1 focus:ring-tlu-blue focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
                 />
               </div>
@@ -136,7 +136,7 @@ export const CourseModal: React.FC<CourseModalProps> = ({
                   required
                   value={majorName}
                   onChange={(e) => setMajorName(e.target.value)}
-                  placeholder="CNTT"
+                  placeholder={t('curriculum.form.placeholder_major_name')}
                   className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-tlu-blue focus:ring-1 focus:ring-tlu-blue focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
                 />
               </div>
@@ -153,7 +153,7 @@ export const CourseModal: React.FC<CourseModalProps> = ({
               disabled={Boolean(initialCourse)}
               value={courseCode}
               onChange={(e) => setCourseCode(e.target.value)}
-              placeholder="CF213"
+              placeholder={t('curriculum.form.placeholder_code')}
               className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 disabled:opacity-60 focus:border-tlu-blue focus:ring-1 focus:ring-tlu-blue focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
             />
           </div>
@@ -167,7 +167,7 @@ export const CourseModal: React.FC<CourseModalProps> = ({
               required
               value={courseName}
               onChange={(e) => setCourseName(e.target.value)}
-              placeholder="Data Structures and Algorithms"
+              placeholder={t('curriculum.form.placeholder_name')}
               className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-tlu-blue focus:ring-1 focus:ring-tlu-blue focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
             />
           </div>
@@ -209,7 +209,7 @@ export const CourseModal: React.FC<CourseModalProps> = ({
               type="text"
               value={hours}
               onChange={(e) => setHours(e.target.value)}
-              placeholder="45"
+              placeholder={t('curriculum.form.placeholder_hours')}
               className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-tlu-blue focus:ring-1 focus:ring-tlu-blue focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
             />
           </div>
@@ -236,7 +236,7 @@ export const CourseModal: React.FC<CourseModalProps> = ({
               type="text"
               value={knowledgeBlock}
               onChange={(e) => setKnowledgeBlock(e.target.value)}
-              placeholder="General / Fundamental / Specialized"
+              placeholder={t('curriculum.form.placeholder_knowledge_block')}
               className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-tlu-blue focus:ring-1 focus:ring-tlu-blue focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
             />
           </div>
@@ -249,7 +249,7 @@ export const CourseModal: React.FC<CourseModalProps> = ({
               type="text"
               value={prerequisitesText}
               onChange={(e) => setPrerequisitesText(e.target.value)}
-              placeholder="CS122, CF213"
+              placeholder={t('curriculum.form.placeholder_prerequisites')}
               className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-tlu-blue focus:ring-1 focus:ring-tlu-blue focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
             />
             <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
