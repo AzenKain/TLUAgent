@@ -24,6 +24,8 @@ import { ConfirmModal } from '@/components/common/ConfirmModal';
 import { PermissionGate } from '@/components/common/PermissionGate';
 import { PageHeader } from '@/components/common/PageHeader';
 import { RefreshButton } from '@/components/common/RefreshButton';
+import { RequirementRulesModal } from '@/components/admin/RequirementRulesModal';
+import { usePermissions } from '@/hooks/usePermissions';
 import { StatCard } from '@/components/common/StatCard';
 import type {
   CurriculumCourse,
@@ -109,6 +111,8 @@ export const CurriculumManagePage: React.FC = () => {
   const [subPage, setSubPage] = useState<number>(1);
   const subLimit = 20;
 
+  const { can } = usePermissions();
+  const [isRequirementsOpen, setIsRequirementsOpen] = useState(false);
   const [isCourseModalOpen, setIsCourseModalOpen] = useState(false);
   const [editingCourse, setEditingCourse] = useState<CurriculumCourse | null>(null);
   const [deletingCourse, setDeletingCourse] = useState<CurriculumCourse | null>(null);
@@ -342,10 +346,20 @@ export const CurriculumManagePage: React.FC = () => {
         title={t('curriculum.title')}
         subtitle={t('curriculum.subtitle')}
         actions={
-          <RefreshButton
-            onClick={handleRefreshAll}
-            isLoading={isStatsFetching || isCoursesLoading || isVizLoading || isSubsLoading}
-          />
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setIsRequirementsOpen(true)}
+              disabled={!selectedCohort || !selectedMajor}
+              className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 shadow-xs transition hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50"
+            >
+              <span>{t('curriculum.requirements.open')}</span>
+            </button>
+            <RefreshButton
+              onClick={handleRefreshAll}
+              isLoading={isStatsFetching || isCoursesLoading || isVizLoading || isSubsLoading}
+            />
+          </div>
         }
       />
 
@@ -711,7 +725,7 @@ export const CurriculumManagePage: React.FC = () => {
           <div className="rounded-xl border border-slate-200 bg-white p-3.5 shadow-xs dark:border-slate-800 dark:bg-slate-900">
             <div className="flex flex-col gap-2.5 lg:flex-row lg:items-center lg:justify-between lg:flex-nowrap">
               {/* Search input */}
-              <div className="relative flex-1 min-w-[180px]">
+              <div className="relative flex-1 min-w-45">
                 <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400 dark:text-slate-500" />
                 <input
                   type="text"
@@ -1048,6 +1062,14 @@ export const CurriculumManagePage: React.FC = () => {
         confirmText={t('common.delete')}
         cancelText={t('common.cancel')}
         isLoading={deleteSubMutation.isPending}
+      />
+
+      <RequirementRulesModal
+        isOpen={isRequirementsOpen}
+        onClose={() => setIsRequirementsOpen(false)}
+        cohort={selectedCohort}
+        major={selectedMajor}
+        canManage={can('curriculum.manage')}
       />
     </div>
   );

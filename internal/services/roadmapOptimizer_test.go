@@ -258,7 +258,7 @@ func TestRoadmapOptimizer(t *testing.T) {
 			ReplacementCourseCode: "CS111_ALT",
 			ReplacementCourseName: "Cấu trúc rời rạc mới",
 			ScopeCohort:           "<=k35",
-			ScopeMajor:            "TI",
+			ScopeMajor:            "CNTT",
 			IsBidirectional:       1,
 			IsTransitive:          0,
 			CreditsOriginal:       3.0,

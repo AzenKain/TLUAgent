@@ -230,11 +230,6 @@ func formatValidationError(err error) []*ErrorResponse {
 	return errorsList
 }
 
-// FormatValidationError is an exported alias for formatValidationError
-func FormatValidationError(err error) []*ErrorResponse {
-	return formatValidationError(err)
-}
-
 func decodeQueryValue(values url.Values, v reflect.Value) error {
 	t := v.Type()
 

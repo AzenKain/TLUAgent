@@ -28,6 +28,8 @@ type CurriculumService interface {
 	FormatPrerequisitesContext(courseCode, cohort string, prereqs []*response.CoursePrerequisiteResponse, dependents []*response.CoursePrerequisiteResponse) string
 
 	ListCohorts(ctx context.Context) ([]string, error)
+	ListRequirementRules(ctx context.Context, cohort, majorName string) ([]*models.RequirementRule, error)
+	ReplaceRequirementRules(ctx context.Context, req *request.ReplaceRequirementRulesRequest) ([]*models.RequirementRule, error)
 	ListMajorsByCohort(ctx context.Context, cohort string) ([]*response.MajorResponse, error)
 	ListAllMajors(ctx context.Context) ([]*response.MajorResponse, error)
 	ListCoursesPaginated(ctx context.Context, cohort, major, knowledgeBlock, keyword string, semester, isElearning, page, limit int) ([]*response.CurriculumCourseResponse, int64, error)
@@ -1055,6 +1057,15 @@ func (s *curriculumService) GetStudentPersonalRoadmap(ctx context.Context, userI
 		}
 	}
 
+	if optResult != nil && optResult.TotalCurriculumCredits > 0 && optResult.TotalCurriculumCredits < visData.TotalCredits {
+		visData.TotalCredits = optResult.TotalCurriculumCredits
+		remainingCredits = optResult.RemainingCredits
+		progressPct = 0
+		if visData.TotalCredits > 0 {
+			progressPct = math.Min(100, completedCredits/visData.TotalCredits*100)
+		}
+	}
+
 	summary := &response.StudentRoadmapSummaryResponse{
 		Cohort:                 visData.Curriculum.Cohort,
 		MajorName:              visData.Curriculum.MajorName,
@@ -1133,4 +1144,36 @@ func isWordBoundaryMatch(text, pattern string) bool {
 
 func isAlphaNumByte(b byte) bool {
 	return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || (b >= '0' && b <= '9')
+}
+
+func (s *curriculumService) ListRequirementRules(ctx context.Context, cohort, majorName string) ([]*models.RequirementRule, error) {
+	return s.repo.ListRequirementRules(ctx, strings.ToUpper(strings.TrimSpace(cohort)), strings.TrimSpace(majorName))
+}
+
+func (s *curriculumService) ReplaceRequirementRules(ctx context.Context, req *request.ReplaceRequirementRulesRequest) ([]*models.RequirementRule, error) {
+	cohort := strings.ToUpper(strings.TrimSpace(req.Cohort))
+	major := strings.TrimSpace(req.MajorName)
+	if curr, err := s.repo.GetCurriculumByCohortAndMajor(ctx, cohort, major); err != nil || curr == nil {
+		return nil, apperrors.New(apperrors.ErrNotFound, "Curriculum not found for the given cohort and major")
+	}
+	rules := make([]*models.RequirementRule, 0, len(req.Rules))
+	for _, in := range req.Rules {
+		rule := &models.RequirementRule{
+			Cohort: cohort, MajorName: major, RuleType: in.RuleType, GroupKey: strings.TrimSpace(in.GroupKey),
+			MinCredits: in.MinCredits, CourseCodes: strings.TrimSpace(in.CourseCodes),
+			Note: strings.TrimSpace(in.Note), Source: strings.TrimSpace(in.Source),
+		}
+		needsCodes := rule.RuleType == models.RequirementChooseOne || rule.RuleType == models.RequirementElectivePool || rule.RuleType == models.RequirementNonCredit
+		if needsCodes && len(rule.CodeSets()) == 0 {
+			return nil, apperrors.New(apperrors.ErrBadRequest, "course_codes is required for CHOOSE_ONE, ELECTIVE_POOL and NON_CREDIT rules")
+		}
+		if rule.RuleType == models.RequirementChooseOne && len(rule.CodeSets()) < 2 {
+			return nil, apperrors.New(apperrors.ErrBadRequest, "CHOOSE_ONE needs at least two alternatives separated by |")
+		}
+		rules = append(rules, rule)
+	}
+	if err := s.repo.ReplaceRequirementRules(ctx, cohort, major, rules); err != nil {
+		return nil, err
+	}
+	return s.repo.ListRequirementRules(ctx, cohort, major)
 }

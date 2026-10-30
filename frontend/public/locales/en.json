@@ -1368,6 +1368,22 @@
       "quiz_q4_no": "Do not take summer terms (regular terms only)",
       "quiz_submit": "Apply Diagnostic Profile",
       "quiz_cancel": "Cancel"
+    },
+    "requirements": {
+      "open": "Graduation rules",
+      "title": "Graduation rules {{cohort}} - {{major}}",
+      "help": "The roadmap optimizer only schedules the courses still missing under these rules. TOTAL_MIN: minimum total credits (the listed codes are excluded from the total). CHOOSE_ONE: alternatives separated by |, course codes within one alternative separated by commas. ELECTIVE_POOL: a group of elective courses with a minimum number of credits.\nWith no rules the roadmap schedules every course in the curriculum.",
+      "empty": "No rules for this curriculum yet.",
+      "add": "Add rule",
+      "group_key": "Group name",
+      "min_credits": "Minimum credits",
+      "course_codes": "Course codes",
+      "note": "Note",
+      "source": "Source",
+      "type_TOTAL_MIN": "Minimum total",
+      "type_CHOOSE_ONE": "Choose one",
+      "type_ELECTIVE_POOL": "Elective pool",
+      "save_failed": "Could not save the graduation rules"
     }
   },
   "transcript": {

@@ -87,10 +87,6 @@ func (r *roleService) isCallerAdmin(ctx context.Context) bool {
 	return false
 }
 
-func (r *roleService) getCallerClaims(ctx context.Context) *response.JWTClaims {
-	return PermissionContextFrom(ctx)
-}
-
 func (r *roleService) CreateRole(ctx context.Context, dto *request.CreateRoleDto) (*response.RoleResponse, error) {
 	name := strings.ToUpper(strings.TrimSpace(dto.Name))
 	if name == "" {
@@ -251,7 +247,7 @@ func (r *roleService) DeleteRole(ctx context.Context, id string) error {
 		return apperrors.New(apperrors.ErrForbidden, "System roles cannot be deleted")
 	}
 
-	claims := r.getCallerClaims(ctx)
+	claims := PermissionContextFrom(ctx)
 	if claims != nil && !r.isCallerAdmin(ctx) {
 		if slices.Contains(claims.RoleIDs, id) || slices.Contains(claims.Roles, constants.RoleType(role.Name)) {
 			return apperrors.New(apperrors.ErrForbidden, "Cannot delete a role assigned to caller")
@@ -319,7 +315,7 @@ func (r *roleService) replacePermissions(ctx context.Context, txRepo repositorie
 		validKeys[permission.Key] = struct{}{}
 	}
 
-	claims := r.getCallerClaims(ctx)
+	claims := PermissionContextFrom(ctx)
 	if claims != nil && !r.isCallerAdmin(ctx) && r.permissionCache != nil {
 		for _, item := range dto {
 			key := strings.TrimSpace(item.PermissionKey)

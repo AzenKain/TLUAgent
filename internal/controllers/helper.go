@@ -53,8 +53,8 @@ func clientIP(r *http.Request) string {
 	return r.RemoteAddr
 }
 
-// writeJSON writes JSON response with status code.
-func writeJSON(w http.ResponseWriter, status int, data any) {
+// writeJSONResponse writes a JSON body with the given status code.
+func writeJSONResponse(w http.ResponseWriter, status int, data any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
 	body, err := jsonx.Marshal(data)
@@ -62,11 +62,6 @@ func writeJSON(w http.ResponseWriter, status int, data any) {
 		return
 	}
 	_, _ = w.Write(body)
-}
-
-// writeJSONResponse writes CommonResponse or paginated response with status code.
-func writeJSONResponse(w http.ResponseWriter, status int, data any) {
-	writeJSON(w, status, data)
 }
 
 // writeValidationError writes validation error response with status code 400.

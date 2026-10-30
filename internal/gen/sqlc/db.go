@@ -264,6 +264,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.deleteNotificationByIDStmt, err = db.PrepareContext(ctx, deleteNotificationByID); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteNotificationByID: %w", err)
 	}
+	if q.deleteRequirementRulesStmt, err = db.PrepareContext(ctx, deleteRequirementRules); err != nil {
+		return nil, fmt.Errorf("error preparing query DeleteRequirementRules: %w", err)
+	}
 	if q.deleteRoleStmt, err = db.PrepareContext(ctx, deleteRole); err != nil {
 		return nil, fmt.Errorf("error preparing query DeleteRole: %w", err)
 	}
@@ -528,6 +531,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getUsersByIDsStmt, err = db.PrepareContext(ctx, getUsersByIDs); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUsersByIDs: %w", err)
 	}
+	if q.insertRequirementRuleStmt, err = db.PrepareContext(ctx, insertRequirementRule); err != nil {
+		return nil, fmt.Errorf("error preparing query InsertRequirementRule: %w", err)
+	}
 	if q.listActiveAgentPromptsStmt, err = db.PrepareContext(ctx, listActiveAgentPrompts); err != nil {
 		return nil, fmt.Errorf("error preparing query ListActiveAgentPrompts: %w", err)
 	}
@@ -686,6 +692,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.listRecentNotificationIDsStmt, err = db.PrepareContext(ctx, listRecentNotificationIDs); err != nil {
 		return nil, fmt.Errorf("error preparing query ListRecentNotificationIDs: %w", err)
+	}
+	if q.listRequirementRulesStmt, err = db.PrepareContext(ctx, listRequirementRules); err != nil {
+		return nil, fmt.Errorf("error preparing query ListRequirementRules: %w", err)
 	}
 	if q.listRolePermissionIDsStmt, err = db.PrepareContext(ctx, listRolePermissionIDs); err != nil {
 		return nil, fmt.Errorf("error preparing query ListRolePermissionIDs: %w", err)
@@ -1356,6 +1365,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing deleteNotificationByIDStmt: %w", cerr)
 		}
 	}
+	if q.deleteRequirementRulesStmt != nil {
+		if cerr := q.deleteRequirementRulesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing deleteRequirementRulesStmt: %w", cerr)
+		}
+	}
 	if q.deleteRoleStmt != nil {
 		if cerr := q.deleteRoleStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing deleteRoleStmt: %w", cerr)
@@ -1796,6 +1810,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getUsersByIDsStmt: %w", cerr)
 		}
 	}
+	if q.insertRequirementRuleStmt != nil {
+		if cerr := q.insertRequirementRuleStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing insertRequirementRuleStmt: %w", cerr)
+		}
+	}
 	if q.listActiveAgentPromptsStmt != nil {
 		if cerr := q.listActiveAgentPromptsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listActiveAgentPromptsStmt: %w", cerr)
@@ -2059,6 +2078,11 @@ func (q *Queries) Close() error {
 	if q.listRecentNotificationIDsStmt != nil {
 		if cerr := q.listRecentNotificationIDsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing listRecentNotificationIDsStmt: %w", cerr)
+		}
+	}
+	if q.listRequirementRulesStmt != nil {
+		if cerr := q.listRequirementRulesStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing listRequirementRulesStmt: %w", cerr)
 		}
 	}
 	if q.listRolePermissionIDsStmt != nil {
@@ -2620,6 +2644,7 @@ type Queries struct {
 	deleteLLMModelStmt                        *sql.Stmt
 	deleteLLMProviderStmt                     *sql.Stmt
 	deleteNotificationByIDStmt                *sql.Stmt
+	deleteRequirementRulesStmt                *sql.Stmt
 	deleteRoleStmt                            *sql.Stmt
 	deleteRolePermissionsStmt                 *sql.Stmt
 	deleteRulesByDocumentIDStmt               *sql.Stmt
@@ -2708,6 +2733,7 @@ type Queries struct {
 	getUserRolesStmt                          *sql.Stmt
 	getUserTokenVersionStmt                   *sql.Stmt
 	getUsersByIDsStmt                         *sql.Stmt
+	insertRequirementRuleStmt                 *sql.Stmt
 	listActiveAgentPromptsStmt                *sql.Stmt
 	listActiveAnsweredInquiriesStmt           *sql.Stmt
 	listActiveChatModelsWithProviderStmt      *sql.Stmt
@@ -2761,6 +2787,7 @@ type Queries struct {
 	listPrerequisitesForCourseStmt            *sql.Stmt
 	listRecentJobStatusesByTypeStmt           *sql.Stmt
 	listRecentNotificationIDsStmt             *sql.Stmt
+	listRequirementRulesStmt                  *sql.Stmt
 	listRolePermissionIDsStmt                 *sql.Stmt
 	listRolePermissionsStmt                   *sql.Stmt
 	listRulesByDocumentIDStmt                 *sql.Stmt
@@ -2935,6 +2962,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		deleteLLMModelStmt:                        q.deleteLLMModelStmt,
 		deleteLLMProviderStmt:                     q.deleteLLMProviderStmt,
 		deleteNotificationByIDStmt:                q.deleteNotificationByIDStmt,
+		deleteRequirementRulesStmt:                q.deleteRequirementRulesStmt,
 		deleteRoleStmt:                            q.deleteRoleStmt,
 		deleteRolePermissionsStmt:                 q.deleteRolePermissionsStmt,
 		deleteRulesByDocumentIDStmt:               q.deleteRulesByDocumentIDStmt,
@@ -3023,6 +3051,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		getUserRolesStmt:                          q.getUserRolesStmt,
 		getUserTokenVersionStmt:                   q.getUserTokenVersionStmt,
 		getUsersByIDsStmt:                         q.getUsersByIDsStmt,
+		insertRequirementRuleStmt:                 q.insertRequirementRuleStmt,
 		listActiveAgentPromptsStmt:                q.listActiveAgentPromptsStmt,
 		listActiveAnsweredInquiriesStmt:           q.listActiveAnsweredInquiriesStmt,
 		listActiveChatModelsWithProviderStmt:      q.listActiveChatModelsWithProviderStmt,
@@ -3076,6 +3105,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listPrerequisitesForCourseStmt:            q.listPrerequisitesForCourseStmt,
 		listRecentJobStatusesByTypeStmt:           q.listRecentJobStatusesByTypeStmt,
 		listRecentNotificationIDsStmt:             q.listRecentNotificationIDsStmt,
+		listRequirementRulesStmt:                  q.listRequirementRulesStmt,
 		listRolePermissionIDsStmt:                 q.listRolePermissionIDsStmt,
 		listRolePermissionsStmt:                   q.listRolePermissionsStmt,
 		listRulesByDocumentIDStmt:                 q.listRulesByDocumentIDStmt,

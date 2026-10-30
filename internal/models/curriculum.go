@@ -1,6 +1,7 @@
 package models
 
 import (
+	"strings"
 	"tluagent-web/internal/dtos/response"
 	"tluagent-web/internal/gen/sqlc"
 )
@@ -637,4 +638,50 @@ func (sprd *StudentPersonalRoadmapData) ToResponse() *response.StudentPersonalRo
 		PrerequisiteEdges: PrerequisiteEdgesToResponse(sprd.PrerequisiteEdges),
 		OptimizationPlan:  sprd.OptimizationPlan.ToResponse(),
 	}
+}
+
+const (
+	RequirementTotalMin     = "TOTAL_MIN"
+	RequirementChooseOne    = "CHOOSE_ONE"
+	RequirementElectivePool = "ELECTIVE_POOL"
+	RequirementFreeElective = "FREE_ELECTIVE"
+	RequirementNonCredit    = "NON_CREDIT"
+)
+
+// RequirementRule describes one graduation requirement of a curriculum beyond the plain course list.
+type RequirementRule struct {
+	ID          string  `json:"id"`
+	Cohort      string  `json:"cohort"`
+	MajorName   string  `json:"major_name"`
+	RuleType    string  `json:"rule_type"`
+	GroupKey    string  `json:"group_key"`
+	MinCredits  float64 `json:"min_credits"`
+	CourseCodes string  `json:"course_codes"`
+	Note        string  `json:"note"`
+	Source      string  `json:"source"`
+}
+
+// CodeSets splits CourseCodes into alternatives separated by "|", each holding comma-separated course codes.
+func (r *RequirementRule) CodeSets() [][]string {
+	var sets [][]string
+	for alt := range strings.SplitSeq(r.CourseCodes, "|") {
+		var codes []string
+		for _, c := range strings.Split(alt, ",") {
+			if c = strings.ToUpper(strings.TrimSpace(c)); c != "" {
+				codes = append(codes, c)
+			}
+		}
+		if len(codes) > 0 {
+			sets = append(sets, codes)
+		}
+	}
+	return sets
+}
+
+// MatchesCode reports whether a course code equals the pattern or starts with the pattern's prefix before a trailing "*".
+func MatchesCode(pattern, code string) bool {
+	if strings.HasSuffix(pattern, "*") {
+		return strings.HasPrefix(code, strings.TrimSuffix(pattern, "*"))
+	}
+	return pattern == code
 }

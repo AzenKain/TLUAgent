@@ -142,7 +142,7 @@ func TestServerURLValidation(t *testing.T) {
 	}
 }
 
-func TestFormatValidationError(t *testing.T) {
+func TestFormatValidationErrorMessages(t *testing.T) {
 	str := "invalid_url"
 	s := sampleServerURL{ServerURL: &str}
 	err := validate.Struct(s)

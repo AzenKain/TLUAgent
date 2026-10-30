@@ -357,10 +357,6 @@ func (p *GeminiProvider) buildRequestBody(req *ChatRequest) ([]byte, error) {
 	return json.Marshal(payload)
 }
 
-func cleanGeminiModel(m string) string {
-	return CleanGeminiModel(m)
-}
-
 func mapGeminiFinishReason(reason string, hasToolCalls bool) string {
 	if hasToolCalls {
 		return "tool_calls"

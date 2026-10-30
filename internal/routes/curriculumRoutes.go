@@ -35,6 +35,10 @@ func RegisterCurriculumRoutes(
 	mux.Handle("GET /api/admin/curriculums/majors", protectRead(ctrl.HandleListMajors))
 	mux.Handle("GET /api/admin/curriculums/visualization", protectRead(ctrl.HandleGetVisualization))
 
+	// Graduation requirement rules
+	mux.Handle("GET /api/admin/curriculums/requirements", protectRead(ctrl.HandleListRequirementRules))
+	mux.Handle("PUT /api/admin/curriculums/requirements", protectManage(ctrl.HandleReplaceRequirementRules))
+
 	// Courses CRUD
 	mux.Handle("GET /api/admin/curriculums/courses", protectRead(ctrl.HandleListCourses))
 	mux.Handle("GET /api/admin/curriculums/courses/{id}", protectRead(ctrl.HandleGetCourse))

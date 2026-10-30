@@ -3,6 +3,7 @@ package repositories
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"strconv"
 	"strings"
 	"unicode"
@@ -62,6 +63,8 @@ type CurriculumRepository interface {
 	DeleteCourseSubstitution(ctx context.Context, id string) error
 	CountSubstitutions(ctx context.Context) (int64, error)
 	CountCoursePrerequisites(ctx context.Context) (int64, error)
+	ListRequirementRules(ctx context.Context, cohort, majorName string) ([]*models.RequirementRule, error)
+	ReplaceRequirementRules(ctx context.Context, cohort, majorName string, rules []*models.RequirementRule) error
 
 	UpsertCourseGroupSubstitution(ctx context.Context, params sqlc.UpsertCourseGroupSubstitutionParams) (*models.CourseGroupSubstitution, error)
 	ListGroupSubstitutions(ctx context.Context, cohortNum int64, scopeMajor, facultyCode string) ([]*models.CourseGroupSubstitution, error)
@@ -1179,4 +1182,62 @@ func (r *curriculumRepository) UpdateMajorMetadataByName(ctx context.Context, ma
 		}
 	}
 	return err
+}
+
+func (r *curriculumRepository) ListRequirementRules(ctx context.Context, cohort, majorName string) ([]*models.RequirementRule, error) {
+	key := cache.BuildKey("curr", "requirement_rules", cohort, majorName)
+	val, err, _ := r.sfg.Do(key, func() (any, error) {
+		if r.c != nil && !r.inTx {
+			var cached []*models.RequirementRule
+			if err := r.c.Get(ctx, key, &cached); err == nil {
+				return cached, nil
+			}
+		}
+		rows, err := r.q.ListRequirementRules(ctx, sqlc.ListRequirementRulesParams{Cohort: cohort, MajorName: majorName})
+		if err != nil {
+			return nil, err
+		}
+		res := make([]*models.RequirementRule, len(rows))
+		for i, row := range rows {
+			res[i] = &models.RequirementRule{
+				ID: row.ID, Cohort: row.Cohort, MajorName: row.MajorName, RuleType: row.RuleType,
+				GroupKey: row.GroupKey, MinCredits: row.MinCredits, CourseCodes: row.CourseCodes,
+				Note: row.Note, Source: row.Source,
+			}
+		}
+		if r.c != nil && !r.inTx {
+			_ = r.c.Set(ctx, key, res, constants.NormalCacheDuration)
+		}
+		return res, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return val.([]*models.RequirementRule), nil
+}
+
+func (r *curriculumRepository) ReplaceRequirementRules(ctx context.Context, cohort, majorName string, rules []*models.RequirementRule) error {
+	if err := r.q.DeleteRequirementRules(ctx, sqlc.DeleteRequirementRulesParams{Cohort: cohort, MajorName: majorName}); err != nil {
+		return err
+	}
+	for i, rule := range rules {
+		err := r.q.InsertRequirementRule(ctx, sqlc.InsertRequirementRuleParams{
+			ID:          fmt.Sprintf("req_%s_%s_%d", strings.ToLower(cohort), strings.ToLower(strings.ReplaceAll(majorName, " ", "_")), i),
+			Cohort:      cohort,
+			MajorName:   majorName,
+			RuleType:    rule.RuleType,
+			GroupKey:    rule.GroupKey,
+			MinCredits:  rule.MinCredits,
+			CourseCodes: rule.CourseCodes,
+			Note:        rule.Note,
+			Source:      rule.Source,
+		})
+		if err != nil {
+			return err
+		}
+	}
+	if r.c != nil {
+		_ = r.c.Del(ctx, cache.BuildKey("curr", "requirement_rules", cohort, majorName))
+	}
+	return nil
 }

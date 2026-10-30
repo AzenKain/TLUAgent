@@ -160,6 +160,19 @@ type CurriculumCourse struct {
 	UpdatedAt         string  `json:"updated_at"`
 }
 
+type CurriculumRequirementRule struct {
+	ID          string  `json:"id"`
+	Cohort      string  `json:"cohort"`
+	MajorName   string  `json:"major_name"`
+	RuleType    string  `json:"rule_type"`
+	GroupKey    string  `json:"group_key"`
+	MinCredits  float64 `json:"min_credits"`
+	CourseCodes string  `json:"course_codes"`
+	Note        string  `json:"note"`
+	Source      string  `json:"source"`
+	CreatedAt   string  `json:"created_at"`
+}
+
 type Document struct {
 	ID               string         `json:"id"`
 	DocCode          sql.NullString `json:"doc_code"`

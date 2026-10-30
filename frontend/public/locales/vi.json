@@ -1368,6 +1368,22 @@
       "quiz_q4_no": "Không học hè (chỉ học các kỳ chính)",
       "quiz_submit": "Áp dụng hồ sơ năng lực",
       "quiz_cancel": "Hủy"
+    },
+    "requirements": {
+      "open": "Quy tắc tốt nghiệp",
+      "title": "Quy tắc tốt nghiệp {{cohort}} - {{major}}",
+      "help": "Bộ tối ưu lộ trình chỉ xếp các môn còn thiếu theo quy tắc này. TOTAL_MIN: tổng tín chỉ tối thiểu (mã môn liệt kê là các môn không tính vào tổng). CHOOSE_ONE: các phương án cách nhau bằng dấu |, mã môn trong một phương án cách nhau bằng dấu phẩy. ELECTIVE_POOL: nhóm môn tự chọn, cần tối thiểu bao nhiêu tín chỉ.\nChưa có quy tắc thì lộ trình xếp toàn bộ môn trong khung chương trình.",
+      "empty": "Chưa có quy tắc nào cho chương trình này.",
+      "add": "Thêm quy tắc",
+      "group_key": "Tên nhóm",
+      "min_credits": "Số tín chỉ tối thiểu",
+      "course_codes": "Mã môn",
+      "note": "Ghi chú",
+      "source": "Nguồn căn cứ",
+      "type_TOTAL_MIN": "Tổng tối thiểu",
+      "type_CHOOSE_ONE": "Chọn một",
+      "type_ELECTIVE_POOL": "Nhóm tự chọn",
+      "save_failed": "Không thể lưu quy tắc tốt nghiệp"
     }
   },
   "transcript": {

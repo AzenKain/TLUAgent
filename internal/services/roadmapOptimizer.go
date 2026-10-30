@@ -36,6 +36,7 @@ func NewRoadmapOptimizer(curriculumRepo repositories.CurriculumRepository, memor
 type dagNode struct {
 	course          *models.CurriculumCourse
 	prereqs         []string
+	orGroups        [][]string
 	dependents      []string
 	substitutions   []string
 	outDegree       int
@@ -166,36 +167,18 @@ func (s *roadmapOptimizer) OptimizeRoadmap(ctx context.Context, req *models.Road
 		subs = append(subs, sList...)
 	}
 
+	var crossSubs []*models.CourseSubstitution
 	distinctMajors, _ := s.curriculumRepo.ListDistinctSubstitutionMajors(ctx, cohortNum)
 	for _, sm := range distinctMajors {
 		if sm != resolved.MajorCode && sm != resolved.FacultyCode {
 			if dList, dErr := s.curriculumRepo.ListSubstitutionsByCohortAndMajor(ctx, cohortNum, sm, resolved.FacultyCode); dErr == nil {
-				subs = append(subs, dList...)
+				crossSubs = append(crossSubs, dList...)
 			}
 		}
 	}
 
-	substitutesFor := make(map[string][]string)
-	seenSub := make(map[string]bool)
-	for _, sub := range subs {
-		orig := strings.ToUpper(strings.TrimSpace(sub.OriginalCourseCode))
-		repl := strings.ToUpper(strings.TrimSpace(sub.ReplacementCourseCode))
-		if orig == "" || repl == "" {
-			continue
-		}
-		pairKey := orig + "->" + repl
-		if !seenSub[pairKey] {
-			seenSub[pairKey] = true
-			substitutesFor[orig] = append(substitutesFor[orig], repl)
-		}
-		if sub.IsBidirectional {
-			revKey := repl + "->" + orig
-			if !seenSub[revKey] {
-				seenSub[revKey] = true
-				substitutesFor[repl] = append(substitutesFor[repl], orig)
-			}
-		}
-	}
+	substitutesFor := indexSubstitutions(subs)
+	crossSubstitutesFor := indexSubstitutions(crossSubs)
 
 	var totalCurrCredits float64
 	currCourseMap := make(map[string]*models.CurriculumCourse, len(courses))
@@ -205,6 +188,7 @@ func (s *roadmapOptimizer) OptimizeRoadmap(ctx context.Context, req *models.Road
 	}
 
 	passedMap := make(map[string]bool)
+	attemptedMap := make(map[string]bool)
 	failedMap := make(map[string]bool)
 	var accumulatedCredits float64
 	var retakeCredits float64
@@ -217,6 +201,7 @@ func (s *roadmapOptimizer) OptimizeRoadmap(ctx context.Context, req *models.Road
 			continue
 		}
 
+		attemptedMap[code] = true
 		isPassed := g.Score >= 4.0 || (g.Grade != "" && !strings.EqualFold(g.Grade, "F"))
 		if isPassed {
 			passedMap[code] = true
@@ -269,7 +254,26 @@ func (s *roadmapOptimizer) OptimizeRoadmap(ctx context.Context, req *models.Road
 		}
 	}
 
+	for _, c := range courses {
+		if passedMap[c.CourseCode] || attemptedMap[c.CourseCode] {
+			continue
+		}
+		for _, repl := range crossSubstitutesFor[c.CourseCode] {
+			if passedMap[repl] {
+				attemptedMap[c.CourseCode] = true
+				break
+			}
+		}
+	}
+
 	waterfall := s.calculateFreeElectivesWaterfall(passedMap, crossMajorCourses, extraLanguages)
+
+	rules, _ := s.curriculumRepo.ListRequirementRules(ctx, cohort, majorName)
+	for _, rule := range rules {
+		if rule.RuleType == models.RequirementTotalMin && rule.MinCredits > 0 {
+			totalCurrCredits = rule.MinCredits
+		}
+	}
 
 	standing := s.resolveAcademicStanding(ctx, req)
 	maxRetakeAllowed := totalCurrCredits * 0.05
@@ -299,6 +303,29 @@ func (s *roadmapOptimizer) OptimizeRoadmap(ctx context.Context, req *models.Road
 		}
 	}
 
+	var requirementNotes []string
+	if len(rules) > 0 {
+		var before float64
+		for _, c := range remainingCourses {
+			before += c.Credits
+		}
+		outsideCredits := make(map[string]float64)
+		for _, g := range req.Transcript {
+			code := strings.ToUpper(strings.TrimSpace(g.CourseCode))
+			if _, inCurriculum := currCourseMap[code]; !inCurriculum && passedMap[code] && g.Credits > 0 {
+				outsideCredits[code] = g.Credits
+			}
+		}
+		outcome := applyRequirementRules(rules, remainingCourses, passedMap, accumulatedCredits, currCourseMap, outsideCredits)
+		remainingCourses = outcome.Kept
+		var after float64
+		for _, c := range remainingCourses {
+			after += c.Credits
+		}
+		requirementNotes = append(requirementNotes, describeRequirements(outcome, before-after))
+		requirementNotes = append(requirementNotes, outcome.Notes...)
+	}
+
 	if len(remainingCourses) == 0 {
 		return (&models.RoadmapOptimizationResult{
 			Cohort:                 cohort,
@@ -316,7 +343,11 @@ func (s *roadmapOptimizer) OptimizeRoadmap(ctx context.Context, req *models.Road
 		}).ToResponse(), nil
 	}
 
-	dag := s.buildDAG(remainingCourses, prereqEdges, failedMap, substitutesFor)
+	knownCodes := make(map[string]bool, len(currCourseMap))
+	for code := range currCourseMap {
+		knownCodes[code] = true
+	}
+	dag := s.buildDAG(remainingCourses, prereqEdges, failedMap, substitutesFor, knownCodes)
 
 	targetPace := 17.0
 	targetTerm := req.TargetGraduationTerm
@@ -362,6 +393,7 @@ func (s *roadmapOptimizer) OptimizeRoadmap(ctx context.Context, req *models.Road
 		targetTerm,
 		targetPace,
 		passedMap,
+		attemptedMap,
 		failedMap,
 		req.QuizAnswers,
 		summerPreferred,
@@ -380,6 +412,8 @@ func (s *roadmapOptimizer) OptimizeRoadmap(ctx context.Context, req *models.Road
 		startSem,
 		quizResult,
 	)
+
+	recommendations = append(requirementNotes, recommendations...)
 
 	return (&models.RoadmapOptimizationResult{
 		Cohort:                 cohort,
@@ -448,6 +482,7 @@ func (s *roadmapOptimizer) buildDAG(
 	prereqEdges []*models.CoursePrerequisite,
 	failedMap map[string]bool,
 	substitutesFor map[string][]string,
+	knownCodes map[string]bool,
 ) map[string]*dagNode {
 	nodes := make(map[string]*dagNode, len(remaining))
 	for _, c := range remaining {
@@ -460,16 +495,50 @@ func (s *roadmapOptimizer) buildDAG(
 		}
 	}
 
+	orParents := make(map[string][]string)
+	var orOrder []string
 	for _, edge := range prereqEdges {
 		childCode := strings.ToUpper(edge.CourseCode)
 		parentCode := strings.ToUpper(edge.PrerequisiteCourseCode)
 
 		childNode, childExists := nodes[childCode]
-		parentNode, parentExists := nodes[parentCode]
+		if !childExists {
+			continue
+		}
 
-		if childExists && parentExists {
+		if strings.EqualFold(edge.ConditionType, "OR") {
+			key := childCode + "|" + edge.RawExpression
+			if _, seen := orParents[key]; !seen {
+				orOrder = append(orOrder, key)
+			}
+			orParents[key] = append(orParents[key], parentCode)
+			continue
+		}
+
+		if parentNode, parentExists := nodes[parentCode]; parentExists {
 			childNode.prereqs = append(childNode.prereqs, parentCode)
 			parentNode.dependents = append(parentNode.dependents, childCode)
+		}
+	}
+
+	for _, key := range orOrder {
+		childCode := strings.SplitN(key, "|", 2)[0]
+		childNode := nodes[childCode]
+		var open []string
+		satisfied := false
+		for _, parentCode := range orParents[key] {
+			if _, remainingParent := nodes[parentCode]; remainingParent {
+				open = append(open, parentCode)
+			} else if knownCodes[parentCode] {
+				satisfied = true
+			}
+		}
+		if satisfied || len(open) == 0 {
+			continue
+		}
+		childNode.orGroups = append(childNode.orGroups, open)
+		for _, parentCode := range open {
+			nodes[parentCode].dependents = append(nodes[parentCode].dependents, childCode)
 		}
 	}
 
@@ -555,6 +624,7 @@ func (s *roadmapOptimizer) scheduleSemesters(
 	targetTerm int,
 	targetPace float64,
 	initiallyPassed map[string]bool,
+	attempted map[string]bool,
 	failedMap map[string]bool,
 	quiz *models.PersonalityQuizAnswers,
 	summerPreferred map[string]bool,
@@ -562,6 +632,9 @@ func (s *roadmapOptimizer) scheduleSemesters(
 	completed := make(map[string]bool)
 	for k, v := range initiallyPassed {
 		completed[k] = v
+	}
+	for k, v := range attempted {
+		completed[k] = completed[k] || v
 	}
 
 	unassigned := make(map[string]*dagNode, len(dag))
@@ -580,7 +653,7 @@ func (s *roadmapOptimizer) scheduleSemesters(
 		}
 	}
 
-	militaryScheduled := completed["PG121"]
+	militaryScheduled := initiallyPassed["PG121"]
 	allowSummer := (quiz != nil && quiz.SummerWillingness) || len(summerPreferred) > 0
 
 	for len(unassigned) > 0 && currentSemNum <= maxSemesters {
@@ -608,6 +681,19 @@ func (s *roadmapOptimizer) scheduleSemesters(
 			prereqsSatisfied := true
 			for _, p := range node.prereqs {
 				if !completed[p] {
+					prereqsSatisfied = false
+					break
+				}
+			}
+			for _, group := range node.orGroups {
+				anyDone := false
+				for _, p := range group {
+					if completed[p] {
+						anyDone = true
+						break
+					}
+				}
+				if !anyDone {
 					prereqsSatisfied = false
 					break
 				}
@@ -878,4 +964,29 @@ func displayStanding(standing string) string {
 		return "chưa xác định"
 	}
 	return standing
+}
+
+func indexSubstitutions(subs []*models.CourseSubstitution) map[string][]string {
+	index := make(map[string][]string)
+	seen := make(map[string]bool)
+	for _, sub := range subs {
+		orig := strings.ToUpper(strings.TrimSpace(sub.OriginalCourseCode))
+		repl := strings.ToUpper(strings.TrimSpace(sub.ReplacementCourseCode))
+		if orig == "" || repl == "" {
+			continue
+		}
+		pairKey := orig + "->" + repl
+		if !seen[pairKey] {
+			seen[pairKey] = true
+			index[orig] = append(index[orig], repl)
+		}
+		if sub.IsBidirectional {
+			revKey := repl + "->" + orig
+			if !seen[revKey] {
+				seen[revKey] = true
+				index[repl] = append(index[repl], orig)
+			}
+		}
+	}
+	return index
 }

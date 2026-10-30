@@ -137,10 +137,7 @@ func (c *CurriculumController) HandleListCourses(w http.ResponseWriter, r *http.
 		return
 	}
 
-	page := dto.Page
-	if page < 1 {
-		page = 1
-	}
+	page := max(dto.Page, 1)
 	limit := dto.Limit
 	if limit < 1 {
 		limit = 50
@@ -476,8 +473,13 @@ func (c *CurriculumController) HandleGetMyRoadmap(w http.ResponseWriter, r *http
 		}
 	}
 
-	cohort := strings.TrimSpace(r.URL.Query().Get("cohort"))
-	major := strings.TrimSpace(r.URL.Query().Get("major"))
+	var scope request.CurriculumScopeQueryDto
+	if errs := validator.ValidateQueryDto(r, &scope); len(errs) > 0 {
+		writeValidationError(w, errs)
+		return
+	}
+	cohort := strings.TrimSpace(scope.Cohort)
+	major := strings.TrimSpace(scope.Major)
 
 	if (cohort == "" || major == "") && c.memorySvc != nil {
 		if profile, err := c.memorySvc.GetStudentProfile(ctx, uid); err == nil && profile != nil {
@@ -546,4 +548,42 @@ func (c *CurriculumController) HandleGetMyRoadmap(w http.ResponseWriter, r *http
 		Status: true,
 		Data:   roadmapData,
 	})
+}
+
+// HandleListRequirementRules returns the graduation requirement rules of one curriculum.
+func (c *CurriculumController) HandleListRequirementRules(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := requestContext(r, defaultRequestTimeout)
+	defer cancel()
+
+	var dto request.RequiredCurriculumScopeQueryDto
+	if errs := validator.ValidateQueryDto(r, &dto); len(errs) > 0 {
+		writeValidationError(w, errs)
+		return
+	}
+
+	rules, err := c.svc.ListRequirementRules(ctx, dto.Cohort, dto.Major)
+	if err != nil {
+		apperrors.HandleError(w, err)
+		return
+	}
+	writeJSONResponse(w, http.StatusOK, response.CommonResponse{Status: true, Data: rules})
+}
+
+// HandleReplaceRequirementRules replaces the graduation requirement rules of one curriculum.
+func (c *CurriculumController) HandleReplaceRequirementRules(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := requestContext(r, defaultRequestTimeout)
+	defer cancel()
+
+	var req request.ReplaceRequirementRulesRequest
+	if errs := validator.ValidateBodyDto(r, &req); len(errs) > 0 {
+		writeValidationError(w, errs)
+		return
+	}
+
+	rules, err := c.svc.ReplaceRequirementRules(ctx, &req)
+	if err != nil {
+		apperrors.HandleError(w, err)
+		return
+	}
+	writeJSONResponse(w, http.StatusOK, response.CommonResponse{Status: true, Message: "Requirement rules updated successfully", Data: rules})
 }

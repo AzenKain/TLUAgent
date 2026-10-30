@@ -96,3 +96,32 @@ type ListSubstitutionsQueryDto struct {
 	Page    int    `query:"page" validate:"omitempty,gte=0"`
 	Limit   int    `query:"limit" validate:"omitempty,gte=0,lte=500"`
 }
+
+// RequirementRuleInput is one graduation requirement rule supplied by an administrator.
+type RequirementRuleInput struct {
+	RuleType    string  `json:"rule_type" validate:"required,oneof=TOTAL_MIN CHOOSE_ONE ELECTIVE_POOL FREE_ELECTIVE NON_CREDIT"`
+	GroupKey    string  `json:"group_key" validate:"omitempty,max=100"`
+	MinCredits  float64 `json:"min_credits" validate:"gte=0,lte=500"`
+	CourseCodes string  `json:"course_codes" validate:"omitempty,max=2000"`
+	Note        string  `json:"note" validate:"omitempty,max=500"`
+	Source      string  `json:"source" validate:"omitempty,max=300"`
+}
+
+// ReplaceRequirementRulesRequest replaces every requirement rule of one curriculum.
+type ReplaceRequirementRulesRequest struct {
+	Cohort    string                 `json:"cohort" validate:"required,max=50"`
+	MajorName string                 `json:"major_name" validate:"required,max=100"`
+	Rules     []RequirementRuleInput `json:"rules" validate:"max=50,dive"`
+}
+
+// CurriculumScopeQueryDto selects one curriculum by cohort and major in query parameters.
+type CurriculumScopeQueryDto struct {
+	Cohort string `query:"cohort" validate:"omitempty,max=50"`
+	Major  string `query:"major" validate:"omitempty,max=100"`
+}
+
+// RequiredCurriculumScopeQueryDto selects one curriculum and rejects requests that omit the cohort or the major.
+type RequiredCurriculumScopeQueryDto struct {
+	Cohort string `query:"cohort" validate:"required,max=50"`
+	Major  string `query:"major" validate:"required,max=100"`
+}

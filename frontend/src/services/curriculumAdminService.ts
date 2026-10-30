@@ -13,7 +13,34 @@ import type {
   PaginatedResult,
 } from '@/types/curriculum';
 
+export type RequirementRuleType = 'TOTAL_MIN' | 'CHOOSE_ONE' | 'ELECTIVE_POOL';
+
+export interface RequirementRule {
+  rule_type: RequirementRuleType;
+  group_key: string;
+  min_credits: number;
+  course_codes: string;
+  note: string;
+  source: string;
+}
+
 export const curriculumAdminService = {
+  async getRequirementRules(cohort: string, major: string): Promise<RequirementRule[]> {
+    const res = await apiClient.get<CommonResponse<RequirementRule[]>>('/admin/curriculums/requirements', {
+      params: { cohort, major },
+    });
+    return res.data.data ?? [];
+  },
+
+  async replaceRequirementRules(cohort: string, majorName: string, rules: RequirementRule[]): Promise<RequirementRule[]> {
+    const res = await apiClient.put<CommonResponse<RequirementRule[]>>('/admin/curriculums/requirements', {
+      cohort,
+      major_name: majorName,
+      rules,
+    });
+    return res.data.data ?? [];
+  },
+
   async getStats(): Promise<CurriculumStats> {
     const res = await apiClient.get<CommonResponse<CurriculumStats>>('/admin/curriculums/stats');
     return res.data.data!;
