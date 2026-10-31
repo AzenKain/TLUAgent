@@ -55,6 +55,18 @@ type RoadmapOptimizationResultResponse struct {
 	FreeElectives          FreeElectiveWaterfallResponse      `json:"free_electives"`
 	DowngradeRisk          DegreeDowngradeRiskWarningResponse `json:"downgrade_risk"`
 	Recommendations        []string                           `json:"recommendations"`
+	RequirementProgress    []RequirementProgressResponse      `json:"requirement_progress"`
+}
+
+// RequirementProgressResponse reports the state of one graduation requirement rule.
+type RequirementProgressResponse struct {
+	RuleType        string  `json:"rule_type"`
+	GroupKey        string  `json:"group_key"`
+	RequiredCredits float64 `json:"required_credits"`
+	EarnedCredits   float64 `json:"earned_credits"`
+	PlannedCredits  float64 `json:"planned_credits"`
+	Chosen          string  `json:"chosen,omitempty"`
+	Satisfied       bool    `json:"satisfied"`
 }
 
 // PersonalityQuizResultResponse mirrors the serialized shape of the diagnostic quiz evaluation.

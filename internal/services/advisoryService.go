@@ -894,6 +894,13 @@ func (s *advisoryService) executeAdvisorTool(ctx context.Context, userID string,
 			fmt.Fprintf(&b, "- Lưu ý: %s do hồ sơ học vụ chưa có thông tin; hãy cung cấp để lộ trình chính xác hơn.\n", strings.Join(assumedDefaults, ", "))
 		}
 		fmt.Fprintf(&b, "- Tiến độ tích lũy: %.1f / %.1f tín chỉ (Còn lại: %.1f tín chỉ)\n", res.AccumulatedCredits, res.TotalCurriculumCredits, res.RemainingCredits)
+		for _, rp := range res.RequirementProgress {
+			chosen := ""
+			if rp.Chosen != "" {
+				chosen = " chosen=" + rp.Chosen
+			}
+			fmt.Fprintf(&b, "- Graduation requirement %s/%s: required %.1f credits, earned %.1f, still planned %.1f, satisfied=%t%s\n", rp.RuleType, rp.GroupKey, rp.RequiredCredits, rp.EarnedCredits, rp.PlannedCredits, rp.Satisfied, chosen)
+		}
 		if len(res.CriticalPathCourses) > 0 {
 			fmt.Fprintf(&b, "- Môn đường găng tiên quyết: %s\n", strings.Join(res.CriticalPathCourses, ", "))
 		}

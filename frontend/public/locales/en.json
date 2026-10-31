@@ -1569,5 +1569,15 @@
       "col_change": "Change (Old -> New)",
       "col_notes": "Notes"
     }
+  },
+  "roadmap_requirements": {
+    "title": "Graduation requirements of the curriculum",
+    "type_CHOOSE_ONE": "Choose one",
+    "type_ELECTIVE_POOL": "Major electives",
+    "type_FREE_ELECTIVE": "Free electives",
+    "type_TOTAL_MIN": "Minimum total credits",
+    "chosen": "chosen {{codes}}",
+    "earned": "{{earned}}/{{required}} credits",
+    "missing": "{{credits}} credits missing"
   }
 }

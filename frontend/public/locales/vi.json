@@ -1569,5 +1569,15 @@
       "col_change": "Thay đổi (Cũ -> Mới)",
       "col_notes": "Ghi chú"
     }
+  },
+  "roadmap_requirements": {
+    "title": "Điều kiện tốt nghiệp theo khung chương trình",
+    "type_CHOOSE_ONE": "Chọn một phương án",
+    "type_ELECTIVE_POOL": "Tự chọn của ngành",
+    "type_FREE_ELECTIVE": "Tự do",
+    "type_TOTAL_MIN": "Tổng tín chỉ tối thiểu",
+    "chosen": "đã chọn {{codes}}",
+    "earned": "{{earned}}/{{required}} tín chỉ",
+    "missing": "còn thiếu {{credits}} tín chỉ"
   }
 }

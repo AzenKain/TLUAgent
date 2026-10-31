@@ -1,7 +1,7 @@
 ---
 id: academic_standing
 name: Đánh giá Học lực & Cảnh báo Học vụ
-description: Phân tích điểm số CPA/GPA, đánh giá nguy cơ cảnh báo học tập (Điều 18, Điều 20) và điều kiện tốt nghiệp.
+description: Phân tích điểm số CPA/GPA, đánh giá mốc tín chỉ theo năm, nguy cơ cảnh báo học tập, buộc thôi học và điều kiện tốt nghiệp.
 priority: 80
 tool_definition: |
   {"name":"lookup_student_transcript_and_roadmap","description":"Tra cứu bảng điểm cá nhân của sinh viên đang đăng nhập: tổng tín chỉ tích lũy, điểm trung bình CPA/GPA (hệ 10 & 4), số học phần đã đạt, số học phần cần học lại.","parameters":{"type":"object","properties":{}}}
@@ -27,10 +27,14 @@ Kỹ năng này chịu trách nhiệm hướng dẫn sinh viên tính toán đi�
      - Tuyệt đối không tự suy diễn, không hardcode số điểm cố định, không áp đặt mức điểm giữa các khóa/ngành khác nhau.
      - **TUYỆT ĐỐI KHÔNG NÓI VỀ TIỀN LỆ PHÍ THI NỘI BỘ KHI SINH VIÊN HỎI VỀ ĐIỂM CHUẨN ĐẦU RA XÉT TỐT NGHIỆP** (chỉ đề cập lệ phí khi sinh viên hỏi rõ về chi phí đăng ký thi nội bộ).
 
-2. **Quy Định Cảnh Báo Học Tập (Theo Quy Chế Đào Tạo 2026 Mới Nhất)**:
-   - Sinh viên bị cảnh báo học tập nếu điểm trung bình tích lũy hoặc số tín chỉ trượt F trong học kỳ vượt quá giới hạn theo quy chế.
-   - Bị buộc thôi học nếu bị cảnh báo học tập liên tiếp vượt quá số lần quy định.
-
+2. **Mốc Tín Chỉ Theo Năm, Cảnh Báo Học Tập & Buộc Thôi Học (Tra Theo Khóa)**:
+   - **Phân biệt hai khái niệm**: "năm thứ mấy" của sinh viên luôn tính theo số năm học thực tế kể từ khóa nhập học. Bảng "xếp hạng năm đào tạo" trong quy chế chỉ là mốc tín chỉ gợi ý (mỗi năm cần tích lũy khoảng bao nhiêu tín chỉ). Tuyệt đối không dùng bảng này để đổi năm học của sinh viên; chỉ dùng để cho biết sinh viên đạt hay chưa đạt mốc.
+   - Quy chế khác nhau theo khóa (khóa cũ dùng ngưỡng tín chỉ cố định, khóa mới có thể dùng bội số của số tín chỉ trung bình mỗi năm theo kế hoạch chuẩn và thời hạn tối đa khác). Phải xác định Khóa của sinh viên trước, rồi gọi `search_regulations` với từ khóa "xếp hạng năm đào tạo" và "cảnh báo học tập, buộc thôi học" kèm khóa học. Không tự nhớ con số, không dùng số của khóa khác.
+   - Khi trình bày phải nêu đủ từ văn bản tra được: các trường hợp bị cảnh báo học tập (nghỉ học không lý do, mốc tín chỉ tích lũy theo số năm học, điểm số, nợ đọng nếu quy chế có nêu), các trường hợp bị buộc thôi học (cảnh báo liên tiếp, quá thời hạn tối đa của khóa, vi phạm kỷ luật), thủ tục muốn học tiếp và đơn vị tiếp nhận, kèm trích dẫn điều khoản và tên văn bản.
+   - **Phân biệt cảnh báo và buộc thôi học**: các ngưỡng tín chỉ tích lũy theo số năm học là điều kiện để bị CẢNH BÁO học tập, không phải điều kiện buộc thôi học. Buộc thôi học là hệ quả của việc bị cảnh báo lặp lại (số lần và tính liên tiếp theo văn bản), quá thời hạn tối đa hoặc kỷ luật. Không được gộp hai loại này và không gọi ngưỡng cảnh báo là "mốc để không bị buộc thôi học".
+   - **Khi các văn bản của cùng một khóa ghi khác nhau** (ví dụ Niên giám của khóa ghi một số lần cảnh báo, Quy chế đào tạo ban hành sau ghi số lần khác): ưu tiên văn bản ban hành sau nếu có thông báo hoặc điều khoản xác nhận áp dụng cho khóa đó, nêu rõ đã dùng văn bản nào (tên, ngày) và có chênh lệch với văn bản cũ. Không trộn số liệu của hai văn bản trong cùng một câu trả lời.
+   - **Kết luận phải khớp với phép so sánh**: khi sinh viên đưa số tín chỉ, trước hết nêu ngưỡng và kết quả so sánh (nhỏ hơn hay không nhỏ hơn), rồi mới kết luận bị cảnh báo hay không. Nếu sinh viên chưa kết thúc năm học tương ứng thì nói rõ ngưỡng chỉ xét khi kết thúc năm học đó.
+   - Nếu sinh viên đưa số tín chỉ cụ thể, so sánh với đúng ngưỡng của khóa đó và nêu rõ ranh giới (nhỏ hơn hay nhỏ hơn hoặc bằng).
 3. **Quy Đổi Thang Điểm & Thái Độ Tư Vấn**:
    - Thang điểm 10 quy đổi sang thang chữ (A, B, C, D, F) và thang 4.0.
    - Điểm F bắt buộc phải học lại; điểm D được phép đăng ký học cải thiện.

@@ -35,7 +35,7 @@ func TestApplyRequirementRulesChoosesOneAlternativeAndFillsToTotal(t *testing.T)
 		{RuleType: models.RequirementElectivePool, MinCredits: 3, CourseCodes: "E1,E2,E3"},
 		{RuleType: models.RequirementTotalMin, MinCredits: 21},
 	}
-	out := applyRequirementRules(rules, all, map[string]bool{"Z1": true}, 2, byCode, nil)
+	out := applyRequirementRules(rules, all, map[string]bool{"Z1": true}, 2, byCode, nil, nil)
 	kept := keptCodes(out.Kept)
 
 	if kept["L1"] || kept["L2"] || !kept["Z2"] {
@@ -55,7 +55,7 @@ func TestApplyRequirementRulesChoosesOneAlternativeAndFillsToTotal(t *testing.T)
 
 func TestApplyRequirementRulesWithoutRulesKeepsEverything(t *testing.T) {
 	_, all := courseSet(map[string]float64{"A1": 3, "E1": 3})
-	out := applyRequirementRules(nil, all, map[string]bool{}, 0, nil, nil)
+	out := applyRequirementRules(nil, all, map[string]bool{}, 0, nil, nil, nil)
 	if len(out.Kept) != 2 {
 		t.Fatalf("no rules means no filtering, got %d courses", len(out.Kept))
 	}
@@ -66,7 +66,7 @@ func TestApplyRequirementRulesSkipsPoolWhenAlreadySatisfied(t *testing.T) {
 	passed := map[string]bool{"E1": true}
 	remaining := all[1:]
 	rules := []*models.RequirementRule{{RuleType: models.RequirementElectivePool, MinCredits: 3, CourseCodes: "E1,E2,E3"}}
-	out := applyRequirementRules(rules, remaining, passed, 3, byCode, nil)
+	out := applyRequirementRules(rules, remaining, passed, 3, byCode, nil, nil)
 	if len(out.Kept) != 0 {
 		t.Fatalf("a satisfied pool must not add more courses, got %v", keptCodes(out.Kept))
 	}
@@ -75,12 +75,12 @@ func TestApplyRequirementRulesSkipsPoolWhenAlreadySatisfied(t *testing.T) {
 func TestApplyRequirementRulesUsesCoursesOutsideTheCurriculumAsDone(t *testing.T) {
 	byCode, all := courseSet(map[string]float64{"T1": 2})
 	rules := []*models.RequirementRule{{RuleType: models.RequirementChooseOne, CourseCodes: "T1|T9"}}
-	out := applyRequirementRules(rules, all, map[string]bool{"T9": true}, 3, byCode, nil)
+	out := applyRequirementRules(rules, all, map[string]bool{"T9": true}, 3, byCode, nil, nil)
 	if len(out.Kept) != 0 {
 		t.Fatalf("an alternative finished with a course unknown to the curriculum must satisfy the group, kept %v", keptCodes(out.Kept))
 	}
 
-	unfinished := applyRequirementRules(rules, all, map[string]bool{}, 0, byCode, nil)
+	unfinished := applyRequirementRules(rules, all, map[string]bool{}, 0, byCode, nil, nil)
 	if len(unfinished.Kept) != 1 {
 		t.Fatalf("an unfinished alternative that contains unknown courses must not be chosen, kept %v", keptCodes(unfinished.Kept))
 	}
@@ -96,13 +96,39 @@ func TestApplyRequirementRulesCountsOutsideAndExcessCreditsAsFreeElectives(t *te
 
 	outside := map[string]float64{"X9": 3, "PG106": 1}
 	passed := map[string]bool{"X9": true, "PG106": true, "E1": true, "E2": true}
-	out := applyRequirementRules(rules, all[2:], passed, 9, byCode, outside)
+	out := applyRequirementRules(rules, all[2:], passed, 9, byCode, outside, nil)
 	if len(out.Kept) != 0 {
 		t.Fatalf("an outside course and an excess pool course (3+3) already cover 6 free credits, got %v", keptCodes(out.Kept))
 	}
 
-	short := applyRequirementRules(rules, all[1:], map[string]bool{"E1": true, "PG106": true}, 4, byCode, map[string]float64{"PG106": 1})
+	short := applyRequirementRules(rules, all[1:], map[string]bool{"E1": true, "PG106": true}, 4, byCode, map[string]float64{"PG106": 1}, nil)
 	if len(short.Kept) != 2 {
 		t.Fatalf("physical education credits do not count, so 6 free credits are still needed from the leftover pool, got %v", keptCodes(short.Kept))
+	}
+}
+
+func TestCompactTailSemesterMovesLightLastSemesterWhenPrerequisitesAllow(t *testing.T) {
+	dag := map[string]*dagNode{
+		"A": {course: &models.CurriculumCourse{CourseCode: "A", Credits: 3}},
+		"B": {course: &models.CurriculumCourse{CourseCode: "B", Credits: 3}, prereqs: []string{"A"}},
+		"C": {course: &models.CurriculumCourse{CourseCode: "C", Credits: 2}},
+	}
+	sched := []*models.ScheduledSemester{
+		{SemesterNumber: 1, TotalCredits: 18, Courses: []*models.ScheduledCourse{{CourseCode: "A", Credits: 3}}},
+		{SemesterNumber: 2, TotalCredits: 18, Courses: []*models.ScheduledCourse{{CourseCode: "X", Credits: 18}}},
+		{SemesterNumber: 3, TotalCredits: 5, Courses: []*models.ScheduledCourse{{CourseCode: "B", Credits: 3}, {CourseCode: "C", Credits: 2}}},
+	}
+	out := compactTailSemester(sched, dag, map[string]bool{})
+	if len(out) != 2 || out[1].TotalCredits != 23 {
+		t.Fatalf("A is finished in semester 1, so B and C both fit into semester 2 and the light tail disappears, got %+v", out)
+	}
+
+	sched2 := []*models.ScheduledSemester{
+		{SemesterNumber: 1, TotalCredits: 20, Courses: []*models.ScheduledCourse{{CourseCode: "A", Credits: 3}, {CourseCode: "Y", Credits: 17}}},
+		{SemesterNumber: 2, TotalCredits: 5, Courses: []*models.ScheduledCourse{{CourseCode: "B", Credits: 3}, {CourseCode: "C", Credits: 2}}},
+	}
+	out2 := compactTailSemester(sched2, dag, map[string]bool{})
+	if len(out2) != 2 || out2[1].TotalCredits != 3 {
+		t.Fatalf("only the course without a prerequisite in the previous semester may move, got %+v", out2)
 	}
 }

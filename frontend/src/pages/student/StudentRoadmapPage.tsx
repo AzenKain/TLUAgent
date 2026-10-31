@@ -1,3 +1,4 @@
+import { RequirementProgressList } from '@/components/common/RequirementProgressList';
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
@@ -347,6 +348,8 @@ export const StudentRoadmapPage: React.FC = () => {
                       <span>{formatDowngradeWarning(data.optimization_plan.downgrade_risk, t)}</span>
                     </div>
                   )}
+
+                  <RequirementProgressList items={data.optimization_plan.requirement_progress} />
 
                   {data.optimization_plan.recommendations && data.optimization_plan.recommendations.length > 0 && (
                     <ul className="space-y-1 text-xs text-slate-600 dark:text-slate-300">

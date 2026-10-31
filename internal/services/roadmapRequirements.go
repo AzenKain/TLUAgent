@@ -13,12 +13,23 @@ type requirementOutcome struct {
 	Notes     []string
 	TotalMin  float64
 	Satisfied bool
+	Progress  []models.RequirementProgress
 }
 
 func passedCredits(codes []string, passed map[string]bool, byCode map[string]*models.CurriculumCourse) float64 {
 	var sum float64
 	for _, code := range codes {
 		if c, ok := byCode[code]; ok && passed[code] {
+			sum += c.Credits
+		}
+	}
+	return sum
+}
+
+func creditsOf(codes []string, byCode map[string]*models.CurriculumCourse) float64 {
+	var sum float64
+	for _, code := range codes {
+		if c, ok := byCode[code]; ok {
 			sum += c.Credits
 		}
 	}
@@ -35,10 +46,10 @@ func missingCredits(codes []string, passed map[string]bool, byCode map[string]*m
 	return sum
 }
 
-func pickChooseOne(rule *models.RequirementRule, passed map[string]bool, byCode map[string]*models.CurriculumCourse, drop map[string]bool) {
+func pickChooseOne(rule *models.RequirementRule, passed map[string]bool, byCode map[string]*models.CurriculumCourse, drop map[string]bool) []string {
 	sets := rule.CodeSets()
 	if len(sets) < 2 {
-		return
+		return nil
 	}
 
 	best, bestMissing, bestProgress, bestDone := -1, 0.0, 0.0, false
@@ -66,7 +77,7 @@ func pickChooseOne(rule *models.RequirementRule, passed map[string]bool, byCode 
 		}
 	}
 	if best < 0 {
-		return
+		return nil
 	}
 
 	keep := map[string]bool{}
@@ -83,6 +94,7 @@ func pickChooseOne(rule *models.RequirementRule, passed map[string]bool, byCode 
 			}
 		}
 	}
+	return sets[best]
 }
 
 // applyRequirementRules narrows the remaining courses to what is still needed to graduate under the curriculum's requirement rules.
@@ -93,6 +105,7 @@ func applyRequirementRules(
 	accumulated float64,
 	byCode map[string]*models.CurriculumCourse,
 	outsideCredits map[string]float64,
+	ready map[string]bool,
 ) requirementOutcome {
 	if len(rules) == 0 {
 		return requirementOutcome{Kept: remaining}
@@ -103,11 +116,18 @@ func applyRequirementRules(
 	var totalMin float64
 	var pools, frees []*models.RequirementRule
 	var nonCredit []string
+	var progress []models.RequirementProgress
 
 	for _, rule := range rules {
 		switch rule.RuleType {
 		case models.RequirementChooseOne:
-			pickChooseOne(rule, passed, byCode, drop)
+			chosen := pickChooseOne(rule, passed, byCode, drop)
+			progress = append(progress, models.RequirementProgress{
+				RuleType: rule.RuleType, GroupKey: rule.GroupKey, Chosen: strings.Join(chosen, ","),
+				RequiredCredits: creditsOf(chosen, byCode), EarnedCredits: passedCredits(chosen, passed, byCode),
+				PlannedCredits: missingCredits(chosen, passed, byCode),
+				Satisfied:      len(chosen) > 0 && missingCredits(chosen, passed, byCode) == 0,
+			})
 		case models.RequirementElectivePool:
 			pools = append(pools, rule)
 		case models.RequirementFreeElective:
@@ -164,6 +184,8 @@ func applyRequirementRules(
 			freeEarned += earned - pool.MinCredits
 		}
 		need := pool.MinCredits - earned
+		sort.SliceStable(codes, func(i, j int) bool { return ready[codes[i]] && !ready[codes[j]] })
+		var picked float64
 		for _, code := range codes {
 			c, ok := remainingByCode[code]
 			if !ok || drop[code] {
@@ -171,19 +193,24 @@ func applyRequirementRules(
 			}
 			if need > 0 {
 				need -= c.Credits
+				picked += c.Credits
 				continue
 			}
 			drop[code] = true
 			deferred = append(deferred, c)
 		}
+		progress = append(progress, models.RequirementProgress{
+			RuleType: pool.RuleType, GroupKey: pool.GroupKey, RequiredCredits: pool.MinCredits,
+			EarnedCredits: earned, PlannedCredits: picked, Satisfied: need <= 0,
+		})
 		if need > 0 {
 			notes = append(notes, fmt.Sprintf("pool %s is short by %.1f credits and has no more courses to offer", pool.GroupKey, need))
 		}
 	}
 
-	sort.SliceStable(deferred, func(i, j int) bool { return deferred[i].Credits > deferred[j].Credits })
-	var promoted []*models.CurriculumCourse
+	sort.SliceStable(deferred, func(i, j int) bool { return ready[deferred[i].CourseCode] && !ready[deferred[j].CourseCode] })
 	for _, free := range frees {
+		earnedBefore := freeEarned
 		need := free.MinCredits - freeEarned
 		for _, c := range deferred {
 			if need <= 0 {
@@ -191,11 +218,14 @@ func applyRequirementRules(
 			}
 			if drop[c.CourseCode] {
 				drop[c.CourseCode] = false
-				promoted = append(promoted, c)
 				need -= c.Credits
 			}
 		}
 		freeEarned = free.MinCredits - need
+		progress = append(progress, models.RequirementProgress{
+			RuleType: free.RuleType, GroupKey: free.GroupKey, RequiredCredits: free.MinCredits,
+			EarnedCredits: earnedBefore, PlannedCredits: free.MinCredits - need - earnedBefore, Satisfied: need <= 0,
+		})
 		if need > 0 {
 			notes = append(notes, fmt.Sprintf("choose %.1f more free-elective credits from any course offered by the university", need))
 		}
@@ -238,14 +268,5 @@ func applyRequirementRules(
 		}
 	}
 
-	return requirementOutcome{Kept: kept, Notes: notes, TotalMin: totalMin, Satisfied: true}
-}
-
-func describeRequirements(outcome requirementOutcome, droppedCredits float64) string {
-	var sb strings.Builder
-	fmt.Fprintf(&sb, "Graduation requirement model applied: %.1f optional or alternative credits are not scheduled", droppedCredits)
-	if outcome.TotalMin > 0 {
-		fmt.Fprintf(&sb, "; the minimum is %.1f credits excluding the listed physical education and defence courses", outcome.TotalMin)
-	}
-	return sb.String()
+	return requirementOutcome{Kept: kept, Notes: notes, TotalMin: totalMin, Satisfied: true, Progress: progress}
 }

@@ -162,6 +162,7 @@ Kỹ năng này chịu trách nhiệm tư vấn, thiết kế và tối ưu hóa
 ## Hướng Dẫn Thực Hiện & Quy Trình Lập Kế Hoạch Hợp Tác Động (Dynamic Co-Planning Workflow)
 
 ### 1. Tổng Hợp Bộ Nhớ Dài Hạn & Khảo Sát Bổ Sung (Long-Term Memory Synthesis & Profiling)
+
 - **Kiểm tra Bộ nhớ dài hạn trước tiên**: Đọc kỹ dữ liệu trong `<student_memory>` / `[STUDENT LONG-TERM ACADEMIC PROFILE & MEMORY]`. Nếu Khóa, Ngành, mục tiêu tốt nghiệp (3.5 năm / 4 năm), nhịp độ học, lịch đi làm thêm, định hướng chuyên sâu đã được ghi nhớ:
   - Cố vấn **CHỦ ĐỘNG GHI NHẬN** bối cảnh này (ví dụ: *"Chào bạn, tôi ghi nhận bạn đang theo học Khóa [Kxx] ngành [Ngành] với mục tiêu tốt nghiệp 3.5 năm và có kế hoạch đi làm thêm 20h/tuần..."*).
   - **TUYỆT ĐỐI KHÔNG HỎI LẠI TỪ ĐẦU** các thông tin đã có trong bộ nhớ dài hạn.
@@ -250,18 +251,20 @@ Kỹ năng này chịu trách nhiệm tư vấn, thiết kế và tối ưu hóa
 Do sinh viên chỉ được tải lên tối đa 4 ảnh mỗi lượt và bảng điểm học vụ có thể gồm nhiều trang hoặc nhiều học kỳ khác nhau, Cố vấn TUYỆT ĐỐI KHÔNG lưu chính thức vào CSDL ngay khi vừa nhận ảnh. Quy trình bắt buộc phải qua 3 giai đoạn:
 
 #### Giai đoạn 1: Trích Xuất & Lưu Nháp Trong Hội Thoại (Extract & Stage as Draft)
+
 1. **Phân tích Thị giác Đa phương thức (Vision Extraction)**:
    - Tự động nhận diện đầy đủ các môn từ hình ảnh: Mã môn (in hoa), tên môn tiếng Việt, số tín chỉ, điểm hệ 10, điểm hệ 4, điểm chữ, trạng thái (đạt/không đạt), và học kỳ.
 2. **Tra cứu Đối chiếu Điểm Hiện Có (State Inspection & Diff)**:
    - Gọi `lookup_student_transcript_and_roadmap` để lấy điểm đang có trong hồ sơ sinh viên và phân tích đối chiếu khác biệt (diff):
-     + Môn mới hoàn thành (chưa có trong CSDL).
-     + Môn học lại cải thiện điểm (ví dụ: trước đây bị F, nay đã đạt B hoặc A).
-     + Môn nợ F cần bố trí học lại.
+     - Môn mới hoàn thành (chưa có trong CSDL).
+     - Môn học lại cải thiện điểm (ví dụ: trước đây bị F, nay đã đạt B hoặc A).
+     - Môn nợ F cần bố trí học lại.
 3. **Cơ Chế Gộp Bản Nháp Tích Lũy Qua Nhiều Lượt (Cumulative Draft Merging)**:
    - Toàn bộ môn học trích xuất được LƯU NHÁP trong ngữ cảnh hội thoại.
    - Nếu ở các lượt trước sinh viên đã gửi ảnh và đã có danh sách môn nháp, Cố vấn PHẢI TỰ ĐỘNG GỘP (MERGE) các môn mới vào bản nháp tích lũy, không được làm mất các môn ở ảnh trước.
 
 #### Giai đoạn 2: Báo Cáo Bản Nháp & Xin Xác Nhận (Report Draft & Request Confirmation)
+
 1. **Trình bày Bảng Nháp Chi Tiết & Tóm Tắt Thay Đổi**:
    - Trình bày bảng Markdown rõ ràng danh sách môn học đã trích xuất (Mã môn, Tên môn, Số TC, Điểm 10, Điểm 4, Điểm chữ, Trạng thái).
    - Nêu rõ tổng số môn trong bản nháp tích lũy hiện tại và tóm tắt những thay đổi đáng chú ý (môn mới, môn cải thiện điểm, môn còn nợ).
@@ -274,10 +277,19 @@ Do sinh viên chỉ được tải lên tối đa 4 ảnh mỗi lượt và bả
    - Mọi dữ liệu chỉ được giữ ở dạng bản nháp trao đổi với người dùng cho đến khi nhận được xác nhận rõ ràng.
 
 #### Giai đoạn 3: Thực Hiện Khi Người Dùng Xác Nhận (Execution on Confirmation)
+
 Khi và chỉ khi sinh viên gửi tin nhắn xác nhận (ví dụ: *"Xác nhận"*, *"Đúng rồi"*, *"Tôi gửi đủ rồi, tối ưu giúp tôi"*, *"Tiến hành tối ưu lộ trình"*):
+
 1. **Lưu Chính Thức Vào CSDL (Autonomous Persistence)**:
    - Gọi `sync_student_transcript_grades` với toàn bộ danh sách môn đã tích lũy trong bản nháp qua các lượt gửi ảnh.
 2. **Kích Hoạt Tối Ưu Hóa Lộ Trình (Chained Optimization)**:
    - Ngay sau đó, gọi `optimize_study_roadmap` để chạy giải thuật DAG, phân tích đường găng và đề xuất môn học cho các học kỳ tiếp theo.
 3. **Trình Bày Lộ Trình Hoàn Chỉnh**:
    - Xuất thẻ lộ trình (Roadmap Card) và phân tích lộ trình học tập tối ưu cho sinh viên.
+
+## Quy tắc tốt nghiệp theo khung chương trình
+
+- Không có số tín chỉ tối thiểu chung: sinh viên đủ điều kiện khi hoàn thành các môn bắt buộc, chọn đủ một phương án ở mỗi nhóm "chọn một" (ngoại ngữ 2, khóa luận hoặc chuyên đề tốt nghiệp), đủ tín chỉ tự chọn của ngành và đủ tín chỉ tự do.
+- Môn của ngành khác đã học và phần tự chọn ngành vượt mức đều được tính vào tín chỉ tự do; giáo dục thể chất và quốc phòng phải đạt nhưng không tính vào tín chỉ tự do.
+- Khi công cụ trả các dòng "Graduation requirement", hãy tóm tắt cho sinh viên nhóm nào đã xong, nhóm nào còn thiếu bao nhiêu tín chỉ và phương án đã chọn. Nếu chưa có quy tắc cho chương trình, nói rõ lộ trình đang xếp toàn bộ môn trong khung và có thể thừa các môn tự chọn.
+- Điều kiện tiên quyết được coi là đạt khi sinh viên đã học học phần đó và đủ điều kiện dự thi, nên môn trượt cuối kỳ không chặn đăng ký môn sau.

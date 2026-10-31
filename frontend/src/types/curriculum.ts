@@ -246,4 +246,15 @@ export interface RoadmapOptimizationResult {
   free_electives: FreeElectiveWaterfall;
   downgrade_risk: DegreeDowngradeRiskWarning;
   recommendations: string[];
+  requirement_progress?: RequirementProgress[];
+}
+
+export interface RequirementProgress {
+  rule_type: 'TOTAL_MIN' | 'CHOOSE_ONE' | 'ELECTIVE_POOL' | 'FREE_ELECTIVE' | string;
+  group_key: string;
+  required_credits: number;
+  earned_credits: number;
+  planned_credits: number;
+  chosen?: string;
+  satisfied: boolean;
 }

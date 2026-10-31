@@ -1,3 +1,4 @@
+import { RequirementProgressList } from '@/components/common/RequirementProgressList';
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -244,6 +245,8 @@ export const RoadmapCard: React.FC<RoadmapCardProps> = ({ roadmap, onViewFullRoa
             )}
           </div>
         )}
+
+        <RequirementProgressList items={roadmap.requirement_progress} />
 
         {/* Strategic Recommendations */}
         {roadmap.recommendations && roadmap.recommendations.length > 0 && (

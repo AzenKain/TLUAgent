@@ -191,6 +191,18 @@ type RoadmapOptimizationResult struct {
 	FreeElectives          FreeElectiveWaterfall      `json:"free_electives"`
 	DowngradeRisk          DegreeDowngradeRiskWarning `json:"downgrade_risk"`
 	Recommendations        []string                   `json:"recommendations"`
+	RequirementProgress    []RequirementProgress      `json:"requirement_progress"`
+}
+
+// RequirementProgress reports how far one graduation requirement rule is satisfied and what the plan still schedules for it.
+type RequirementProgress struct {
+	RuleType        string  `json:"rule_type"`
+	GroupKey        string  `json:"group_key"`
+	RequiredCredits float64 `json:"required_credits"`
+	EarnedCredits   float64 `json:"earned_credits"`
+	PlannedCredits  float64 `json:"planned_credits"`
+	Chosen          string  `json:"chosen,omitempty"`
+	Satisfied       bool    `json:"satisfied"`
 }
 
 // ToResponse converts a RoadmapOptimizationResult domain model to a response DTO.
@@ -211,7 +223,17 @@ func (ror *RoadmapOptimizationResult) ToResponse() *response.RoadmapOptimization
 		FreeElectives:          *ror.FreeElectives.ToResponse(),
 		DowngradeRisk:          *ror.DowngradeRisk.ToResponse(),
 		Recommendations:        ror.Recommendations,
+		RequirementProgress:    RequirementProgressToResponse(ror.RequirementProgress),
 	}
+}
+
+// RequirementProgressToResponse converts requirement progress entries to response DTOs.
+func RequirementProgressToResponse(items []RequirementProgress) []response.RequirementProgressResponse {
+	out := make([]response.RequirementProgressResponse, 0, len(items))
+	for _, it := range items {
+		out = append(out, response.RequirementProgressResponse(it))
+	}
+	return out
 }
 
 // ToResponse converts a PersonalityQuizResult domain model to a response DTO.

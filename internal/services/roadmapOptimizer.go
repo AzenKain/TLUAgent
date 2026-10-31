@@ -303,12 +303,8 @@ func (s *roadmapOptimizer) OptimizeRoadmap(ctx context.Context, req *models.Road
 		}
 	}
 
-	var requirementNotes []string
+	var requirementProgress []models.RequirementProgress
 	if len(rules) > 0 {
-		var before float64
-		for _, c := range remainingCourses {
-			before += c.Credits
-		}
 		outsideCredits := make(map[string]float64)
 		for _, g := range req.Transcript {
 			code := strings.ToUpper(strings.TrimSpace(g.CourseCode))
@@ -316,14 +312,9 @@ func (s *roadmapOptimizer) OptimizeRoadmap(ctx context.Context, req *models.Road
 				outsideCredits[code] = g.Credits
 			}
 		}
-		outcome := applyRequirementRules(rules, remainingCourses, passedMap, accumulatedCredits, currCourseMap, outsideCredits)
+		outcome := applyRequirementRules(rules, remainingCourses, passedMap, accumulatedCredits, currCourseMap, outsideCredits, prerequisitesReady(prereqEdges, passedMap, attemptedMap))
+		requirementProgress = outcome.Progress
 		remainingCourses = outcome.Kept
-		var after float64
-		for _, c := range remainingCourses {
-			after += c.Credits
-		}
-		requirementNotes = append(requirementNotes, describeRequirements(outcome, before-after))
-		requirementNotes = append(requirementNotes, outcome.Notes...)
 	}
 
 	if len(remainingCourses) == 0 {
@@ -340,6 +331,7 @@ func (s *roadmapOptimizer) OptimizeRoadmap(ctx context.Context, req *models.Road
 			FreeElectives:          waterfall,
 			DowngradeRisk:          downgradeWarning,
 			Recommendations:        []string{"Congratulations! You have completed all curriculum requirements."},
+			RequirementProgress:    requirementProgress,
 		}).ToResponse(), nil
 	}
 
@@ -413,8 +405,6 @@ func (s *roadmapOptimizer) OptimizeRoadmap(ctx context.Context, req *models.Road
 		quizResult,
 	)
 
-	recommendations = append(requirementNotes, recommendations...)
-
 	return (&models.RoadmapOptimizationResult{
 		Cohort:                 cohort,
 		MajorName:              majorName,
@@ -423,6 +413,7 @@ func (s *roadmapOptimizer) OptimizeRoadmap(ctx context.Context, req *models.Road
 		TotalCurriculumCredits: totalCurrCredits,
 		CurrentSemester:        req.CurrentSemester,
 		TargetGraduationTerm:   targetTerm,
+		RequirementProgress:    requirementProgress,
 		Semesters:              scheduledSemesters,
 		CriticalPathCourses:    criticalPaths,
 		FreeElectives:          waterfall,
@@ -636,6 +627,10 @@ func (s *roadmapOptimizer) scheduleSemesters(
 	for k, v := range attempted {
 		completed[k] = completed[k] || v
 	}
+	completed0 := make(map[string]bool, len(completed))
+	for k, v := range completed {
+		completed0[k] = v
+	}
 
 	unassigned := make(map[string]*dagNode, len(dag))
 	for k, v := range dag {
@@ -824,6 +819,8 @@ func (s *roadmapOptimizer) scheduleSemesters(
 		currentSemNum++
 	}
 
+	scheduledSemesters = compactTailSemester(scheduledSemesters, dag, completed0)
+
 	criticalList := make([]string, 0, len(criticalMap))
 	for code := range criticalMap {
 		criticalList = append(criticalList, code)
@@ -989,4 +986,140 @@ func indexSubstitutions(subs []*models.CourseSubstitution) map[string][]string {
 		}
 	}
 	return index
+}
+
+// prerequisitesReady marks every course whose prerequisites are already done so electives that can start now are preferred.
+func prerequisitesReady(edges []*models.CoursePrerequisite, passed, attempted map[string]bool) map[string]bool {
+	done := func(code string) bool { return passed[code] || attempted[code] }
+	andOpen := map[string]bool{}
+	orGroups := map[string]map[string]bool{}
+	blocked := map[string]bool{}
+	for _, e := range edges {
+		child := strings.ToUpper(e.CourseCode)
+		parent := strings.ToUpper(e.PrerequisiteCourseCode)
+		if strings.EqualFold(e.ConditionType, "OR") {
+			key := child + "|" + e.RawExpression
+			if orGroups[key] == nil {
+				orGroups[key] = map[string]bool{}
+			}
+			orGroups[key][parent] = done(parent) || orGroups[key][parent]
+			continue
+		}
+		if !done(parent) {
+			andOpen[child] = true
+		}
+	}
+	for key, parents := range orGroups {
+		satisfied := false
+		for _, ok := range parents {
+			if ok {
+				satisfied = true
+			}
+		}
+		if !satisfied {
+			blocked[strings.SplitN(key, "|", 2)[0]] = true
+		}
+	}
+	ready := map[string]bool{}
+	for _, e := range edges {
+		child := strings.ToUpper(e.CourseCode)
+		ready[child] = !andOpen[child] && !blocked[child]
+	}
+	return ready
+}
+
+const (
+	minTailSemesterCredits = 8.0
+	maxMergedSemesterCap   = 24.0
+)
+
+func prerequisitesDone(node *dagNode, done map[string]bool) bool {
+	for _, p := range node.prereqs {
+		if !done[p] {
+			return false
+		}
+	}
+	for _, group := range node.orGroups {
+		any := false
+		for _, p := range group {
+			if done[p] {
+				any = true
+				break
+			}
+		}
+		if !any {
+			return false
+		}
+	}
+	return true
+}
+
+// compactTailSemester moves courses of a very light final semester into the previous regular semester when prerequisites and the credit cap allow.
+func compactTailSemester(sched []*models.ScheduledSemester, dag map[string]*dagNode, initial map[string]bool) []*models.ScheduledSemester {
+	last := -1
+	for i := len(sched) - 1; i >= 0; i-- {
+		if !sched[i].IsSummer {
+			last = i
+			break
+		}
+	}
+	prev := -1
+	for i := last - 1; i >= 0; i-- {
+		if !sched[i].IsSummer {
+			prev = i
+			break
+		}
+	}
+	if last < 1 || prev < 0 || sched[last].TotalCredits >= minTailSemesterCredits {
+		return sched
+	}
+
+	doneBefore := make(map[string]bool, len(initial))
+	for k, v := range initial {
+		doneBefore[k] = v
+	}
+	for i := 0; i < prev; i++ {
+		for _, c := range sched[i].Courses {
+			doneBefore[c.CourseCode] = true
+		}
+	}
+
+	hasEnglish := false
+	for _, c := range sched[prev].Courses {
+		if isEnglishCourse(c.CourseCode) {
+			hasEnglish = true
+		}
+	}
+
+	var stay []*models.ScheduledCourse
+	for _, c := range sched[last].Courses {
+		node := dag[c.CourseCode]
+		fits := sched[prev].TotalCredits+c.Credits <= maxMergedSemesterCap
+		english := isEnglishCourse(c.CourseCode) && hasEnglish
+		if node != nil && fits && !english && prerequisitesDone(node, doneBefore) {
+			sched[prev].Courses = append(sched[prev].Courses, c)
+			sched[prev].TotalCredits += c.Credits
+			if isEnglishCourse(c.CourseCode) {
+				hasEnglish = true
+			}
+			continue
+		}
+		stay = append(stay, c)
+	}
+
+	if len(stay) == len(sched[last].Courses) {
+		return sched
+	}
+	sched[prev].PaceFeedback = fmt.Sprintf("Semester %d: %.1f credits (%d courses).", sched[prev].SemesterNumber, sched[prev].TotalCredits, len(sched[prev].Courses))
+	if len(stay) == 0 {
+		return append(sched[:last], sched[last+1:]...)
+	}
+	var total float64
+	for _, c := range stay {
+		total += c.Credits
+	}
+	sched[last].Courses = stay
+	sched[last].TotalCredits = total
+	sched[last].PaceFeedback = fmt.Sprintf("Semester %d: %.1f credits (%d courses).", sched[last].SemesterNumber, total, len(stay))
+	return sched
 }
