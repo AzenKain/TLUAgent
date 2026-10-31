@@ -547,7 +547,7 @@ func (s *roadmapOptimizer) buildDAG(
 		if isDigitalCitizenCourse(node.course.CourseCode) {
 			score += 350.0
 		}
-		if isEnglishCourse(node.course.CourseCode) {
+		if isGeneralEnglish(node.course.CourseCode, node.course.KnowledgeBlock) {
 			score += 250.0
 		}
 		if node.course.IsElearning {
@@ -721,7 +721,7 @@ func (s *roadmapOptimizer) scheduleSemesters(
 				continue
 			}
 
-			if isEnglishCourse(node.course.CourseCode) {
+			if isGeneralEnglish(node.course.CourseCode, node.course.KnowledgeBlock) {
 				if hasEnglishThisSem {
 					continue
 				}
@@ -837,7 +837,7 @@ func (s *roadmapOptimizer) determinePriorityReason(node *dagNode) string {
 	if isDigitalCitizenCourse(node.course.CourseCode) {
 		return "Equips document formatting, academic writing, and presentation skills early."
 	}
-	if isEnglishCourse(node.course.CourseCode) {
+	if isGeneralEnglish(node.course.CourseCode, node.course.KnowledgeBlock) {
 		return "Sequential English pathway, maintain continuous progression each term."
 	}
 	if node.totalDownstream >= 4 {
@@ -897,9 +897,16 @@ func (s *roadmapOptimizer) generateRecommendations(
 	return recs
 }
 
+const generalEducationBlock = "Gi\u00e1o d\u1ee5c \u0111\u1ea1i c\u01b0\u01a1ng"
+
 func isEnglishCourse(code string) bool {
 	upper := strings.ToUpper(code)
 	return strings.HasPrefix(upper, "GE") || strings.HasPrefix(upper, "ENG")
+}
+
+// isGeneralEnglish limits the one-English-per-term pacing to general-education English, not English-major courses.
+func isGeneralEnglish(code, knowledgeBlock string) bool {
+	return isEnglishCourse(code) && knowledgeBlock == generalEducationBlock
 }
 
 func isMilitaryCourse(code string) bool {
@@ -1086,7 +1093,7 @@ func compactTailSemester(sched []*models.ScheduledSemester, dag map[string]*dagN
 
 	hasEnglish := false
 	for _, c := range sched[prev].Courses {
-		if isEnglishCourse(c.CourseCode) {
+		if isGeneralEnglish(c.CourseCode, c.KnowledgeBlock) {
 			hasEnglish = true
 		}
 	}
@@ -1095,11 +1102,11 @@ func compactTailSemester(sched []*models.ScheduledSemester, dag map[string]*dagN
 	for _, c := range sched[last].Courses {
 		node := dag[c.CourseCode]
 		fits := sched[prev].TotalCredits+c.Credits <= maxMergedSemesterCap
-		english := isEnglishCourse(c.CourseCode) && hasEnglish
+		english := isGeneralEnglish(c.CourseCode, c.KnowledgeBlock) && hasEnglish
 		if node != nil && fits && !english && prerequisitesDone(node, doneBefore) {
 			sched[prev].Courses = append(sched[prev].Courses, c)
 			sched[prev].TotalCredits += c.Credits
-			if isEnglishCourse(c.CourseCode) {
+			if isGeneralEnglish(c.CourseCode, c.KnowledgeBlock) {
 				hasEnglish = true
 			}
 			continue
