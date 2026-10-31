@@ -3,7 +3,7 @@
 # ==============================================================================
 # Stage 1: Build Frontend (React + Vite + TypeScript)
 # ==============================================================================
-FROM oven/bun:1-alpine AS frontend-builder
+FROM --platform=$BUILDPLATFORM oven/bun:1-alpine AS frontend-builder
 
 WORKDIR /app/frontend
 
@@ -22,17 +22,21 @@ RUN bun run build
 # ==============================================================================
 # Stage 2: Build Backend (Go with CGO enabled for C libraries / ONNX Runtime)
 # ==============================================================================
-FROM golang:1.27.3-trixie AS backend-builder
+FROM --platform=$BUILDPLATFORM golang:1.27.3-trixie AS backend-builder
+
+ARG TARGETARCH
 
 WORKDIR /build
 
-# Runtime assets that the distroless runner stage cannot install itself (no apt there)
-RUN apt-get update && apt-get install -y --no-install-recommends tzdata ca-certificates \
+# Runtime assets that the distroless runner stage cannot install itself (no apt there),
+# plus the arm64 cross toolchain so arm64 images build natively instead of under QEMU
+RUN apt-get update && apt-get install -y --no-install-recommends tzdata ca-certificates gcc-aarch64-linux-gnu libc6-dev-arm64-cross \
     && rm -rf /var/lib/apt/lists/*
 
 # Enable CGO: essential for onnxruntime_go C bindings and native system libraries
 ENV CGO_ENABLED=1 \
-    GOOS=linux
+    GOOS=linux \
+    GOARCH=$TARGETARCH
 
 # Cache Go modules
 COPY go.mod go.sum ./
@@ -48,7 +52,8 @@ COPY cmd/ ./cmd/
 COPY --from=frontend-builder /app/cmd/server/dist ./cmd/server/dist
 
 # Build production binary with stripped debugging symbols
-RUN go build -trimpath -ldflags="-s -w" -o /build/bin/server ./cmd/server
+RUN if [ "$TARGETARCH" = "arm64" ]; then export CC=aarch64-linux-gnu-gcc; fi \
+    && go build -trimpath -ldflags="-s -w" -o /build/bin/server ./cmd/server
 
 # Writable data directories, pre-owned by the runtime UID (distroless has no shell to mkdir)
 RUN mkdir -p /build/appdata/logs /build/appdata/onnx && chown -R 1000:1000 /build/appdata
